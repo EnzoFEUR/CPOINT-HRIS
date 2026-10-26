@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { fetchWithAuth } from '../../../utils/api';
@@ -26,11 +26,7 @@ export default function AuditLogsIndex() {
     const itemsPerPage = 10;
 
     // Enterprise query for audit logs with 30s staleTime & 5min gcTime
-    const {
-        data: logs = [],
-        isLoading: isLogsLoading,
-        isFetching: isLogsFetching,
-    } = useQuery({
+    const { data: logs = [], isLoading: isLogsLoading } = useQuery({
         queryKey: ['adminAuditLogs', filterDate, filterUserId],
         queryFn: async () => {
             let url = '/api/audit-logs';
@@ -329,8 +325,6 @@ export default function AuditLogsIndex() {
                             const actionStr = (log.event || log.action || '').toUpperCase();
                             const targetTypeStr = log.subject_type || log.log_name || log.target_type || '';
                             const detailsStr = log.description || log.details || '';
-                            const targetIdStr = log.subject_id || log.target_id || '';
-                            const causerIdStr = log.causer_id || log.user_id || '';
                             const userNameStr = log.causer?.name || log.user_name || 'Admin';
 
                             return (

@@ -1,10 +1,14 @@
-import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import toast from 'react-hot-toast';
 import { useOtpCooldown } from '../utils/useOtpCooldown';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || (import.meta.env.PROD ? 'https://cpoint-hris.onrender.com' : 'http://localhost:5000');
 
-export default function OtpVerificationModal({
+export default function OtpVerificationModal(props) {
+    return props.isOpen ? <OtpVerificationContent key={`${props.purpose || 'modal_stepup'}:${props.email || ''}`} {...props} /> : null;
+}
+
+function OtpVerificationContent({
     isOpen,
     onClose,
     onSuccess,
@@ -30,7 +34,7 @@ export default function OtpVerificationModal({
     const normalizedEmail = (email || sessionUser?.email || 'global').toLowerCase().trim();
     const cooldownScope = `${purpose}_dest_email_${normalizedEmail}`;
     const cooldownKey = `${purpose}_${normalizedEmail}`;
-    const { cooldown, isCooldown, startCooldown, clearCooldown } = useOtpCooldown(cooldownScope, 60);
+    const { cooldown, isCooldown, startCooldown } = useOtpCooldown(cooldownScope, 60);
 
     // TOTP status detection
     const [hasTotp, setHasTotp] = useState(() => {
@@ -117,7 +121,7 @@ export default function OtpVerificationModal({
                     if (prev <= 1) {
                         try {
                             sessionStorage.removeItem(`cpoint_modal_exp_${cooldownKey}`);
-                        } catch {}
+                        } catch { /* Optional browser capability or storage is unavailable. */ }
                         return 0;
                     }
                     return prev - 1;
@@ -126,28 +130,6 @@ export default function OtpVerificationModal({
         }
         return () => clearInterval(timer);
     }, [expiryTimer, cooldownKey]);
-
-    useEffect(() => {
-        if (isOpen) {
-            setDigits(['', '', '', '', '', '']);
-            setErrorMessage('');
-            setBackupMode(false);
-            setBackupCode('');
-
-            try {
-                const exp = sessionStorage.getItem(`cpoint_modal_exp_${cooldownKey}`);
-                const diff = exp ? Math.ceil((parseInt(exp, 10) - Date.now()) / 1000) : 0;
-                if (diff > 0) {
-                    setExpiryTimer(diff);
-                } else {
-                    setExpiryTimer(0);
-                }
-            } catch {
-                setExpiryTimer(0);
-            }
-            setStep('select');
-        }
-    }, [isOpen, cooldownKey]);
 
     // Handle Method Selection (Zero dispatch wait, zero premature Brevo quota consumption)
     const handleSelectMethod = (selectedMethod) => {
@@ -211,7 +193,7 @@ export default function OtpVerificationModal({
 
             const text = await response.text();
             let data = {};
-            try { data = text ? JSON.parse(text) : {}; } catch {}
+            try { data = text ? JSON.parse(text) : {}; } catch { /* Optional browser capability or storage is unavailable. */ }
 
             if (response.status === 429 || !response.ok || !data.success) {
                 if (data.retry_after) {
@@ -227,7 +209,7 @@ export default function OtpVerificationModal({
             const expTime = Date.now() + activeSeconds * 1000;
             try {
                 sessionStorage.setItem(`cpoint_modal_exp_${cooldownKey}`, String(expTime));
-            } catch {}
+            } catch { /* Optional browser capability or storage is unavailable. */ }
             setExpiryTimer(activeSeconds);
 
             if (isMock && data.previewCode) {
@@ -294,7 +276,7 @@ export default function OtpVerificationModal({
 
                 const text = await response.text();
                 let data = {};
-                try { data = text ? JSON.parse(text) : {}; } catch {}
+                try { data = text ? JSON.parse(text) : {}; } catch { /* Optional browser capability or storage is unavailable. */ }
 
                 if (!response.ok || !data.success) {
                     throw new Error(data.error || 'Invalid authenticator code.');
@@ -322,7 +304,7 @@ export default function OtpVerificationModal({
 
                 const text = await response.text();
                 let data = {};
-                try { data = text ? JSON.parse(text) : {}; } catch {}
+                try { data = text ? JSON.parse(text) : {}; } catch { /* Optional browser capability or storage is unavailable. */ }
 
                 if (!response.ok || !data.success) {
                     throw new Error(data.error || 'Invalid verification code.');
@@ -330,7 +312,7 @@ export default function OtpVerificationModal({
 
                 try {
                     sessionStorage.removeItem(`cpoint_modal_exp_${cooldownKey}`);
-                } catch {}
+                } catch { /* Optional browser capability or storage is unavailable. */ }
 
                 toast.success('Identity verified successfully');
                 if (onSuccess) {

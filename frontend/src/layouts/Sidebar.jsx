@@ -18,11 +18,11 @@ export const Sidebar = ({ user, handleLogout }) => {
   const isLeavesPath = location.pathname.startsWith('/admin/leaves');
   const [leavesDropdownOpen, setLeavesDropdownOpen] = useState(isLeavesPath);
 
-  useEffect(() => {
-    if (isLeavesPath) {
-      setLeavesDropdownOpen(true);
-    }
-  }, [isLeavesPath]);
+  const [previousLeavesPath, setPreviousLeavesPath] = useState(isLeavesPath);
+  if (previousLeavesPath !== isLeavesPath) {
+    setPreviousLeavesPath(isLeavesPath);
+    if (isLeavesPath) setLeavesDropdownOpen(true);
+  }
 
   const searchParams = new URLSearchParams(location.search);
   const currentTab = searchParams.get('tab') || 'requests';
@@ -183,10 +183,15 @@ export const Sidebar = ({ user, handleLogout }) => {
               <span className="ml-3 font-medium tracking-wide">My Portal</span>
             </Link>
 
-            <Link to="/employee/documents" className="flex items-center px-4 py-3.5 rounded-2xl text-slate-400 hover:text-white hover:bg-slate-800/30 transition-colors">
-              <i className="ti ti-folders text-xl" />
-              <span className="ml-3 font-medium tracking-wide">My Documents</span>
-            </Link>
+            {[
+              { to: '/employee/documents', icon: 'ti-folders', label: 'Personnel Documents' },
+              { to: '/employee/policy-reports', icon: 'ti-scale', label: 'Policy & Incident Reports' },
+            ].map(item => (
+              <Link key={item.to} to={item.to} className={`flex items-center px-4 py-3.5 rounded-2xl transition-colors ${location.pathname === item.to ? 'bg-accent text-white shadow-lg shadow-accent/20 font-bold' : 'text-slate-400 hover:text-white hover:bg-slate-800/30'}`}>
+                <i className={`ti ${item.icon} text-xl shrink-0`} aria-hidden="true" />
+                <span className="ml-3 font-medium tracking-wide">{item.label}</span>
+              </Link>
+            ))}
 
             <Link
               to="/employee/qr"

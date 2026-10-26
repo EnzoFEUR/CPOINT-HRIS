@@ -60,7 +60,7 @@ export function getDisciplinaryCache(userId) {
         }
       }
     }
-  } catch (e) {}
+  } catch { /* Optional browser capability or storage is unavailable. */ }
 
   return { type: null, record: null, isSuspended: false, isTerminated: false, checked: false };
 }

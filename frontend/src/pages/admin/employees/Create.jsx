@@ -1,17 +1,16 @@
 import { getManilaWorkDate } from '../../../../../shared/workPolicy.mjs';
-import React, { useState, useMemo, useEffect } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { useState, useMemo } from 'react';
+import { Link } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { fetchWithAuth } from '../../../utils/api';
-import { FACTORY_SHOE_ROLES, extractProductionLines } from '../../../utils/factoryRoles';
-import { formatPhPhone, validatePhPhone, cleanPhPhone } from '../../../utils/phoneUtils';
+import { FACTORY_SHOE_ROLES } from '../../../utils/factoryRoles';
+import { formatPhPhone, validatePhPhone } from '../../../utils/phoneUtils';
 import PhilippineAddressSelector from '../../../components/PhilippineAddressSelector';
 import EmailDomainWarning from '../../../components/EmailDomainWarning';
 import { sanitizePersonnelText, isPersonnelEmailInput, isValidPersonnelEmail, isEmployeePayInput, getEmployeePayError } from '../../../../../shared/personnelInput.mjs';
 
 export default function Create({ errors = [], defaultValues = {} }) {
-    const navigate = useNavigate();
     const queryClient = useQueryClient();
     const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -57,15 +56,13 @@ export default function Create({ errors = [], defaultValues = {} }) {
         return Array.isArray(productionGroupsData) ? productionGroupsData : [];
     }, [productionGroupsData]);
 
-    useEffect(() => {
-        if (!selectedGroupId && productionGroups.length > 0) {
-            const defaultLine = productionGroups.find(g => g.name === 'Line A') || productionGroups[0];
-            if (defaultLine) {
-                setSelectedGroupId(defaultLine.id);
-                setSelectedGroup(defaultLine.name);
-            }
+    if (!selectedGroupId && productionGroups.length > 0) {
+        const defaultLine = productionGroups.find(g => g.name === 'Line A') || productionGroups[0];
+        if (defaultLine) {
+            setSelectedGroupId(defaultLine.id);
+            setSelectedGroup(defaultLine.name);
         }
-    }, [productionGroups, selectedGroupId]);
+    }
 
     // Existing production lines from workforce cache (fallback)
     const { data: workforceData } = useQuery({
@@ -79,15 +76,6 @@ export default function Create({ errors = [], defaultValues = {} }) {
         staleTime: 60_000,
         gcTime: 300_000
     });
-
-    const existingLines = useMemo(() => {
-        const raw = Array.isArray(workforceData) ? workforceData : (workforceData?.data || []);
-        const lines = extractProductionLines(raw);
-        if (selectedGroup && !lines.includes(selectedGroup) && !isCustomLine) {
-            lines.push(selectedGroup);
-        }
-        return lines;
-    }, [workforceData, selectedGroup, isCustomLine]);
 
     // Real-time (0ms) duplicate name detection against workforce & archive
     const matchingArchivedEmployee = useMemo(() => {
@@ -357,7 +345,7 @@ export default function Create({ errors = [], defaultValues = {} }) {
                 toast.error(res.status >= 500 && requestId ? `${message} Reference: ${requestId}` : message);
                 setIsSubmitting(false);
             }
-        } catch (err) {
+        } catch {
             toast.error('Network error. Failed to create account.');
             setIsSubmitting(false);
         }

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { notifAvatarCache } from '../../utils/notificationHelpers';
 
 export const NotificationAvatar = ({
@@ -10,27 +10,18 @@ export const NotificationAvatar = ({
   badgeClass = 'h-4 w-4 text-[9px] -bottom-1 -right-1',
   ringClass = 'ring-1 ring-slate-900'
 }) => {
-  const initialStatus = avatarSrc ? notifAvatarCache.get(avatarSrc) : null;
-  const [status, setStatus] = useState(() => initialStatus || 'loading');
-
-  useEffect(() => {
-    if (!avatarSrc) {
-      setStatus('failed');
-      return;
-    }
-    const cached = notifAvatarCache.get(avatarSrc);
-    if (cached) setStatus(cached);
-    else setStatus('loading');
-  }, [avatarSrc]);
+  const [imageResult, setImageResult] = useState(null);
+  const status = !avatarSrc ? 'failed' : imageResult?.src === avatarSrc
+    ? imageResult.status : notifAvatarCache.get(avatarSrc) || 'loading';
 
   const handleLoad = () => {
     if (avatarSrc) notifAvatarCache.set(avatarSrc, 'loaded');
-    setStatus('loaded');
+    setImageResult({ src: avatarSrc, status: 'loaded' });
   };
 
   const handleError = () => {
     if (avatarSrc) notifAvatarCache.set(avatarSrc, 'failed');
-    setStatus('failed');
+    setImageResult({ src: avatarSrc, status: 'failed' });
   };
 
   const isLoaded = status === 'loaded';

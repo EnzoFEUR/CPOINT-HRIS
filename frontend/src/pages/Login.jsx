@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useRef } from 'react';
+import { isBiometricSetupTestAccess } from '../utils/biometricSetupTestAccess.mjs';
+import { useState, useEffect, useRef } from 'react';
 import { supabase } from '../supabaseClient';
 import { useNavigate, Link } from 'react-router-dom';
 import toast from 'react-hot-toast';
@@ -9,21 +10,7 @@ import { isSecurity, isAdmin, isMedicalExempt } from '../routes/guards';
 import { needsProfileCompletion } from '../utils/userAccess.mjs';
 import { broadcastAuthChange } from '../utils/authSession';
 import { minimalLoginSession, writeLoginSession } from '../utils/browserPrivacy.mjs';
-import {
-  Mail,
-  Loader2,
-  ShieldCheck,
-  ArrowRight,
-  ChevronRight,
-  KeyRound,
-  Lightbulb,
-  Eye,
-  EyeOff,
-  AlertCircle,
-  ShieldAlert,
-  Send,
-  Sparkles
-} from 'lucide-react';
+import { Mail, Loader2, ShieldCheck, ArrowRight, ChevronRight, KeyRound, Eye, EyeOff, AlertCircle, ShieldAlert, Sparkles } from 'lucide-react';
 // Enterprise Anti-Brute-Force & Rate-Limiting Protection
 const MAX_FAILED_ATTEMPTS = 5;
 const LOCKOUT_DURATION_SEC = 30;
@@ -49,7 +36,7 @@ const recordFailedAttempt = () => {
             sessionStorage.removeItem('cpoint_auth_failed_attempts');
             return LOCKOUT_DURATION_SEC;
         }
-    } catch {}
+    } catch { /* Retain the existing fallback when optional browser state is unavailable. */ }
     return 0;
 };
 
@@ -57,12 +44,12 @@ const clearFailedAttempts = () => {
     try {
         sessionStorage.removeItem('cpoint_auth_failed_attempts');
         sessionStorage.removeItem('cpoint_auth_lockout_until');
-    } catch {}
+    } catch { /* Retain the existing fallback when optional browser state is unavailable. */ }
 };
 
 export default function Login() {
     // Restore any active 2FA recovery session from page reload or navigation (only if unexpired)
-    const savedSession = (() => {
+    const [savedSession] = useState(() => {
         try {
             const raw = sessionStorage.getItem('cpoint_login_2fa_session');
             if (!raw) return null;
@@ -76,7 +63,7 @@ export default function Login() {
         } catch {
             return null;
         }
-    })();
+    });
 
     const [email, setEmail] = useState(savedSession?.email || '');
     const [password, setPassword] = useState('');
@@ -94,7 +81,7 @@ export default function Login() {
     const [employeeData, setEmployeeData] = useState(savedSession?.employeeData || null);
     const [otpCode, setOtpCode] = useState(['', '', '', '', '', '']);
     const [otpMethod, setOtpMethod] = useState(savedSession?.otpMethod || '');
-    const [generatedOtp, setGeneratedOtp] = useState(savedSession?.generatedOtp || null);
+    const [, setGeneratedOtp] = useState(savedSession?.generatedOtp || null);
     const [expiresAt, setExpiresAt] = useState(() => savedSession?.expiresAt || null);
     const [hasTotp, setHasTotp] = useState(() => {
         return Boolean(
@@ -155,7 +142,7 @@ export default function Login() {
                     sessionStorage.removeItem(key);
                 }
             });
-        } catch {}
+        } catch { /* Retain the existing fallback when optional browser state is unavailable. */ }
     }, []);
 
     // Cross-tab real-time authentication synchronization
@@ -170,7 +157,7 @@ export default function Login() {
                         else if (isSecurity(u)) navigate('/scanner');
                         else navigate('/employee/dashboard');
                     }
-                } catch {}
+                } catch { /* Retain the existing fallback when optional browser state is unavailable. */ }
             }
         };
         window.addEventListener('storage', handleStorage);
@@ -250,7 +237,7 @@ export default function Login() {
                             expiresAt: newExpiresAt,
                             otpMethod: data.method || s.otpMethod || 'email'
                         });
-                    } catch {}
+                    } catch { /* Retain the existing fallback when optional browser state is unavailable. */ }
                 }
 
                 if (data.isCooldown && data.cooldownRemaining > 0) {
@@ -261,7 +248,7 @@ export default function Login() {
                     setHasTotp(data.hasTotp);
                     setOtpMethod(current => !data.hasTotp && current === 'totp' ? '' : current);
                 }
-            } catch (err) {
+            } catch  {
                 // Silently fallback to client state
             }
         };
@@ -272,10 +259,10 @@ export default function Login() {
         };
     }, [step, email, startCooldown]);
 
-    const handleReturnToLogin = () => {
+    function handleReturnToLogin() {
         try {
             sessionStorage.removeItem('cpoint_login_2fa_session');
-        } catch {}
+        } catch { /* Retain the existing fallback when optional browser state is unavailable. */ }
         setStep(1);
         setOtpCode(['', '', '', '', '', '']);
         setGeneratedOtp(null);
@@ -284,7 +271,7 @@ export default function Login() {
         setError(null);
     };
 
-    const handleSwitchMethod = () => {
+    function handleSwitchMethod() {
         setStep(2);
         setError(null);
         try {
@@ -293,7 +280,7 @@ export default function Login() {
                 const s = JSON.parse(raw);
                 writeLoginSession(sessionStorage, { ...s, step: 2 });
             }
-        } catch {}
+        } catch { /* Retain the existing fallback when optional browser state is unavailable. */ }
     };
 
     const handleLogin = async (e) => {
@@ -334,7 +321,7 @@ export default function Login() {
             setPassword('');
 
             if (authData?.user) {
-                const { data: employee, error: empError } = await supabase
+                let { data: employee, error: empError } = await supabase
                     .from('employees')
                     .select('*')
                     .eq('id', authData.user.id)
@@ -345,31 +332,13 @@ export default function Login() {
                     return setError("Unable to retrieve employee account details.");
                 }
 
-                // Auto-reinstatement check for expired suspensions
-                if (employee.role !== 'admin') {
-                    const { data: discLogs } = await supabase
-                        .from('disciplinary_logs')
-                        .select('*')
-                        .eq('employee_id', employee.id)
-                        .eq('type', 'Suspension')
-                        .in('status', ['Active', 'Action Required', 'Under Review', 'Acknowledged'])
-                        .order('created_at', { ascending: false })
-                        .limit(1);
-
-                    if (discLogs && discLogs.length > 0) {
-                        const disc = discLogs[0];
-                        const match = (disc.reason || '').match(/Until\s*([0-9]{4}-[0-9]{2}-[0-9]{2})/i);
-                        const endDateStr = match ? match[1] : null;
-                        const todayStr = new Date().toISOString().split('T')[0];
-
-                        if (endDateStr && todayStr > endDateStr) {
-                            // Expired: auto reinstate
-                            await supabase.from('disciplinary_logs').update({ status: 'Resolved' }).eq('id', disc.id);
-                            await supabase.from('employees').update({ status: 'active', is_active: true }).eq('id', employee.id);
-                            employee.status = 'active';
-                            employee.is_active = true;
-                        }
-                    }
+                if (String(employee.status).toLowerCase() === 'suspended') {
+                    const response = await fetchWithAuth('/api/auth/security/refresh-employment-status', {
+                        method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${authData.session.access_token}` }, body: '{}',
+                    });
+                    const refreshed = await response.json();
+                    if (!response.ok || !refreshed.success) throw new Error(refreshed.error || 'Unable to refresh employment status.');
+                    employee = refreshed.data;
                 }
 
                 const existingExpiresAt = savedSession?.expiresAt;
@@ -407,10 +376,10 @@ export default function Login() {
                         otpMethod: null,
                         expiresAt: hasExistingValidOtp ? existingExpiresAt : null
                     });
-                } catch {}
+                } catch { /* Retain the existing fallback when optional browser state is unavailable. */ }
                 return;
             }
-        } catch (err) {
+        } catch  {
             setLoading(false);
             setError("Connection error. Please try again.");
         }
@@ -442,7 +411,7 @@ export default function Login() {
                     otpMethod: 'totp',
                     expiresAt: null
                 });
-            } catch {}
+            } catch { /* Retain the existing fallback when optional browser state is unavailable. */ }
             return;
         }
 
@@ -516,7 +485,7 @@ export default function Login() {
                     generatedOtp: null,
                     expiresAt: codeExpiresAt
                 });
-            } catch {}
+            } catch { /* Retain the existing fallback when optional browser state is unavailable. */ }
         } catch (err) {
             setError(err.message || 'Error sending verification code');
             toast.error(err.message || 'Failed to send verification code');
@@ -606,7 +575,7 @@ export default function Login() {
                     }
                 });
                 sessionStorage.removeItem('cpoint_my_profile_cache');
-            } catch {}
+            } catch { /* Retain the existing fallback when optional browser state is unavailable. */ }
 
             // Broadcast real-time authentication update to all open tabs
             broadcastAuthChange(userData);
@@ -632,7 +601,7 @@ export default function Login() {
             const isSec = isSecurity(userData);
             const isAdm = isAdmin(userData);
             const needsOnboarding = needsProfileCompletion(userData);
-            const needsBio = !userData.has_registered_biometrics && !userData.biometric_baseline_path && !isMedicalExempt(userData) && !isSec && !isAdm;
+            const needsBio = !userData.has_registered_biometrics && !userData.biometric_baseline_path && !isMedicalExempt(userData) && !isBiometricSetupTestAccess(userData) && !isSec && !isAdm;
 
             if (userData.requires_password_change) {
                 toast.success('Please update your password.');
@@ -947,7 +916,7 @@ export default function Login() {
                                             try {
                                                 const s = JSON.parse(sessionStorage.getItem('cpoint_login_2fa_session') || '{}');
                                                 writeLoginSession(sessionStorage, { ...s, step: 3 });
-                                            } catch {}
+                                            } catch { /* Retain the existing fallback when optional browser state is unavailable. */ }
                                         }}
                                         className="w-full h-9 bg-slate-900 hover:bg-slate-800 text-white rounded-md text-xs font-semibold shadow-2xs flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
                                     >

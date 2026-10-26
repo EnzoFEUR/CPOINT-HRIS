@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import { useState, useMemo } from 'react';
 
 // Global in-memory cache to remember loaded/failed URLs across component mounts and re-renders
 const urlStatusCache = new Map();
@@ -35,8 +35,6 @@ export const EmployeeAvatar = ({
     border = 'border border-slate-200',
     shadow = 'shadow-inner',
     className = '',
-    showOnlineStatus = false,
-    isOnline = false,
 }) => {
     // 1. Resolve Name
     const resolvedFirstName = firstName || employee?.first_name || '';
@@ -63,35 +61,22 @@ export const EmployeeAvatar = ({
     }, [photoUrl, avatarUrl, employee, companyId, employeeId]);
 
     // 3. Resolve Loading State from Global Cache
-    const initialStatus = resolvedAvatarSrc ? urlStatusCache.get(resolvedAvatarSrc) : null;
-    const [imgStatus, setImgStatus] = useState(() => initialStatus || 'loading');
-
-    // Keep status in sync if avatarSrc changes
-    useEffect(() => {
-        if (!resolvedAvatarSrc) {
-            setImgStatus('failed');
-            return;
-        }
-        const cached = urlStatusCache.get(resolvedAvatarSrc);
-        if (cached) {
-            setImgStatus(cached);
-        } else {
-            setImgStatus('loading');
-        }
-    }, [resolvedAvatarSrc]);
+    const [imageResult, setImageResult] = useState(null);
+    const imgStatus = !resolvedAvatarSrc ? 'failed' : imageResult?.src === resolvedAvatarSrc
+        ? imageResult.status : urlStatusCache.get(resolvedAvatarSrc) || 'loading';
 
     const handleLoad = () => {
         if (resolvedAvatarSrc) {
             urlStatusCache.set(resolvedAvatarSrc, 'loaded');
         }
-        setImgStatus('loaded');
+        setImageResult({ src: resolvedAvatarSrc, status: 'loaded' });
     };
 
     const handleError = () => {
         if (resolvedAvatarSrc) {
             urlStatusCache.set(resolvedAvatarSrc, 'failed');
         }
-        setImgStatus('failed');
+        setImageResult({ src: resolvedAvatarSrc, status: 'failed' });
     };
 
     // 4. Resolve Visual Theme for Blank Profile Background & Silhouette

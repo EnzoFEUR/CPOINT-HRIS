@@ -261,6 +261,29 @@ async function dispatchClearanceEmail(employee, { exoneration_reason, investigat
 }
 const dispatchExonerationEmail = dispatchClearanceEmail;
 
+function isDisciplinaryExempt(employee) {
+    if (!employee) return false;
+    const r = (employee.role || '').toLowerCase().replace(/[\s_-]/g, '');
+    const dept = (employee.department || '').toLowerCase();
+    const title = (employee.job_title || employee.position || '').toLowerCase();
+    const name = `${employee.first_name || ''} ${employee.last_name || ''}`.toLowerCase();
+
+    const isAdmin =
+        ['admin', 'hr', 'hrmanager', 'hr_manager'].includes(r) ||
+        r.includes('admin') || r.includes('hr') ||
+        dept.includes('admin') || dept.includes('human resources') || dept.includes('hr') ||
+        title.includes('admin') || title.includes('administrator') || title.includes('hr');
+
+    const isGuard =
+        ['security', 'guard', 'securityguard', 'security_guard'].includes(r) ||
+        r.includes('guard') || r.includes('security') ||
+        dept.includes('security') ||
+        title.includes('guard') || title.includes('security') || title.includes('gate attendant') || title.includes('watchman') ||
+        name.includes('guard');
+
+    return Boolean(isAdmin || isGuard);
+}
+
 // Senior-Fullstack Policy: Disciplinary exemption check for administrative and security guard personnel
 // GET /api/disciplinary - Fetch disciplinary logs with employee metadata
 router.get('/', cacheResponse(15), async (req, res) => {

@@ -50,7 +50,7 @@ const loadAuthUser = async token => {
         return null;
     }
 
-    const EMP_FIELDS = 'id, auth_user_id, company_id, first_name, last_name, email, role, status, is_active, archived_at, department, job_title, shift, requires_password_change, production_group_id, hourly_rate, daily_rate, birth_date, address, gender, phone, emergency_contact_name, emergency_contact_phone, emergency_contact_relationship, has_registered_biometrics, biometric_baseline_path';
+    const EMP_FIELDS = 'id, auth_user_id, company_id, first_name, last_name, email, role, status, is_active, archived_at, separation_type, separation_date, department, job_title, shift, requires_password_change, production_group_id, hourly_rate, daily_rate, birth_date, address, gender, phone, emergency_contact_name, emergency_contact_phone, emergency_contact_relationship, has_registered_biometrics, biometric_baseline_path';
 
     // Fetch custom user details omitting heavy biometric vector blobs
     let { data: employee, error: employeeError } = await supabase
@@ -180,13 +180,17 @@ export const verifyToken = async (req, res, next) => {
             urlPath.includes('/api/profile') ||
             urlPath.includes('/api/notifications') ||
             urlPath.includes('/api/documents') ||
-            urlPath.includes('/api/leave-credits')
+            urlPath.includes('/api/leave-credits') ||
+            urlPath.startsWith('/api/employment-exit') ||
+            /^\/api\/retirement-pay\/my-statements(?:\?|$)/.test(urlPath)
         );
         const isAllowedNoticeAcknowledge = req.method === 'PUT' && (
             urlPath.includes('/api/disciplinary') && urlPath.includes('/acknowledge')
         );
 
-        if (!isAllowedArchiveRead && !isAllowedNoticeAcknowledge) {
+        const isAllowedExitReview = req.method === 'POST' && /^\/api\/employment-exit\/[a-f0-9-]{36}\/review-request(?:\?|$)/i.test(urlPath);
+        const isAllowedNotificationReadState = req.method === 'PUT' && /^\/api\/notifications\/read-all(?:\?|$)/i.test(urlPath);
+        if (!isAllowedArchiveRead && !isAllowedNoticeAcknowledge && !isAllowedExitReview && !isAllowedNotificationReadState) {
             return res.status(403).json({ 
                 error: 'ACCESS REVOKED: Personnel account has been separated. Operational write actions are disabled under DOLE retention policy.' 
             });

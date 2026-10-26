@@ -1,4 +1,3 @@
-import React from 'react';
 
 const BADGE_VARIANTS = {
     present: 'bg-slate-900 text-white border-slate-800',

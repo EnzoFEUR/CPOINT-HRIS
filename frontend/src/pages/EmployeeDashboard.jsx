@@ -1,11 +1,13 @@
-import { SilCashEarnings } from '../components/SilPaymentCard';
+import { getSeparationLabel } from '../../../shared/employmentExit.mjs';
 import OfficialPayslipDocument from '../components/OfficialPayslipDocument';
+import EmployeeRetirementStatements from '../components/EmployeeRetirementStatements';
 import OfficialRemunerationHistoryDocument from '../components/OfficialRemunerationHistoryDocument';
 import { printHtmlElement } from '../utils/printDocument';
 import { useState, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { Link } from 'react-router-dom';
 import QRCode from '../components/QRCode';
+import { getActiveMedicalGrace, hasRegisteredFace, medicalGraceDaysRemaining } from '../../../shared/medicalGrace.mjs';
 import toast from 'react-hot-toast';
 import { useQueryClient } from '@tanstack/react-query';
 import dayjs from 'dayjs';
@@ -16,7 +18,7 @@ import EmployeeAvatar from '../components/EmployeeAvatar';
 import { getDisciplinaryCache, setDisciplinaryCache, clearDisciplinaryCache } from '../utils/disciplinaryCache';
 import { getShoeRoleDetails, parseProductionGroup } from '../utils/factoryRoles';
 import { computeDisciplinaryStanding, isExoneratedOrCleared } from '../utils/disciplinaryStanding';
-import { HOLIDAY_LABELS, parsePayrollFinancials, formatCurrency } from '../utils/payslipUtils';
+import { parsePayrollFinancials, formatCurrency } from '../utils/payslipUtils';
 import { getUser, isSecurity, isAdmin } from '../routes/guards';
 import useEmployeeDashboard from '../utils/useEmployeeDashboard';
 import LeaveCreditsPanel from '../components/LeaveCreditsPanel';
@@ -284,7 +286,7 @@ const EmployeeDashboard = () => {
                             archived_at: payload?.archived_at || new Date().toISOString()
                         }));
                     }
-                } catch (_) {}
+                } catch { /* Best-effort browser cache or fallback lookup. */ }
 
                 window.dispatchEvent(new CustomEvent('hris_disciplinary_sync', {
                     detail: {
@@ -349,7 +351,7 @@ const EmployeeDashboard = () => {
                             operational_status: 'Suspended'
                         }));
                     }
-                } catch (_) {}
+                } catch { /* Best-effort browser cache or fallback lookup. */ }
 
                 setShowInfractionsModal(true);
 
@@ -408,7 +410,7 @@ const EmployeeDashboard = () => {
                             archived_at: null
                         }));
                     }
-                } catch (_) {}
+                } catch { /* Best-effort browser cache or fallback lookup. */ }
 
                 window.dispatchEvent(new CustomEvent('hris_disciplinary_sync', {
                     detail: {
@@ -451,7 +453,13 @@ const EmployeeDashboard = () => {
         disciplinaryBus.subscribe(onSubscribe);
         globalDisciplinary.subscribe(onSubscribe);
         const openDisciplinary = () => setShowInfractionsModal(true);
-        const refreshAll = () => scheduled.refresh(true);
+        const refreshAll = () => {
+            scheduled.refresh(true);
+            queryClient.invalidateQueries({ queryKey: ['employeeRetirementStatements', storedUser.id] });
+        };
+        const exitChannel = supabase.channel('employment-exit-' + storedUser.id, { config: { private: true } })
+            .on('broadcast', { event: 'EXIT_CHANGED' }, refreshAll)
+            .subscribe(status => { if (status === 'SUBSCRIBED') refreshAll(); });
         const syncDisciplinary = event => {
             if (event.detail?.userId === storedUser.id) setDisciplinaryState(getDisciplinaryCache(storedUser.id));
         };
@@ -461,7 +469,7 @@ const EmployeeDashboard = () => {
         return () => {
             disposed = true;
             scheduled.cancel();
-            for (const subscription of [channel, disciplinaryBus, globalDisciplinary]) supabase.removeChannel(subscription);
+            for (const subscription of [channel, disciplinaryBus, globalDisciplinary, exitChannel]) supabase.removeChannel(subscription);
             window.removeEventListener('refresh_dashboard', refreshAll);
             window.removeEventListener('open_disciplinary_modal', openDisciplinary);
             window.removeEventListener('hris_disciplinary_sync', syncDisciplinary);
@@ -613,30 +621,13 @@ const EmployeeDashboard = () => {
 
     const currentStatus = String(user.status || 'active').trim().toLowerCase();
 
-    // Medical grace protocol state
-    const medicalExemption = useMemo(() => {
-        const rawUrl = liveEmployee?.medical_record_url || user?.medical_record_url;
-        if (!rawUrl) return null;
-        try {
-            const parsed = typeof rawUrl === 'string' ? JSON.parse(rawUrl) : rawUrl;
-            if (parsed && typeof parsed === 'object' && parsed.type === 'MEDICAL_GRACE_EXEMPTION') {
-                return parsed;
-            }
-            return null;
-        } catch {
-            return null;
-        }
-    }, [liveEmployee?.medical_record_url, user?.medical_record_url]);
-
-    const isMedicalExempt = useMemo(() => {
-        if (!medicalExemption?.expires_at) return false;
-        return new Date(medicalExemption.expires_at).getTime() > now;
-    }, [medicalExemption, now]);
-
-    const daysRemaining = useMemo(() => {
-        if (!isMedicalExempt || !medicalExemption?.expires_at) return 0;
-        return Math.max(0, Math.ceil((new Date(medicalExemption.expires_at).getTime() - now) / (1000 * 60 * 60 * 24)));
-    }, [isMedicalExempt, medicalExemption, now]);
+    const medicalEmployee = {
+        ...user,
+        ...(liveEmployee || {}),
+    };
+    const medicalExemption = getActiveMedicalGrace(medicalEmployee, now);
+    const isMedicalExempt = Boolean(medicalExemption);
+    const daysRemaining = medicalGraceDaysRemaining(medicalExemption, now) ?? 0;
 
     const rawDisc = data?.discData?.data || data?.discData;
     const queryHasLoaded = Array.isArray(rawDisc);
@@ -683,13 +674,7 @@ const EmployeeDashboard = () => {
         : isSuspended ? 'Leave requests are disabled while your account is suspended.' : '';
 
     // Biometric Enrollment Requirement: QR code ONLY appears when face biometrics are enrolled
-    const hasFaceBiometrics = Boolean(
-        liveEmployee?.has_registered_biometrics ||
-        user?.has_registered_biometrics ||
-        liveEmployee?.biometric_baseline_path ||
-        user?.biometric_baseline_path ||
-        isMedicalExempt
-    );
+    const hasFaceBiometrics = hasRegisteredFace(medicalEmployee);
 
     const suspensionRecords = employeeDisciplinary.filter(log => log.type === 'Suspension');
     const pastSuspensionsCount = suspensionRecords.length;
@@ -918,7 +903,7 @@ const EmployeeDashboard = () => {
                         </div>
                     </div>
                     <Link
-                        to="/employee/profile#documents"
+                        to="/employee/documents"
                         className="w-full sm:w-auto h-9 px-4 bg-accent hover:bg-accent-hover text-white font-medium rounded-md shadow-2xs transition-colors duration-100 text-xs flex items-center justify-center gap-2 cursor-pointer shrink-0"
                     >
                         <i className="ti ti-upload text-sm" />
@@ -1076,7 +1061,7 @@ const EmployeeDashboard = () => {
                                         </span>
                                     </span>
                                     <span className="inline-flex items-center gap-1 text-[11px] bg-white/20 px-2 py-0.5 rounded shrink-0">
-                                        <span>Pay History</span>
+                                        <span>Payslips &amp; Final Pay</span>
                                         <i className="ti ti-chevron-right text-[10px]" />
                                     </span>
                                 </div>
@@ -1250,7 +1235,7 @@ const EmployeeDashboard = () => {
                                     <span>Authorized Medical Reason: {medicalExemption.reason || 'Medical Condition / Facial Trauma'}</span>
                                 </div>
                                 <span className="font-mono text-slate-600 font-semibold">
-                                    Valid Through: {new Date(medicalExemption.expires_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                                    Valid Through: {new Date(medicalExemption.valid_until).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
                                 </span>
                             </div>
                             {medicalExemption.notes && (
@@ -1319,7 +1304,7 @@ const EmployeeDashboard = () => {
                                         </h3>
                                         <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md text-xs font-semibold bg-danger-subtle text-danger-ink border border-danger/20">
                                             <i className="ti ti-circle-x" />
-                                            <span>Employment Terminated</span>
+                                            <span>{getSeparationLabel(user)}</span>
                                         </span>
                                     </div>
                                     <p className="text-slate-500 text-xs sm:text-sm font-medium mt-0.5">
@@ -1947,7 +1932,7 @@ const EmployeeDashboard = () => {
 
                                 {isMedicalExempt ? (
                                     <p className="text-warning-ink font-semibold text-xs mb-4">
-                                        Scan QR at gate · Camera will record audit snapshot
+                                        Scan QR at gate · No face scan required
                                     </p>
                                 ) : (
                                     <p className="text-slate-400 font-bold uppercase tracking-widest text-[10px] sm:text-xs mb-4 sm:mb-6">Hold near the scanner</p>
@@ -1982,7 +1967,7 @@ const EmployeeDashboard = () => {
                                 <div className="min-w-0">
                                     <div className="flex items-center gap-2">
                                         <h2 className="text-base sm:text-lg font-black text-slate-900 tracking-tight leading-none">
-                                            Pay History &amp; Remuneration
+                                            Payslips &amp; Final Pay
                                         </h2>
                                     </div>
                                 </div>
@@ -1996,8 +1981,8 @@ const EmployeeDashboard = () => {
                                         title="Print or export complete remuneration ledger statement to PDF"
                                     >
                                         <i className="ti ti-printer text-xs" />
-                                        <span className="hidden sm:inline">Print / Export PDF</span>
-                                        <span className="sm:hidden">Print PDF</span>
+                                        <span className="hidden sm:inline">Print Salary History</span>
+                                        <span className="sm:hidden">Salary PDF</span>
                                     </button>
                                 )}
                                 <button
@@ -2015,7 +2000,7 @@ const EmployeeDashboard = () => {
                             <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 p-3.5 sm:px-5 sm:py-3.5 bg-slate-50 border-b border-slate-200 text-left">
                                 <div className="p-2.5 bg-white rounded-md border border-slate-200/80 shadow-2xs">
                                     <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-0.5">
-                                        {isPayFiltered ? 'Filtered Net' : 'Total Net Disbursed'}
+                                        {isPayFiltered ? 'Filtered Salary Net' : 'Salary Net Disbursed'}
                                     </span>
                                     <div className="text-sm sm:text-base font-black font-mono text-slate-900 tabular-nums">
                                         {formatCurrency(payHistorySummary.totalNet)}
@@ -2109,6 +2094,8 @@ const EmployeeDashboard = () => {
 
                         {/* Statement List */}
                         <div className="overflow-y-auto p-3 sm:p-5 space-y-2.5 flex-1 min-h-[220px]">
+                            <EmployeeRetirementStatements key={storedUser.id} employeeId={storedUser.id} />
+                            <h3 className="text-sm font-bold text-slate-900">Regular Salary Payslips</h3>
                             {/* Loading State */}
                             {history.isError && <div role="alert" className="mb-3 flex items-center justify-between gap-3 rounded-md border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600">
                                 <span>Pay history could not refresh. Previously loaded statements may be out of date.</span>
@@ -2265,7 +2252,7 @@ const EmployeeDashboard = () => {
                         {/* Modal Footer */}
                         <div className="p-3.5 sm:px-6 bg-slate-50 border-t border-slate-200 flex items-center justify-between pb-[calc(0.875rem+env(safe-area-inset-bottom,0px))]">
                             <span className="text-[11px] text-slate-500 font-medium">
-                                Showing {filteredPayrolls.length} of {allPayrolls.length} statement{allPayrolls.length === 1 ? '' : 's'}
+                                Showing {filteredPayrolls.length} of {allPayrolls.length} salary statement{allPayrolls.length === 1 ? '' : 's'}
                             </span>
                             <button
                                 onClick={() => setShowPayslipModal(false)}
@@ -2281,13 +2268,7 @@ const EmployeeDashboard = () => {
 
             {showPayslipModal && currentPayslip && payslipView === 'detail' && (() => {
                 const activePayroll = currentPayslip;
-                const financials = parsePayrollFinancials(activePayroll);
-                const emp = activePayroll.employees || liveEmployee || user;
-                const fullName = emp ? `${emp.first_name || ''} ${emp.last_name || ''}`.trim() || emp.name || 'Employee' : 'Employee';
-                const voucherId = activePayroll.id ? `PAY-${String(activePayroll.id).slice(0, 8).toUpperCase()}` : 'RECORD';
-                const periodStart = activePayroll.period_start ? dayjs(activePayroll.period_start).format('MMM DD, YYYY') : 'N/A';
-                const periodEnd = activePayroll.period_end ? dayjs(activePayroll.period_end).format('MMM DD, YYYY') : 'N/A';
-                const paymentDate = activePayroll.created_at ? dayjs(activePayroll.created_at).format('MMM DD, YYYY') : dayjs().format('MMM DD, YYYY');
+                const emp = currentPayslip.employees || liveEmployee || user;
 
                 return createPortal(
                     <div className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center p-0 sm:p-4 print:static print:inset-auto print:p-0 print:m-0 print:block print:w-full print:h-auto print:max-h-none print:overflow-visible overflow-hidden">

@@ -1,4 +1,5 @@
 import express from 'express';
+import { getActiveMedicalGrace, hasRegisteredFace } from '../../shared/medicalGrace.mjs';
 import { postgrestLikeValue } from '../middleware/requestValidation.js';
 import { supabase } from '../supabaseClient.js';
 import { Brain } from '../services/geminiBrain.js';
@@ -723,24 +724,12 @@ router.get(
       });
     }
 
-    let isMedicalGrace = false;
-    let medicalExemption = null;
-    if (employee.medical_record_url) {
-      try {
-        const parsed = JSON.parse(employee.medical_record_url);
-        if (parsed?.exempt) {
-          const today = getTodayString();
-          if (!parsed.valid_until || parsed.valid_until >= today) {
-            isMedicalGrace = true;
-            medicalExemption = parsed;
-          }
-        }
-      } catch (_) {}
-    }
+    const medicalExemption = getActiveMedicalGrace(employee);
+    const isMedicalGrace = Boolean(medicalExemption);
 
     // Require biometric registration
-    const hasBiometrics = Boolean(employee.has_registered_biometrics || employee.biometric_baseline_path);
-    if (!hasBiometrics && !isMedicalGrace) {
+    const hasBiometrics = hasRegisteredFace(employee);
+    if (!hasBiometrics) {
       logger.warn(reqId, 'QR scan rejected: Unregistered face biometrics', { employee_id: employee.id, company_id: employee.company_id });
       throw new AuthorizationError('BIOMETRICS REQUIRED: Personnel has not completed face biometric registration. Access denied until facial profile is enrolled.');
     }
@@ -854,24 +843,12 @@ router.post(
     }
 
     // Check for active medical exemption
-    let isMedicalGrace = false;
-    let medicalExemption = null;
-    if (employee.medical_record_url) {
-      try {
-        const parsed = JSON.parse(employee.medical_record_url);
-        if (parsed?.exempt) {
-          const today = getTodayString();
-          if (!parsed.valid_until || parsed.valid_until >= today) {
-            isMedicalGrace = true;
-            medicalExemption = parsed;
-          }
-        }
-      } catch (_) {}
-    }
+    const medicalExemption = getActiveMedicalGrace(employee);
+    const isMedicalGrace = Boolean(medicalExemption);
 
     // Require biometric registration
-    const hasBiometrics = Boolean(employee.has_registered_biometrics || employee.biometric_baseline_path);
-    if (!hasBiometrics && !isMedicalGrace) {
+    const hasBiometrics = hasRegisteredFace(employee);
+    if (!hasBiometrics) {
       await logSecurityViolation(reqId, employee_id, 'Unregistered Biometrics', 'Turnstile clock-in rejected: Facial biometrics not registered.', req.ip);
       throw new AuthorizationError('ACCESS DENIED: Facial biometric registration required before turnstile scanning.');
     }
@@ -919,8 +896,8 @@ router.post(
     }
 
     // Liveness verification
-    let livenessPassed = isMedicalGrace ? true : false;
-    let livenessConfidence = isMedicalGrace ? 1.0 : null;
+    let livenessPassed = false;
+    let livenessConfidence = null;
     let livenessReason = isMedicalGrace ? 'Exempted: Medical Grace Protocol Active' : 'Not performed';
 
     if (image_data && !isMedicalGrace) {
@@ -932,7 +909,7 @@ router.post(
         livenessReason = result.reason;
 
         if (result.error) {
-          if (employee.has_registered_biometrics) {
+          if (hasBiometrics) {
             logger.security(reqId, 'Clock-in denied due to AI service issue', { employee_id, reason: result.reason });
             throw new AppError(`Biometric verification service temporarily unavailable: ${result.reason}. Please try again.`, 503, 'AI_SERVICE_UNAVAILABLE');
           }
@@ -946,7 +923,7 @@ router.post(
         logger.info(reqId, 'Liveness check passed', { employee_id, confidence: livenessConfidence });
       } catch (err) {
         if (err.code === 'AI_SERVICE_UNAVAILABLE' || err.code === 'AI_CIRCUIT_OPEN') {
-          if (employee.has_registered_biometrics) {
+          if (hasBiometrics) {
             logger.security(reqId, 'Clock-in denied due to AI outage', { employee_id });
             throw new AuthorizationError('Biometric verification service unavailable. Access denied for security.');
           }

@@ -1,5 +1,6 @@
+import { getArchiveReviewDaysRemaining, getSeparationLabel, isFinalVoluntarySeparation } from '../../../../../shared/employmentExit.mjs';
 import printStylesUrl from './Show.print.css?url&no-inline';
-import React, { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { Link, useParams, useNavigate } from 'react-router-dom';
 import QRCode from '../../../components/QRCode';
 import toast from 'react-hot-toast';
@@ -15,6 +16,9 @@ import LeaveCreditsPanel from '../../../components/LeaveCreditsPanel';
 import { computeDisciplinaryStanding } from '../../../utils/disciplinaryStanding';
 import RequestDocumentModal from '../documents/RequestDocumentModal';
 import { formatPhDisplay } from '../../../utils/phoneUtils';
+import { getActiveMedicalGrace, hasRegisteredFace, medicalGraceDaysRemaining } from '../../../../../shared/medicalGrace.mjs';
+import { getManilaWorkDate } from '../../../../../shared/workPolicy.mjs';
+import { isLeaveDate } from '../../../../../shared/leaveCredits.mjs';
 import { HUMAN_TEXT_LIMITS, hasUnsafeDisplayCharacters } from '../../../../../shared/inputLimits.mjs';
 
 const formatAuthorizer = (authorizer, role) => {
@@ -52,13 +56,17 @@ export default function Show() {
     const [removalMode, setRemovalMode] = useState('archive'); // 'archive' | 'purge'
     const [separationType, setSeparationType] = useState('Resignation');
     const [separationReason, setSeparationReason] = useState('Voluntary Resignation');
-    const [separationDate, setSeparationDate] = useState(() => new Date().toISOString().split('T')[0]);
+    const [separationDate, setSeparationDate] = useState(() => getManilaWorkDate());
     const [separationNotes, setSeparationNotes] = useState('');
     const [isArchiving, setIsArchiving] = useState(false);
     const [isReinstateModalOpen, setIsReinstateModalOpen] = useState(false);
     const [isReinstating, setIsReinstating] = useState(false);
 
     const handleReinstate = async () => {
+        if (isFinalVoluntarySeparation(employee)) {
+            toast.error('HR must review correction or re-employment separately for a finalized retirement or resignation.');
+            return;
+        }
         if (!employee) return;
         setIsReinstating(true);
 
@@ -208,6 +216,7 @@ export default function Show() {
         setIsSubmittingExemption(true);
         try {
             const currentValidUntil = medicalExemption.valid_until ? new Date(medicalExemption.valid_until) : new Date();
+            // eslint-disable-next-line react-hooks/purity -- Reads the clock only in the HR click handler, never while rendering.
             const baseTime = currentValidUntil.getTime() > Date.now() ? currentValidUntil.getTime() : Date.now();
             const newValidUntil = new Date(baseTime + Number(daysToAdd) * 86400000).toISOString().split('T')[0];
 
@@ -345,43 +354,27 @@ export default function Show() {
     const isLoading = isEmpLoading && !employee;
 
     // Memoized disciplinary logs
-    const disciplinaryLogs = useMemo(() => Array.isArray(employee?.disciplinary_logs) ? employee.disciplinary_logs : [], [employee?.disciplinary_logs]);
+    const disciplinaryLogs = Array.isArray(employee?.disciplinary_logs) ? employee.disciplinary_logs : [];
 
     const employeeStatus = employee?.status;
     const operationalStatus = employee?.operational_status;
     const isSuspended = operationalStatus === 'Suspended' || employee?.is_suspended || employeeStatus === 'suspended';
     const isTerminated = !isSuspended && (operationalStatus === 'Terminated' || employee?.is_terminated || employeeStatus === 'terminated' || (Boolean(employee?.archived_at) && employeeStatus !== 'active'));
 
-    const standing = useMemo(() => computeDisciplinaryStanding({
+    const standing = computeDisciplinaryStanding({
         isTerminated,
         isSuspended,
         status: employeeStatus,
         operational_status: operationalStatus,
         disciplinaryLogs
-    }), [isTerminated, isSuspended, employeeStatus, operationalStatus, disciplinaryLogs]);
+    });
 
     // Parse Medical Exemption and Biometric Metadata
-    const medicalExemption = useMemo(() => {
-        if (!employee?.medical_record_url) return null;
-        try {
-            const parsed = JSON.parse(employee.medical_record_url);
-            return (parsed && typeof parsed === 'object') ? parsed : null;
-        } catch {
-            return null;
-        }
-    }, [employee?.medical_record_url]);
-
-    const isMedicalExemptActive = useMemo(() => {
-        if (!medicalExemption?.exempt) return false;
-        const today = new Date().toISOString().split('T')[0];
-        return !medicalExemption.valid_until || medicalExemption.valid_until >= today;
-    }, [medicalExemption]);
-
-    const daysRemaining = useMemo(() => {
-        if (!isMedicalExemptActive || !medicalExemption?.valid_until) return null;
-        const diff = Math.ceil((new Date(medicalExemption.valid_until).getTime() - new Date().setHours(0,0,0,0)) / (1000 * 60 * 60 * 24));
-        return Math.max(0, diff);
-    }, [isMedicalExemptActive, medicalExemption]);
+    const [medicalClock, setMedicalClock] = useState(() => Date.now());
+    useEffect(() => { const timer = setInterval(() => setMedicalClock(Date.now()), 60_000); return () => clearInterval(timer); }, []);
+    const medicalExemption = getActiveMedicalGrace(employee, medicalClock);
+    const isMedicalExemptActive = Boolean(medicalExemption);
+    const daysRemaining = medicalGraceDaysRemaining(medicalExemption, medicalClock);
 
     // Subscribe to live employee, disciplinary, and biometric changes (Real-time 0ms sync)
     useEffect(() => {
@@ -445,58 +438,14 @@ export default function Show() {
 
     const handleArchiveEmployee = async () => {
         if (!employee) return;
+        const effectiveDate = separationDate || getManilaWorkDate();
+        if (!isLeaveDate(effectiveDate) || effectiveDate > getManilaWorkDate()) {
+            toast.error('The effective date has not arrived. Record the notice in Employment Exit first.');
+            return;
+        }
         setIsArchiving(true);
 
-        const nowIso = new Date().toISOString();
-        const effectiveDate = separationDate || nowIso.split('T')[0];
-
-        // 0ms Optimistic UI updates
-        queryClient.setQueryData(['employeeDetails', id], (old) => {
-            if (!old) return old;
-            return {
-                ...old,
-                data: {
-                    ...old.data,
-                    status: 'terminated',
-                    is_active: false,
-                    archived_at: nowIso,
-                    separation_type: separationType,
-                    separation_reason: separationReason,
-                    separation_date: effectiveDate,
-                    separation_notes: separationNotes,
-                    operational_status: 'Terminated',
-                    is_terminated: true,
-                    is_suspended: false,
-                    termination_record: {
-                        date: effectiveDate,
-                        reason: separationReason,
-                        type: separationType,
-                        authorizer: 'System Administrator (HR)'
-                    }
-                }
-            };
-        });
-
-        queryClient.setQueryData(['adminEmployees'], (old) => {
-            if (!Array.isArray(old)) return old;
-            return old.map(e => String(e.id) === String(id) ? {
-                ...e,
-                status: 'terminated',
-                is_active: false,
-                archived_at: nowIso,
-                separation_type: separationType,
-                separation_reason: separationReason,
-                separation_date: effectiveDate,
-                operational_status: 'Terminated',
-                is_terminated: true,
-                is_suspended: false
-            } : e);
-        });
-
-        window.dispatchEvent(new CustomEvent('hris_disciplinary_sync', { detail: { userId: employee.id } }));
-
         try {
-            const user = JSON.parse(localStorage.getItem('user'));
             const res = await fetchWithAuth(`/api/employees/${employee.id}/archive`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -504,8 +453,7 @@ export default function Show() {
                     separation_type: separationType,
                     separation_reason: separationReason,
                     separation_date: effectiveDate,
-                    separation_notes: separationNotes,
-                    admin_id: user?.id
+                    separation_notes: separationNotes
                 })
             });
 
@@ -514,6 +462,7 @@ export default function Show() {
                 throw new Error(resData.error || 'Failed to archive employee');
             }
 
+            window.dispatchEvent(new CustomEvent('hris_disciplinary_sync', { detail: { userId: employee.id } }));
             toast.success(`${employeeFullName} successfully separated and preserved in Archive Vault.`);
             setIsDeleteModalOpen(false);
 
@@ -553,7 +502,7 @@ export default function Show() {
             } else {
                 toast.error(resData.error || 'Employee could not be deleted.', { id: 'employee-delete-error' });
             }
-        } catch (err) {
+        } catch {
             toast.error('Network Error. Failed to delete employee.');
         } finally {
             setIsDeleting(false);
@@ -595,17 +544,9 @@ export default function Show() {
         (dailyRate ? dailyRate / 8 : 0)
     );
 
-    // Termination cooldown: a separated employee stays visually flagged (grayed
-    // out) but not yet finalized for this many days after their effective
-    // separation date - a reversible window before the record is treated as
-    // permanent. Change this single constant to adjust the window company-wide.
-    const TERMINATION_COOLDOWN_DAYS = 30;
-    const separationDateRaw = employee.termination_record?.date || employee.separation_date || null;
-    const daysSinceSeparation = separationDateRaw
-        ? Math.floor((Date.now() - new Date(separationDateRaw).getTime()) / (1000 * 60 * 60 * 24))
-        : null;
-    const isInCooldown = isTerminated && daysSinceSeparation !== null && daysSinceSeparation < TERMINATION_COOLDOWN_DAYS;
-    const cooldownDaysRemaining = isInCooldown ? TERMINATION_COOLDOWN_DAYS - daysSinceSeparation : 0;
+    // Finalized voluntary exits bypass the app archive-review window.
+    const isInArchiveReview = isTerminated && (getArchiveReviewDaysRemaining(employee) ?? 0) > 0;
+    const archiveReviewDaysRemaining = isTerminated ? (getArchiveReviewDaysRemaining(employee) ?? 0) : 0;
     const isPendingRegistration = Boolean(
         employee?.requires_password_change && 
         !isTerminated
@@ -657,7 +598,7 @@ export default function Show() {
                             align="right"
                             title="More employee actions"
                             items={[
-                                ...(isTerminated ? [
+                                ...(isTerminated && !isFinalVoluntarySeparation(employee) ? [
                                     {
                                         label: 'Reinstate Employee',
                                         icon: 'ti-rotate-clockwise text-success-ink',
@@ -712,7 +653,7 @@ export default function Show() {
                     </div>
 
                     <div className="relative z-10 flex flex-col sm:flex-row items-center sm:items-start gap-5 text-center sm:text-left">
-                        <div className={`relative h-24 w-24 sm:h-28 sm:w-28 shrink-0 transition-all duration-500 ${isInCooldown ? 'grayscale opacity-60' : ''}`}>
+                        <div className={`relative h-24 w-24 sm:h-28 sm:w-28 shrink-0 transition-all duration-500 ${isInArchiveReview ? 'grayscale opacity-60' : ''}`}>
                             <EmployeeAvatar
                                 employee={employee}
                                 size="h-24 w-24 sm:h-28 sm:w-28"
@@ -923,23 +864,25 @@ export default function Show() {
                             </div>
                             <div>
                                 <div className="flex items-center gap-2">
-                                    <h4 className="font-semibold text-danger-ink text-sm sm:text-base">Administrative Separation & Account Termination</h4>
-                                    <span className={`px-2 py-0.5 text-[10px] font-semibold uppercase rounded ${isInCooldown ? 'bg-warning-subtle/80 text-warning-ink' : 'bg-danger-subtle/80 text-danger-ink'}`}>
-                                        {isInCooldown ? `Cooldown · ${cooldownDaysRemaining}d Left` : 'DOLE Separated · Finalized'}
+                                    <h4 className="font-semibold text-danger-ink text-sm sm:text-base">{getSeparationLabel(employee)} Employment Record</h4>
+                                    <span className={`px-2 py-0.5 text-[10px] font-semibold uppercase rounded ${isInArchiveReview ? 'bg-warning-subtle/80 text-warning-ink' : 'bg-danger-subtle/80 text-danger-ink'}`}>
+                                        {isInArchiveReview ? `Archive review · ${archiveReviewDaysRemaining}d` : `${getSeparationLabel(employee)} · Archived`}
                                     </span>
                                 </div>
                                 <p className="text-xs text-danger-ink mt-1 leading-relaxed">
-                                    {employee.termination_record?.reason || 'This employee account has been officially separated from active roster. Portal access and attendance permissions are deactivated.'}
+                                    {isFinalVoluntarySeparation(employee)
+                                        ? 'Employment has ended. Attendance and operational transactions are disabled; permitted historical records remain accessible.'
+                                        : employee.termination_record?.reason || 'This employee is separated from the active roster. Attendance and operational transactions are disabled.'}
                                 </p>
                                 <div className="flex flex-wrap items-center gap-3 mt-2 text-[11px] text-danger-ink font-medium">
-                                    {employee.termination_record?.date && (
+                                    {(employee.separation_date || employee.termination_record?.date) && (
                                         <span className="flex items-center gap-1">
-                                            <i className="ti ti-calendar-event" /> Effective Date: <strong className="text-danger-ink font-semibold">{employee.termination_record.date}</strong>
+                                            <i className="ti ti-calendar-event" /> Effective Date: <strong className="text-danger-ink font-semibold">{employee.separation_date || employee.termination_record.date}</strong>
                                         </span>
                                     )}
-                                    {isInCooldown && (
+                                    {isInArchiveReview && (
                                         <span className="flex items-center gap-1">
-                                            <i className="ti ti-hourglass-low" /> <strong className="text-danger-ink font-semibold">{cooldownDaysRemaining} day{cooldownDaysRemaining === 1 ? '' : 's'}</strong> remaining in the reversible cooldown window.
+                                            <i className="ti ti-hourglass-low" /> <strong className="text-danger-ink font-semibold">{archiveReviewDaysRemaining} day{archiveReviewDaysRemaining === 1 ? '' : 's'}</strong> remaining in the internal archive review window. This does not postpone separation or final-pay obligations.
                                         </span>
                                     )}
                                     <span className="flex items-center gap-1">
@@ -952,13 +895,13 @@ export default function Show() {
                             </div>
                         </div>
                         <div className="shrink-0 self-stretch sm:self-center flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
-                            <button
+                            {!isFinalVoluntarySeparation(employee) && (<button
                                 type="button"
                                 onClick={() => setIsReinstateModalOpen(true)}
                                 className="h-8 px-3 bg-success hover:bg-success-ink text-white text-xs font-medium rounded-md shadow-2xs flex items-center justify-center gap-1.5 transition-colors duration-100 cursor-pointer touch-manipulation"
                             >
                                 <i className="ti ti-rotate-clockwise text-sm" /> Reinstate Employee
-                            </button>
+                            </button>)}
                             <Link
                                 to={`/admin/documents?employee_id=${employee.id}`}
                                 className="h-8 px-3 bg-white hover:bg-danger-subtle text-danger-ink text-xs font-medium rounded-md border border-danger/20 shadow-2xs flex items-center justify-center gap-1.5 transition-colors duration-100"
@@ -1228,7 +1171,7 @@ export default function Show() {
                             <div className={`h-8 w-8 rounded-md flex items-center justify-center border ${
                                 isMedicalExemptActive
                                     ? 'bg-warning-subtle text-warning-ink border-warning/70'
-                                    : employee?.has_registered_biometrics
+                                    : hasRegisteredFace(employee)
                                     ? 'bg-surface-muted text-ink border-line'
                                     : 'bg-slate-50 text-slate-600 border-slate-200/70'
                             }`}>
@@ -1245,13 +1188,13 @@ export default function Show() {
                             <span className={`inline-flex items-center px-2.5 py-1 text-xs font-semibold rounded-md border uppercase tracking-wider ${
                                 isMedicalExemptActive
                                     ? 'bg-warning-subtle text-warning-ink border-warning/20'
-                                    : employee?.has_registered_biometrics
+                                    : hasRegisteredFace(employee)
                                     ? 'bg-surface-muted text-ink border-line'
                                     : 'bg-slate-50 text-slate-600 border-slate-200'
                             }`}>
                                 {isMedicalExemptActive
                                     ? 'Medical Exemption Active'
-                                    : employee?.has_registered_biometrics
+                                    : hasRegisteredFace(employee)
                                     ? 'Registered'
                                     : 'Not Registered'}
                             </span>
@@ -1267,7 +1210,7 @@ export default function Show() {
                                         Medical Grace Exemption Active (QR-Only Clock-In)
                                     </h4>
                                     <p className="text-warning-ink/80 mt-0.5">
-                                        Facial recognition verification is temporarily bypassed. Clock-in requires QR badge only, and the kiosk takes an audit photo.
+                                        Facial recognition verification is temporarily bypassed. Clock-in requires the QR badge only. No face scan or liveness challenge is required.
                                     </p>
                                 </div>
                                 {daysRemaining !== null && (
@@ -1324,7 +1267,7 @@ export default function Show() {
                                 >
                                     Revoke Exemption
                                 </button>
-                                {employee?.has_registered_biometrics && (
+                                {hasRegisteredFace(employee) && (
                                     <button
                                         type="button"
                                         onClick={handleResetBiometrics}
@@ -1336,7 +1279,7 @@ export default function Show() {
                                 )}
                             </div>
                         </div>
-                    ) : employee?.has_registered_biometrics ? (
+                    ) : hasRegisteredFace(employee) ? (
                         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-3.5 bg-slate-50 border border-slate-200 rounded-md text-xs">
                             <div className="flex items-start gap-3">
                                 <div className="w-8 h-8 rounded-md bg-surface-muted text-ink flex items-center justify-center shrink-0 border border-line">
@@ -1668,6 +1611,7 @@ export default function Show() {
                                         <input
                                             type="date"
                                             value={separationDate}
+                                            max={getManilaWorkDate()}
                                             onChange={(e) => setSeparationDate(e.target.value)}
                                             className="h-9 w-full px-3 bg-white border border-slate-200 rounded-md text-xs font-medium text-slate-800 focus:outline-hidden focus:ring-1 focus:ring-slate-400"
                                         />
@@ -1905,7 +1849,7 @@ export default function Show() {
                                 <span className="px-2 py-0.5 bg-slate-200 text-slate-700 text-[10px] font-medium rounded">Pending Termination</span>
                             </div>
                             <p className="text-[11px] leading-relaxed">
-                                Reinstatement will revoke the separation notice, clear the pending archive cooldown, unblock gate attendance scanner permissions, and return this record to the operational workforce directory.
+                                Reinstatement will revoke the separation notice, close the internal archive review, unblock gate attendance scanner permissions, and return this record to the operational workforce directory.
                             </p>
                         </div>
 

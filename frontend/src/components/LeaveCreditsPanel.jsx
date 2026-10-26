@@ -4,6 +4,7 @@ import toast from 'react-hot-toast';
 import { fetchWithAuth } from '../utils/api';
 import { getUser } from '../routes/guards';
 import { getDisciplinaryCache } from '../utils/disciplinaryCache';
+import { useCurrentTime } from '../utils/useCurrentTime';
 import {
     calculateSilConversion,
     validateCashOutRequest,
@@ -72,12 +73,7 @@ const STATUTORY_BASIS_OPTIONS = [
     },
 ];
 
-const formatDate = value => {
-    if (!value) return '';
-    const d = new Date(value);
-    if (Number.isNaN(d.getTime())) return String(value).slice(0, 10);
-    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-};
+
 
 const formatDateTime = value => {
     if (!value) return '';
@@ -95,15 +91,19 @@ export default function LeaveCreditsPanel({
     isSuspended = false,
 }) {
     const user = getUser();
+    const now = useCurrentTime();
     const canManage = Boolean(user?.id) && manage && isCreditManager(user);
     const queryClient = useQueryClient();
     const query = useEmployeeLeaveCredits(employeeId);
     const [liveDisciplinary, setLiveDisciplinary] = useState(() => getDisciplinaryCache(employeeId));
+    const [disciplinaryEmployee, setDisciplinaryEmployee] = useState(employeeId);
+    if (disciplinaryEmployee !== employeeId) {
+        setDisciplinaryEmployee(employeeId);
+        setLiveDisciplinary(getDisciplinaryCache(employeeId));
+    }
 
     useEffect(() => {
         if (!employeeId) return;
-        setLiveDisciplinary(getDisciplinaryCache(employeeId));
-
         const handleSync = (e) => {
             if (!e?.detail?.userId || e.detail.userId === employeeId) {
                 setLiveDisciplinary(getDisciplinaryCache(employeeId));
@@ -157,7 +157,7 @@ export default function LeaveCreditsPanel({
     const cooldownExpiry = rejectedTimestamp
         ? new Date(new Date(rejectedTimestamp).getTime() + cooldownHours * 60 * 60 * 1000)
         : null;
-    const isCooldownActive = Boolean(cooldownExpiry && cooldownExpiry.getTime() > Date.now());
+    const isCooldownActive = Boolean(cooldownExpiry && cooldownExpiry.getTime() > now);
 
     const [dismissedRejectionId, setDismissedRejectionId] = useState(() => {
         try {
@@ -178,7 +178,7 @@ export default function LeaveCreditsPanel({
 
     const getCooldownRemaining = () => {
         if (!cooldownExpiry) return '';
-        const diffMs = cooldownExpiry.getTime() - Date.now();
+        const diffMs = cooldownExpiry.getTime() - now;
         if (diffMs <= 0) return '';
         const hours = Math.floor(diffMs / (1000 * 60 * 60));
         const minutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));

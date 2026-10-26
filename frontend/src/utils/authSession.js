@@ -1,5 +1,5 @@
 import { supabase } from '../supabaseClient';
-import { getUser, isAdmin, isSecurity } from '../routes/guards';
+import { getUser } from '../routes/guards';
 import { USER_CHANGED } from './storedUser.mjs';
 
 const AUTH_SYNC_KEY = 'cpoint_auth_sync_event';
@@ -20,7 +20,7 @@ export const performLogout = async (redirectUrl = '/login') => {
           timestamp: Date.now()
         })
       );
-    } catch (_) {}
+    } catch { /* Cross-tab storage is best effort when browser storage is unavailable. */ }
 
     // 2. Sign out locally from Supabase
     try {
@@ -39,13 +39,13 @@ export const performLogout = async (redirectUrl = '/login') => {
       });
       sessionStorage.removeItem('cpoint_login_2fa_session');
       sessionStorage.removeItem('cpoint_my_profile_cache');
-    } catch (_) {}
+    } catch { /* Cross-tab storage is best effort when browser storage is unavailable. */ }
 
     // 4. Clean up broadcast trigger key shortly after
     setTimeout(() => {
       try {
         localStorage.removeItem(AUTH_SYNC_KEY);
-      } catch (_) {}
+      } catch { /* Cross-tab storage is best effort when browser storage is unavailable. */ }
     }, 150);
 
     // 5. Hard redirect to /login to flush in-memory state cleanly
@@ -76,9 +76,9 @@ export const broadcastAuthChange = (user) => {
     setTimeout(() => {
       try {
         localStorage.removeItem(AUTH_SYNC_KEY);
-      } catch (_) {}
+      } catch { /* Cross-tab storage is best effort when browser storage is unavailable. */ }
     }, 150);
-  } catch (_) {}
+  } catch { /* Cross-tab storage is best effort when browser storage is unavailable. */ }
 };
 
 /**
@@ -101,7 +101,7 @@ export const subscribeToAuthSync = ({ onUserChange, onLogout }) => {
           if (onUserChange) onUserChange(freshUser);
           return;
         }
-      } catch (_) {}
+      } catch { /* Cross-tab storage is best effort when browser storage is unavailable. */ }
     }
 
     // Case 2: Direct user object or Supabase token modification in another tab
@@ -118,7 +118,7 @@ export const subscribeToAuthSync = ({ onUserChange, onLogout }) => {
   window.addEventListener('storage', handleStorage);
 
   // Supabase real-time auth state subscription
-  const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+  const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
     if (event === 'SIGNED_OUT') {
       const currentUser = getUser();
       if (!currentUser && onLogout) {

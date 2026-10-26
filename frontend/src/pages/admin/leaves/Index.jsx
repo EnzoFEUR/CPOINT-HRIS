@@ -24,17 +24,10 @@ function RequestedPayBadge({ leave }) {
 }
 
 export default function LeavesIndex() {
-    const [searchParams, setSearchParams] = useSearchParams();
+    const [searchParams, ] = useSearchParams();
     const rawTab = searchParams.get('tab') || 'requests';
     const activeTab = (rawTab === 'cashout' || rawTab === 'cashouts') ? 'cashouts' : rawTab;
-    const setActiveTab = (tab) => {
-        setSearchParams(prev => {
-            const next = new URLSearchParams(prev);
-            if (tab === 'requests') next.delete('tab');
-            else next.set('tab', tab);
-            return next;
-        }, { replace: true });
-    };
+
 
     const queryClient = useQueryClient();
     const actorId = getUser()?.id;

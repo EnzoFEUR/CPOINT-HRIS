@@ -1,11 +1,11 @@
-import React, { useReducer, useEffect, useRef, useCallback, useMemo, useState } from 'react';
-import { supabase } from '../supabaseClient';
+import { isBiometricSetupTestAccess } from '../utils/biometricSetupTestAccess.mjs';
+import { useReducer, useEffect, useRef, useCallback, useMemo, useState } from 'react';
 import { useNavigate, Navigate } from 'react-router-dom';
 import * as faceapi from 'face-api.js';
 import toast from 'react-hot-toast';
 import { fetchWithAuth } from '../utils/api';
 import { compressImage } from '../utils/imageCompress';
-import { requestHardwareCamera, stopHardwareStream, getDeviceCameraMetrics } from '../utils/hardwareCamera';
+import { requestHardwareCamera, stopHardwareStream } from '../utils/hardwareCamera';
 import { playBiometricSound as playSound } from '../utils/audio';
 import { isSecurity, isAdmin, isMedicalExempt } from '../routes/guards';
 import { needsProfileCompletion } from '../utils/userAccess.mjs';
@@ -660,13 +660,12 @@ export default function BiometricSetup() {
   }
 
   const hasBiometrics = Boolean(user.has_registered_biometrics || user.biometric_baseline_path);
-  if (hasBiometrics || isMedicalExempt(user)) {
+  if (hasBiometrics || isMedicalExempt(user) || isBiometricSetupTestAccess(user)) {
     return <Navigate to="/employee/dashboard" replace />;
   }
 
   const displayName = user.name || `${user.first_name || ''} ${user.last_name || ''}`.trim() || user.email || 'Authorized Staff';
   const activePhase = state.currentPhaseIdx >= 0 ? PHASE_LIST[state.currentPhaseIdx] : null;
-  const activeColor = activePhase?.color || '#3b82f6';
   const doneCount = state.captured.length;
 
   return (

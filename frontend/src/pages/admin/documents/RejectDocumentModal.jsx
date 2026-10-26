@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 
 const COMMON_REJECTION_REASONS = [
     'Blurry, cropped, or unreadable document scan',
@@ -20,12 +20,14 @@ export default function RejectDocumentModal({
     const [selectedReason, setSelectedReason] = useState('');
     const [customNotes, setCustomNotes] = useState('');
 
-    useEffect(() => {
+    const [previousDocument, setPreviousDocument] = useState({ isOpen, id: doc?.id });
+    if (previousDocument.isOpen !== isOpen || previousDocument.id !== doc?.id) {
+        setPreviousDocument({ isOpen, id: doc?.id });
         if (isOpen) {
             setSelectedReason('');
             setCustomNotes('');
         }
-    }, [isOpen, doc?.id]);
+    }
 
     if (!isOpen || !doc) return null;
 

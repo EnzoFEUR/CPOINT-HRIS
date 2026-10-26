@@ -5,15 +5,7 @@ import toast from 'react-hot-toast';
 import { fetchWithAuth } from '../../../utils/api';
 import useEmployeeDocuments from '../../../utils/useEmployeeDocuments';
 import useDocumentRequests from '../../../utils/useDocumentRequests';
-import {
-    documentRequest,
-    openEmployeeDocument,
-    uploadEmployeeDocument,
-    cancelDocumentRequest,
-    remindDocumentRequest,
-    fetchEmployeeCompliance,
-    reviewDocumentStatus
-} from '../../../utils/documentApi';
+import { documentRequest, uploadEmployeeDocument, cancelDocumentRequest, remindDocumentRequest, fetchEmployeeCompliance, reviewDocumentStatus } from '../../../utils/documentApi';
 import {
     getDocumentExpiry,
     formatDocumentSize,
@@ -60,11 +52,11 @@ export default function Documents() {
 
     const [targetEmployeeId, setTargetEmployeeId] = useState(() => employeeId || '');
 
-    useEffect(() => {
-        if (employeeId) {
-            setTargetEmployeeId(employeeId);
-        }
-    }, [employeeId]);
+    const [previousEmployeeId, setPreviousEmployeeId] = useState(employeeId);
+    if (previousEmployeeId !== employeeId) {
+        setPreviousEmployeeId(employeeId);
+        if (employeeId) setTargetEmployeeId(employeeId);
+    }
 
     // Active personnel list for target selection (workforce employees only, strictly excluding admin governance accounts)
     const { data: employeeOptions = [] } = useQuery({
@@ -104,7 +96,6 @@ export default function Documents() {
     const statusPillFilter = selectedStatusFilter;
     const setStatusPillFilter = setSelectedStatusFilter;
     const [requestStatusFilter, setRequestStatusFilter] = useState('all');
-    const [openingDocument, setOpeningDocument] = useState(null);
     const [reviewingDocument, setReviewingDocument] = useState(null);
     const [vaultViewMode, setVaultViewMode] = useState('grid');
     const [rejectingDoc, setRejectingDoc] = useState(null);
@@ -418,13 +409,7 @@ export default function Documents() {
         }
     };
 
-    const getFileIcon = (fileName = '') => {
-        const ext = fileName.split('.').pop().toLowerCase();
-        if (['jpg', 'jpeg', 'png', 'svg', 'webp'].includes(ext)) return 'ti-photo text-accent bg-accent-subtle';
-        if (['pdf'].includes(ext)) return 'ti-file-type-pdf text-danger-ink bg-danger-subtle';
-        if (['doc', 'docx'].includes(ext)) return 'ti-file-description text-accent bg-accent-subtle';
-        return 'ti-file-text text-accent bg-accent-subtle';
-    };
+
 
     const isImageFile = (fileName = '') => {
         const ext = fileName.split('.').pop().toLowerCase();

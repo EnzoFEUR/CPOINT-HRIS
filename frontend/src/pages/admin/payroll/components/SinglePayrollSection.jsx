@@ -19,8 +19,6 @@ const SinglePayrollSection = ({
     isSubmitting,
     isInvalidDateRange,
     handleSubmitSingle,
-    periodStart,
-    periodEnd,
     attendanceBlock = null
 }) => {
     return (

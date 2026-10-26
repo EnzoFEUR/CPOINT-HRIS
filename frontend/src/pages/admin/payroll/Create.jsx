@@ -14,18 +14,7 @@ import FactoryPiece from './FactoryPiece';
 import { factorySaveResult } from '../../../utils/factorySaveResult.mjs';
 
 // Payroll utilities & constants
-import {
-    parseDate,
-    extractDateStr,
-    formatLocalDate,
-    formatReadableDate,
-    getEmployeeDept,
-    isFactoryDept,
-    getEmployeeRates,
-    matchJobTitle,
-    loadPayrollAttendance,
-    MULTIPLIERS
-} from './utils/payrollHelpers';
+import { parseDate, extractDateStr, formatLocalDate, formatReadableDate, getEmployeeDept, isFactoryDept, getEmployeeRates, matchJobTitle, loadPayrollAttendance } from './utils/payrollHelpers';
 
 // Subcomponents
 import CutoffPeriodSelector from './components/CutoffPeriodSelector';
@@ -34,9 +23,6 @@ import AbsenteeOutputModal from './components/AbsenteeOutputModal';
 import SinglePayrollSection from './components/SinglePayrollSection';
 import GroupSelectionModal from './components/GroupSelectionModal';
 import EmployeeSelectionModal from './components/EmployeeSelectionModal';
-
-// Re-export matchJobTitle for backwards-compatibility (e.g. FactoryPiece.jsx)
-export { matchJobTitle };
 
 // The client works a 5-day week (Mon-Fri), so the weekly payroll cutoff is exactly 5 days:
 // the end date is always the start date + 4 days and a cutoff can never be longer than 5 days.
@@ -52,12 +38,7 @@ const sanitizeAmount = (value) => {
 
 // Contractual daily rate of a piece-rate worker (same precedence as the server: daily, then hourly x 8).
 // Piece rate is per piece, so it is never used to derive a daily rate.
-const getFactoryDailyRate = (emp) => {
-    const daily = parseFloat(emp?.daily_rate || emp?.daily_pay) || 0;
-    if (daily > 0) return daily;
-    const hourly = parseFloat(emp?.hourly_rate) || 0;
-    return hourly > 0 ? hourly * 8 : 0;
-};
+
 
 const PayrollCreate = () => {
     const navigate = useNavigate();
@@ -93,9 +74,6 @@ const PayrollCreate = () => {
     const [workPolicy, setWorkPolicy] = useState(DEFAULT_WORK_POLICY);
     // employee_id -> list of dates (YYYY-MM-DD) the worker actually clocked in and out on
     const [groupWorkedDatesMap, setGroupWorkedDatesMap] = useState({});
-    // Workers whose attendance lookup failed. Their 0 is "unknown", not "absent all week",
-    // so they are never auto-skipped from the payout.
-    const [attendanceFailedIds, setAttendanceFailedIds] = useState([]);
     const [isLoadingGroupAttendance, setIsLoadingGroupAttendance] = useState(false);
     // Auto-detected overtime hours per date (single mode). Holiday dates are removed before filling the form.
     const [autoOtByDate, setAutoOtByDate] = useState({});
@@ -115,20 +93,27 @@ const PayrollCreate = () => {
     const [breakdownFilter, setBreakdownFilter] = useState('all');
 
     // Prefill form values from location state or URL params
-    const initialPrefillRef = useRef({
+    const [initialPrefill] = useState(() => ({
         employee_id: location.state?.employee_id ?? searchParams.get('employee_id') ?? '',
         period_start: location.state?.period_start ?? searchParams.get('period_start') ?? '',
         period_end: location.state?.period_end ?? searchParams.get('period_end') ?? '',
-    });
-    const initialPrefill = initialPrefillRef.current;
+    }));
     const hasPrefilledPeriod = Boolean(initialPrefill.period_start && initialPrefill.period_end);
+    const [initialCutoff] = useState(() => {
+        if (hasPrefilledPeriod) return initialPrefill;
+        const start = new Date();
+        start.setDate(start.getDate() - (start.getDay() + 6) % 7);
+        const end = new Date(start);
+        end.setDate(start.getDate() + CUTOFF_SPAN_DAYS);
+        return { period_start: formatLocalDate(start), period_end: formatLocalDate(end) };
+    });
 
     // Common Cutoff Dates State
-    const [periodStart, setPeriodStart] = useState(
-        initialPrefill.period_start || extractDateStr(new Date())
+    const [periodStart, setPeriodStart] = useState(() =>
+        initialCutoff.period_start
     );
-    const [periodEnd, setPeriodEnd] = useState(
-        initialPrefill.period_end || extractDateStr(new Date(Date.now() + CUTOFF_SPAN_DAYS * 24 * 60 * 60 * 1000))
+    const [periodEnd, setPeriodEnd] = useState(() =>
+        initialCutoff.period_end
     );
 
     // Stable refs for realtime sync across client sessions
@@ -144,7 +129,7 @@ const PayrollCreate = () => {
     useEffect(() => { periodEndRef.current = periodEnd; }, [periodEnd]);
 
     // Single Entry Form Data
-    const [formData, setFormData] = useState({
+    const [formData, setFormData] = useState(() => ({
         employee_id: initialPrefill.employee_id,
         days_worked: 0,
         overtime_hours: '',
@@ -152,7 +137,7 @@ const PayrollCreate = () => {
         late_deductions: '',
         late_minutes: 0,
         allowance: ''
-    });
+    }));
 
     const DEFAULT_FACTORY_ROWS = useMemo(() => [
         { id: 1, operation: 'Cutter', stock_no: 'Formal', quantity_in: '100', amount: '10.00', assignedEmployeeIds: [] },
@@ -169,7 +154,7 @@ const PayrollCreate = () => {
     // Modal & UI State
     const [isEmpModalOpen, setIsEmpModalOpen] = useState(false);
     const [empSearch, setEmpSearch] = useState('');
-    const [activePreset, setActivePreset] = useState('current_week');
+    const [activePreset, setActivePreset] = useState(hasPrefilledPeriod ? 'custom' : 'current_week');
 
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [isLoadingEmployees, setIsLoadingEmployees] = useState(true);
@@ -230,17 +215,22 @@ const PayrollCreate = () => {
         }, 0);
     }, [paidLeaves]);
 
+    const leaveScope = `${entryMode}|${formData.employee_id}|${periodStart}|${periodEnd}|${attendanceRefreshTick}`;
+    const [previousLeaveScope, setPreviousLeaveScope] = useState(leaveScope);
+    if (previousLeaveScope !== leaveScope) {
+        setPreviousLeaveScope(leaveScope);
+        setPaidLeaves([]);
+        setIsLoadingLeaves(Boolean(entryMode === 'single' && formData.employee_id && periodStart && periodEnd));
+    }
     // Fetch leave with pay information for selected employee during cutoff
     useEffect(() => {
         if (entryMode !== 'single' || !formData.employee_id || !periodStart || !periodEnd) {
-            setPaidLeaves([]);
             return;
         }
 
         let isMounted = true;
 
         const fetchPaidLeaves = async () => {
-            setIsLoadingLeaves(true);
             try {
                 // 1. Primary: Dedicated leave summary endpoint with exact DOLE overlap calculations
                 const res = await fetchWithAuth(
@@ -303,6 +293,12 @@ const PayrollCreate = () => {
 
     // Automatic Holiday Detection for Cutoff Period
     const holidayEmployeeId = formData.employee_id || employees[0]?.id || '';
+    const holidayScope = `${entryMode}|${holidayEmployeeId}|${periodStart}|${periodEnd}`;
+    const [previousHolidayScope, setPreviousHolidayScope] = useState(holidayScope);
+    if (previousHolidayScope !== holidayScope) {
+        setPreviousHolidayScope(holidayScope);
+        setHolidayPreview({ items: [], totalHolidayPay: 0 });
+    }
     useEffect(() => {
         const { isInvalidDateRange } = (() => {
             if (!periodStart || !periodEnd) return { isInvalidDateRange: false };
@@ -323,7 +319,6 @@ const PayrollCreate = () => {
         const targetEmpId = holidayEmployeeId;
 
         if (!periodStart || !periodEnd || isInvalidDateRange || !targetEmpId) {
-            setHolidayPreview({ items: [], totalHolidayPay: 0 });
             return;
         }
 
@@ -367,10 +362,12 @@ const PayrollCreate = () => {
     // Explicit holiday-generation status check (no side effects on the backend -
     // this is what lets the reminder banner below actually appear, rather than
     // always finding the year already silently generated by /preview above).
+    if (periodStart && justGeneratedHolidays && justGeneratedHolidays.year !== periodStart.slice(0, 4)) {
+        setJustGeneratedHolidays(null);
+    }
     useEffect(() => {
         if (!periodStart) return;
         const year = periodStart.slice(0, 4);
-        setJustGeneratedHolidays((prev) => (prev && prev.year !== year ? null : prev)); // don't carry a stale list into a different year
         let isMounted = true;
 
         fetchWithAuth(`/api/payroll/holidays/status?year=${year}`)
@@ -426,7 +423,7 @@ const PayrollCreate = () => {
 
         try {
             localStorage.setItem(`hris_factory_piece_rows_${groupToSave}`, JSON.stringify(updatedRows));
-        } catch (e) { }
+        } catch { /* Best-effort browser cache or fallback lookup. */ }
 
         const groups = productionGroupsRef.current || productionGroups;
         let groupObj = groups.find(g => g.name === groupToSave);
@@ -440,7 +437,7 @@ const PayrollCreate = () => {
                     .ilike('name', groupToSave.trim())
                     .maybeSingle();
                 if (grp?.id) resolvedGroupId = grp.id;
-            } catch (e) { }
+            } catch { /* Best-effort browser cache or fallback lookup. */ }
         }
 
         try {
@@ -502,7 +499,7 @@ const PayrollCreate = () => {
                 }
                 try {
                     localStorage.setItem(`hris_factory_piece_rows_${groupToSave}`, JSON.stringify(formatted));
-                } catch (e) { }
+                } catch { /* Best-effort browser cache or fallback lookup. */ }
 
                 fetchWithAuth('/api/payroll/factory-logs', {
                     method: 'POST',
@@ -548,7 +545,7 @@ const PayrollCreate = () => {
                     }
                     try {
                         localStorage.setItem(`hris_factory_piece_rows_${groupToSave}`, JSON.stringify(result.data));
-                    } catch (e) { }
+                    } catch { /* Best-effort browser cache or fallback lookup. */ }
                 }
             }
         } catch (err) {
@@ -665,7 +662,7 @@ const PayrollCreate = () => {
                                             setFactoryRows(parsed);
                                         }
                                     }
-                                } catch (e) { }
+                                } catch { /* Best-effort browser cache or fallback lookup. */ }
                             }
                             setEntryMode('batch');
                         } else {
@@ -717,7 +714,7 @@ const PayrollCreate = () => {
                     .ilike('name', groupName.trim())
                     .maybeSingle();
                 if (grp?.id) resolvedGroupId = grp.id;
-            } catch (e) { }
+            } catch { /* Best-effort browser cache or fallback lookup. */ }
         }
 
         try {
@@ -767,7 +764,7 @@ const PayrollCreate = () => {
                 }
                 try {
                     localStorage.setItem(`hris_factory_piece_rows_${groupName}`, JSON.stringify(rows));
-                } catch (e) { }
+                } catch { /* Best-effort browser cache or fallback lookup. */ }
                 return;
             }
         } catch (cloudErr) {
@@ -787,7 +784,7 @@ const PayrollCreate = () => {
                     }
                     try {
                         localStorage.setItem(`hris_factory_piece_rows_${groupName}`, JSON.stringify(json.data));
-                    } catch (e) { }
+                    } catch { /* Best-effort browser cache or fallback lookup. */ }
                 }
             }
         } catch (err) {
@@ -814,7 +811,7 @@ const PayrollCreate = () => {
                     loadedFromLocal = true;
                 }
             }
-        } catch (e) { }
+        } catch { /* Best-effort browser cache or fallback lookup. */ }
 
         if (!loadedFromLocal) {
             setFactoryRows(DEFAULT_FACTORY_ROWS.map(r => ({ ...r })));
@@ -899,7 +896,7 @@ const PayrollCreate = () => {
                                 if (currentGroup) {
                                     try {
                                         localStorage.setItem(`hris_factory_piece_rows_${currentGroup}`, JSON.stringify(next));
-                                    } catch (e) { }
+                                    } catch { /* Best-effort browser cache or fallback lookup. */ }
                                 }
                                 return next;
                             });
@@ -934,7 +931,7 @@ const PayrollCreate = () => {
                                         localStorage.setItem(cacheKey, JSON.stringify(next));
                                     }
                                 }
-                            } catch (e) { }
+                            } catch { /* Best-effort browser cache or fallback lookup. */ }
                         }
                     }
                 }
@@ -965,32 +962,7 @@ const PayrollCreate = () => {
         setSelectedGroupMemberIds([]);
     };
 
-    const applyCutoffPreset = useCallback((presetKey = 'current_week') => {
-        setActivePreset(presetKey);
-        const now = new Date();
 
-        if (presetKey === 'current_week') {
-            const dayOfWeek = now.getDay();
-            const distanceToMon = (dayOfWeek + 6) % 7;
-            const start = new Date(now);
-            start.setDate(now.getDate() - distanceToMon);
-            const end = new Date(start);
-            end.setDate(start.getDate() + CUTOFF_SPAN_DAYS);
-
-            setPeriodStart(formatLocalDate(start));
-            setPeriodEnd(formatLocalDate(end));
-        }
-    }, []);
-
-    // Cutoff Presets
-    useEffect(() => {
-        if (hasPrefilledPeriod) {
-            setActivePreset('custom');
-            return;
-        }
-        applyCutoffPreset('current_week');
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [hasPrefilledPeriod]);
 
     // The end date is always derived from the start date (start + 4 days), so it is
     // never edited directly and a cutoff can't drift away from the weekly length.
@@ -1210,7 +1182,7 @@ const PayrollCreate = () => {
                 activeGroupEmployeeIdSet.has(String(id))
             );
 
-            let effectiveAssignedIds = [];
+            let effectiveAssignedIds;
 
             if (row.isExplicitlyEmpty) {
                 effectiveAssignedIds = [];
@@ -1378,24 +1350,25 @@ const PayrollCreate = () => {
     });
     // Keep the last numbers on screen while a new preview loads for the same cutoff (no flashing to zero).
     const holidayPeriodKey = `${periodStart}|${periodEnd}`;
-    const lastFactoryHolidayRef = useRef({ period: '', holidays: {}, thirteenth: {} });
-    if (factoryHolidayQuery.data?.holidays) {
-        lastFactoryHolidayRef.current = {
+    const [lastFactoryHoliday, setLastFactoryHoliday] = useState({ source: null, period: '', holidays: {}, thirteenth: {} });
+    if (factoryHolidayQuery.data?.holidays && (lastFactoryHoliday.source !== factoryHolidayQuery.data || lastFactoryHoliday.period !== holidayPeriodKey)) {
+        setLastFactoryHoliday({
+            source: factoryHolidayQuery.data,
             period: holidayPeriodKey,
             holidays: factoryHolidayQuery.data.holidays,
             thirteenth: factoryHolidayQuery.data.thirteenth || {},
-        };
+        });
     }
     const thirteenthByWorker = useMemo(() => {
         if (entryMode !== 'batch' || !isDecemberClose) return {};
         if (factoryHolidayQuery.data?.holidays) return factoryHolidayQuery.data.thirteenth || {};
-        return lastFactoryHolidayRef.current.period === holidayPeriodKey ? lastFactoryHolidayRef.current.thirteenth : {};
-    }, [entryMode, isDecemberClose, factoryHolidayQuery.data, holidayPeriodKey]);
+        return lastFactoryHoliday.period === holidayPeriodKey ? lastFactoryHoliday.thirteenth : {};
+    }, [entryMode, isDecemberClose, factoryHolidayQuery.data, holidayPeriodKey, lastFactoryHoliday]);
     const holidayPayByWorker = useMemo(() => {
         if (entryMode !== 'batch' || !periodHasHolidays) return {};
         if (factoryHolidayQuery.data?.holidays) return factoryHolidayQuery.data.holidays;
-        return lastFactoryHolidayRef.current.period === holidayPeriodKey ? lastFactoryHolidayRef.current.holidays : {};
-    }, [entryMode, periodHasHolidays, factoryHolidayQuery.data, holidayPeriodKey]);
+        return lastFactoryHoliday.period === holidayPeriodKey ? lastFactoryHoliday.holidays : {};
+    }, [entryMode, periodHasHolidays, factoryHolidayQuery.data, holidayPeriodKey, lastFactoryHoliday]);
 
     // Operation-Level Calculation & Statutory Breakdown per Employee
     const workerPayrollMap = useMemo(() => {
@@ -1538,10 +1511,13 @@ const PayrollCreate = () => {
 
     // Drop stale declarations when the group, the cutoff or the operation list changes,
     // so a quantity typed for one batch can never leak into the next one.
-    useEffect(() => {
+    const absenteeScope = `${selectedGroup}|${periodStart}|${periodEnd}`;
+    const [previousAbsenteeScope, setPreviousAbsenteeScope] = useState(absenteeScope);
+    if (previousAbsenteeScope !== absenteeScope) {
+        setPreviousAbsenteeScope(absenteeScope);
         setAbsenteeOutputs({});
         setIsAbsenteeModalOpen(false);
-    }, [selectedGroup, periodStart, periodEnd]);
+    }
 
     const batchSummaryTotals = useMemo(() => {
         let gross = 0;
@@ -1630,6 +1606,13 @@ const PayrollCreate = () => {
         });
     }, [employees, empSearch]);
 
+    const calculationScope = `${entryMode}|${formData.employee_id}|${periodStart}|${periodEnd}|${attendanceRefreshTick}|${isInvalidDateRange}`;
+    const [previousCalculationScope, setPreviousCalculationScope] = useState(calculationScope);
+    if (previousCalculationScope !== calculationScope) {
+        setPreviousCalculationScope(calculationScope);
+        setIsCalculating(Boolean(entryMode === 'single' && formData.employee_id && periodStart && periodEnd && !isInvalidDateRange));
+        setAttendanceError(null);
+    }
     // Single payroll uses the same effective policy as server-side payout calculation.
     useEffect(() => {
         if (entryMode !== 'single' || !formData.employee_id || !periodStart || !periodEnd || isInvalidDateRange) {
@@ -1641,8 +1624,6 @@ const PayrollCreate = () => {
 
         const controller = new AbortController();
         const calculatePayroll = async () => {
-            setIsCalculating(true);
-            setAttendanceError(null);
             try {
                 const { logs, workPolicy: policy } = await loadPayrollAttendance(formData.employee_id, periodStart, periodEnd, controller.signal);
                 const tardiness = calculateTardiness(logs, policy, getEmployeeRestDays(selectedEmployee));
@@ -1702,8 +1683,8 @@ const PayrollCreate = () => {
 
     // Overtime worked on a holiday is already paid by the server's holiday pay (hours over 8 at the
     // holiday rate), so those dates are left out of the ordinary overtime hours to avoid paying twice.
-    useEffect(() => {
-        if (entryMode !== 'single') return;
+    const overtimeAutofill = useMemo(() => {
+        if (entryMode !== 'single') return null;
         const holidayDates = new Set(
             (holidayPreview?.items || []).map(item => extractDateStr(item?.date)).filter(Boolean)
         );
@@ -1718,14 +1699,18 @@ const PayrollCreate = () => {
             if (onRestDay) restDayTotal += hours;
             else ordinaryTotal += hours;
         });
-        if (rawTotal <= 0) return;
+        if (rawTotal <= 0) return null;
         // Rest-day overtime is paid at 1.69x instead of 1.25x, so it is kept in its own field.
-        setFormData(prev => ({
-            ...prev,
+        return {
             overtime_hours: ordinaryTotal > 0 ? ordinaryTotal.toFixed(2) : '',
             rest_day_ot_hours: restDayTotal > 0 ? restDayTotal.toFixed(2) : ''
-        }));
+        };
     }, [entryMode, autoOtByDate, holidayPreview, selectedEmployee]);
+    const [previousOvertimeAutofill, setPreviousOvertimeAutofill] = useState(null);
+    if (previousOvertimeAutofill !== overtimeAutofill) {
+        setPreviousOvertimeAutofill(overtimeAutofill);
+        if (overtimeAutofill) setFormData(previous => ({ ...previous, ...overtimeAutofill }));
+    }
 
     const handleInputChange = (e) => {
         const { name, value } = e.target;
@@ -1881,7 +1866,7 @@ const PayrollCreate = () => {
                 if (!data.skipped?.length) setTimeout(() => navigate('/admin/payroll'), 900);
                 else setIsSubmitting(false);
             }
-        } catch (err) {
+        } catch  {
             setError('Connection error. Please check your network.');
             setIsSubmitting(false);
         }
@@ -1953,7 +1938,7 @@ const PayrollCreate = () => {
                 if (!data.skipped?.length) setTimeout(() => navigate('/admin/payroll'), 900);
                 else setIsSubmitting(false);
             }
-        } catch (err) {
+        } catch  {
             setError('Connection error. Please check your network.');
             setIsSubmitting(false);
         }

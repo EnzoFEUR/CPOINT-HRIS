@@ -1,5 +1,4 @@
 import { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
 import { fetchWithAuth } from '../../../utils/api';
 import { supabase } from '../../../supabaseClient';
 import { STATUTORY_INPUT_LIMITS, isValidStatutoryInput, getStatutorySettingsError } from '../../../../../shared/statutorySettings.mjs';
@@ -59,7 +58,6 @@ export default function StatutorySettings({ onBack }) {
     const [loading, setLoading] = useState(false);
     const [successMessage, setSuccessMessage] = useState('');
     const [errorMessage, setErrorMessage] = useState('');
-    const [realtimeSynced, setRealtimeSynced] = useState(false);
 
     const getCleanErrorMessage = (err) => {
         if (!err) return "An unexpected error occurred while processing your request.";
@@ -98,8 +96,6 @@ export default function StatutorySettings({ onBack }) {
                 (payload) => {
                     if (payload.new && !stopped) {
                         setSettings(previous => ({ ...previous, ...payload.new }));
-                        setRealtimeSynced(true);
-                        setTimeout(() => setRealtimeSynced(false), 3500);
                     }
                 }
             )

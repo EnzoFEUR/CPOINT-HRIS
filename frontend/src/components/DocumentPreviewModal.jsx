@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { isImageDocument, isPdfDocument, formatDocumentSize, getDocumentStatus } from '../utils/documentUtils';
 import { fetchWithAuth } from '../utils/api';
 
@@ -15,26 +15,25 @@ export default function DocumentPreviewModal({
 }) {
     const [zoom, setZoom] = useState(1);
     const [rotation, setRotation] = useState(0);
-    const [activeUrl, setActiveUrl] = useState(null);
-    const [isLoadingUrl, setIsLoadingUrl] = useState(false);
+    const [activeUrl, setActiveUrl] = useState(doc?.preview_url || null);
+    const [isLoadingUrl, setIsLoadingUrl] = useState(Boolean(isOpen && doc?.id && !doc?.preview_url));
     const [loadError, setLoadError] = useState(null);
     const documentId = doc?.id;
     const previewUrl = doc?.preview_url;
+    const [previewContext, setPreviewContext] = useState({ isOpen, documentId, previewUrl });
+    if (previewContext.isOpen !== isOpen || previewContext.documentId !== documentId || previewContext.previewUrl !== previewUrl) {
+        setPreviewContext({ isOpen, documentId, previewUrl });
+        setZoom(1);
+        setRotation(0);
+        setLoadError(null);
+        setActiveUrl(isOpen ? previewUrl || null : null);
+        setIsLoadingUrl(Boolean(isOpen && documentId && !previewUrl));
+    }
 
     // Reset zoom and rotation when modal opens with a new doc
     useEffect(() => {
         let active = true;
-        if (isOpen && (documentId || previewUrl)) {
-            setZoom(1);
-            setRotation(0);
-            setLoadError(null);
-            setActiveUrl(null);
-
-            if (previewUrl) {
-                setActiveUrl(previewUrl);
-                setIsLoadingUrl(false);
-            } else {
-                setIsLoadingUrl(true);
+        if (isOpen && documentId && !previewUrl) {
                 fetchWithAuth(`/api/employee-documents/${encodeURIComponent(documentId)}/url`)
                     .then(res => res.json())
                     .then(data => {
@@ -51,9 +50,6 @@ export default function DocumentPreviewModal({
                     .finally(() => {
                         if (active) setIsLoadingUrl(false);
                     });
-            }
-        } else {
-            setActiveUrl(null);
         }
         return () => { active = false; };
     }, [isOpen, documentId, previewUrl]);

@@ -73,7 +73,7 @@ export const subscribeUserToPush = async (userId, silent = false) => {
                 const keyData = await keyRes.json();
                 if (keyData.publicKey) vapidPublicKey = keyData.publicKey;
             }
-        } catch (e) {
+        } catch {
             console.warn('[PUSH] Using default public key fallback');
         }
 

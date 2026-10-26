@@ -1,3 +1,4 @@
+import { getArchiveReviewDaysRemaining, getSeparationLabel } from '../../../../shared/employmentExit.mjs';
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import toast from 'react-hot-toast';
@@ -12,6 +13,7 @@ import {
   UserCheck
 } from 'lucide-react';
 import QRCode from '../../components/QRCode';
+import { getActiveMedicalGrace, hasRegisteredFace, medicalGraceDaysRemaining } from '../../../../shared/medicalGrace.mjs';
 import EmployeeAvatar from '../../components/EmployeeAvatar';
 import { fetchWithAuth } from '../../utils/api';
 import { supabase } from '../../supabaseClient';
@@ -88,17 +90,11 @@ const MyQr = () => {
     }
   });
 
-  const isMedicalExempt = useMemo(() => {
-    if (!medicalExemption?.exempt) return false;
-    const today = new Date().toISOString().split('T')[0];
-    return !medicalExemption.valid_until || medicalExemption.valid_until >= today;
-  }, [medicalExemption]);
-
-  const daysRemaining = useMemo(() => {
-    if (!isMedicalExempt || !medicalExemption?.valid_until) return null;
-    const diff = Math.ceil((new Date(medicalExemption.valid_until).getTime() - new Date().setHours(0,0,0,0)) / (1000 * 60 * 60 * 24));
-    return Math.max(0, diff);
-  }, [isMedicalExempt, medicalExemption]);
+  const [medicalClock, setMedicalClock] = useState(() => Date.now());
+  useEffect(() => { const timer = setInterval(() => setMedicalClock(Date.now()), 60_000); return () => clearInterval(timer); }, []);
+  const activeMedicalGrace = getActiveMedicalGrace({ ...user, medical_record_url: medicalExemption }, medicalClock);
+  const isMedicalExempt = Boolean(activeMedicalGrace);
+  const daysRemaining = medicalGraceDaysRemaining(activeMedicalGrace, medicalClock);
 
   // Listen for disciplinary cache updates
   useEffect(() => {
@@ -141,7 +137,7 @@ const MyQr = () => {
     };
     window.addEventListener('hris_disciplinary_sync', handleSync);
     return () => window.removeEventListener('hris_disciplinary_sync', handleSync);
-  }, [user?.id]);
+  }, [user]);
 
   const checkDisciplinary = useCallback(async () => {
     if (!user?.id) return;
@@ -186,26 +182,46 @@ const MyQr = () => {
     }
   }, [user]);
 
+  const userId = user?.id;
   const syncProfile = useCallback(async () => {
-    if (!user?.id) return;
+    if (!userId) return;
     try {
       const res = await fetchWithAuth('/api/profile');
       if (res.ok) {
         const data = await res.json();
         const emp = data.employee || data.user || null;
+        if (emp) setUser(previous => {
+          const registered = emp.has_registered_biometrics === true;
+          const baseline = emp.biometric_baseline_path ?? null;
+          const fields = { has_registered_biometrics: registered, biometric_baseline_path: baseline };
+          for (const key of ['status', 'is_active', 'archived_at', 'separation_type', 'separation_date']) {
+            if (Object.hasOwn(emp, key)) fields[key] = emp[key];
+          }
+          if (Object.entries(fields).every(([key, value]) => previous[key] === value)) return previous;
+          return { ...previous, ...fields };
+        });
         if (emp?.medical_record_url) {
           try {
             const parsed = typeof emp.medical_record_url === 'string' ? JSON.parse(emp.medical_record_url) : emp.medical_record_url;
             setMedicalExemption(parsed);
-          } catch (_) {}
+          } catch { /* Retain the existing fallback when optional browser state is unavailable. */ }
         } else if (emp && emp.medical_record_url === null) {
           setMedicalExemption(null);
         }
       }
-    } catch (_) {}
-  }, [user?.id]);
+    } catch { /* Retain the existing fallback when optional browser state is unavailable. */ }
+  }, [userId]);
 
   useEffect(() => {
+    if (!user?.id) return;
+    const channel = supabase.channel('employment-exit-' + user.id, { config: { private: true } })
+      .on('broadcast', { event: 'EXIT_CHANGED' }, syncProfile)
+      .subscribe(status => { if (status === 'SUBSCRIBED') syncProfile(); });
+    return () => { supabase.removeChannel(channel); };
+  }, [user?.id, syncProfile]);
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- This reader updates status only after an authoritative asynchronous API response.
     checkDisciplinary();
     syncProfile();
 
@@ -230,7 +246,7 @@ const MyQr = () => {
             try {
               const stored = JSON.parse(localStorage.getItem('user') || '{}');
               localStorage.setItem('user', JSON.stringify({ ...stored, ...updated }));
-            } catch (_) {}
+            } catch { /* Retain the existing fallback when optional browser state is unavailable. */ }
             return updated;
           });
           toast.success('Face Biometrics Registered! Digital turnstile QR pass is now active.', { id: 'bio-enrolled-toast', duration: 5000 });
@@ -248,7 +264,7 @@ const MyQr = () => {
             try {
               const stored = JSON.parse(localStorage.getItem('user') || '{}');
               localStorage.setItem('user', JSON.stringify({ ...stored, ...updated }));
-            } catch (_) {}
+            } catch { /* Retain the existing fallback when optional browser state is unavailable. */ }
             return updated;
           });
           toast.error('Face Biometrics Reset: Pass locked until re-registration.', { id: 'bio-reset-toast', duration: 5000 });
@@ -259,7 +275,7 @@ const MyQr = () => {
         if (payload?.employee_id === user.id) {
           if (payload.is_exempt && payload.exemption) {
             setMedicalExemption(payload.exemption);
-            toast.success('Medical Grace active: Face scan bypassed at kiosk.');
+            toast('Medical Grace authorization updated. Refreshing eligibility.');
           } else {
             setMedicalExemption(null);
             toast('Medical Grace ended: Standard dual-factor verification restored.');
@@ -302,7 +318,7 @@ const MyQr = () => {
             archived_at: payload?.archived_at || new Date().toISOString(),
             separation_reason: payload?.reason || payload?.separation_reason
           }));
-        } catch (_) {}
+        } catch { /* Retain the existing fallback when optional browser state is unavailable. */ }
         toast.error('Pass Revoked: Your account has been separated / pending archive.', { id: 'qr-term-alert' });
         checkDisciplinary();
       } else if (event === 'EMPLOYEE_SUSPENDED' || (event === 'DISCIPLINARY_CREATED' && payload?.type === 'Suspension')) {
@@ -327,7 +343,7 @@ const MyQr = () => {
             is_terminated: false,
             operational_status: 'Suspended'
           }));
-        } catch (_) {}
+        } catch { /* Retain the existing fallback when optional browser state is unavailable. */ }
         toast.error('Pass Suspended: Operational access temporarily on hold.', { id: 'qr-susp-alert' });
         checkDisciplinary();
       } else if (['DISCIPLINARY_OVERTURNED', 'DISCIPLINARY_RESOLVED', 'EMPLOYEE_RESTORED'].includes(event)) {
@@ -353,7 +369,7 @@ const MyQr = () => {
             operational_status: 'Active',
             archived_at: null
           }));
-        } catch (_) {}
+        } catch { /* Retain the existing fallback when optional browser state is unavailable. */ }
         toast.success(event === 'EMPLOYEE_RESTORED' ? 'Pass Restored: Operational access active.' : 'Pass Restored: Disciplinary action resolved.', { id: 'qr-rest-alert' });
         checkDisciplinary();
       }
@@ -406,19 +422,11 @@ const MyQr = () => {
   const isTerminated = !isSuspended && (disciplinaryState.isTerminated || isDirectlyTerminated);
 
   // Biometric Enrollment Requirement: QR code ONLY appears when face biometrics are enrolled
-  const hasFaceBiometrics = Boolean(
-    user?.has_registered_biometrics ||
-    user?.biometric_baseline_path ||
-    isMedicalExempt
-  );
+  const hasFaceBiometrics = hasRegisteredFace(user);
 
-  // Pending archive cooldown calculations
-  const PENDING_ARCHIVE_DAYS = 14;
-  const separationDate = user?.separation_date || user?.archived_at || disciplinaryState?.record?.date || disciplinaryState?.record?.created_at;
-  const separationTimestamp = separationDate ? new Date(separationDate).getTime() : Date.now();
-  const daysSinceSeparation = Math.max(0, Math.floor((Date.now() - separationTimestamp) / (1000 * 60 * 60 * 24)));
-  const daysUntilPermanentArchive = Math.max(0, PENDING_ARCHIVE_DAYS - daysSinceSeparation);
-  const isPendingArchive = isTerminated && (daysUntilPermanentArchive > 0 || Boolean(user?.archived_at));
+  // Final voluntary exits are already archived; other separations use the app review window.
+  const daysUntilPermanentArchive = isTerminated ? (getArchiveReviewDaysRemaining(user) ?? 0) : 0;
+  const isPendingArchive = isTerminated && daysUntilPermanentArchive > 0;
 
   const suspensionEndDate = useMemo(() => {
     if (!isSuspended || !disciplinaryState?.record?.reason) return null;
@@ -475,7 +483,7 @@ const MyQr = () => {
           <div className="shrink-0 flex items-center gap-1.5">
             {isTerminated ? (
               <span className="text-[10px] font-bold uppercase tracking-wider text-warning-ink bg-warning-subtle px-2.5 py-1 rounded-md border border-warning/20">
-                {isPendingArchive ? `Pending Archive (${daysUntilPermanentArchive}d)` : 'Archived'}
+                {isPendingArchive ? `Archive review (${daysUntilPermanentArchive}d)` : getSeparationLabel(user)}
               </span>
             ) : isSuspended ? (
               <span className="text-[10px] font-bold uppercase tracking-wider text-warning-ink bg-warning-subtle px-2.5 py-1 rounded-md border border-warning/20">
@@ -501,11 +509,11 @@ const MyQr = () => {
             </div>
             <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 bg-warning-subtle text-warning-ink border border-warning/20 text-xs font-semibold rounded-md mb-2">
               <span className="w-1.5 h-1.5 rounded-full bg-warning" />
-              {isPendingArchive ? `Pending Archive · ${daysUntilPermanentArchive}d Cooldown` : 'Cold Storage Archive'}
+              {isPendingArchive ? `Archive review · ${daysUntilPermanentArchive}d` : `${getSeparationLabel(user)} · Records only`}
             </span>
             <h3 className="text-base sm:text-lg font-bold text-slate-900">Attendance Pass Revoked</h3>
             <p className="text-xs text-slate-500 leading-relaxed max-w-xs mt-1.5 font-medium">
-              This account has been separated. Operational attendance credentials and turnstile face scanning are permanently closed. You can view your archived payslips on the dashboard.
+              This employment record is separated. Its QR and biometric attendance access is disabled. Permitted historical records remain available through your records-only account.
             </p>
             <div className="mt-5 w-full">
               <Link 
@@ -581,7 +589,7 @@ const MyQr = () => {
             </h3>
 
             <p className="text-xs text-slate-500 mt-1.5 leading-relaxed max-w-sm font-medium">
-              In compliance with DOLE attendance verification standards, your optical QR turnstile credential will appear automatically once your face biometrics baseline has been registered.
+              Your attendance QR pass becomes available after face registration. Contact HR if you need help completing registration.
             </p>
 
             <div className="mt-5 w-full max-w-xs space-y-2">
@@ -614,9 +622,9 @@ const MyQr = () => {
             <p className="text-[11px] text-warning-ink/85 mt-1 leading-relaxed font-medium">
               Facial biometric comparison is waived for temporary recovery. Hold this QR badge up to the kiosk camera to record attendance.
             </p>
-            {medicalExemption?.valid_until && (
+            {activeMedicalGrace?.valid_until && (
               <div className="mt-2 pt-2 border-t border-warning/70 flex items-center justify-between text-[11px] font-mono text-warning-ink font-bold">
-                <span>Valid through: {medicalExemption.valid_until}</span>
+                <span>Valid through: {activeMedicalGrace.valid_until}</span>
                 {daysRemaining !== null && (
                   <span className="px-2 py-0.5 bg-warning-subtle/70 text-warning-ink rounded text-[10px] font-sans font-bold">
                     {daysRemaining} day{daysRemaining === 1 ? '' : 's'} remaining

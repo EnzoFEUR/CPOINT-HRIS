@@ -1,4 +1,6 @@
 import express from 'express';
+import { isFinalVoluntarySeparation, getArchiveReviewDaysRemaining } from '../../shared/employmentExit.mjs';
+import { hasRegisteredFace } from '../../shared/medicalGrace.mjs';
 import { randomUUID } from 'node:crypto';
 import { getEmployeePayError } from '../../shared/personnelInput.mjs';
 import { postgrestValue, postgrestLikeValue, validateUuidParam } from '../middleware/requestValidation.js';
@@ -9,6 +11,7 @@ import { createNotification } from './notifications.js';
 import { DOCUMENT_URL_TTL } from '../services/documentService.js';
 import { computeDisciplinaryStanding } from '../utils/disciplinaryStanding.js';
 import { sanitizeGender, validateBirthDate, sanitizeAddress, validateHireDate } from '../utils/personalDetailsValidation.js';
+import { isLeaveDate } from '../../shared/leaveCredits.mjs';
 import { getManilaWorkDate } from '../../shared/workPolicy.mjs';
 import { parseListQuery, employeeListRecord, employeeDirectoryPage, readAllRows } from '../utils/listViews.js';
 import { readDocumentPendingCounts } from '../utils/documentPendingCounts.js';
@@ -1339,10 +1342,14 @@ router.post('/:id/archive', async (req, res) => {
         const {
             separation_type = 'Resignation',
             separation_reason = 'Voluntary Resignation',
-            separation_date = new Date().toISOString().split('T')[0],
-            separation_notes = '',
-            admin_id = req.user?.id
+            separation_date = getManilaWorkDate(),
+            separation_notes = ''
         } = req.body;
+
+        const admin_id = req.user.id;
+        if (!isLeaveDate(separation_date) || separation_date > getManilaWorkDate()) {
+            return res.status(400).json({ success: false, error: 'Record separation only on or after the effective date. Keep future-dated notices in Employment Exit.' });
+        }
 
         const { data: targetEmp, error: fetchErr } = await supabase
             .from('employees')
@@ -1477,6 +1484,8 @@ router.post('/:id/archive', async (req, res) => {
             message: `Employee ${targetEmp.first_name} ${targetEmp.last_name} successfully separated and archived. Digital & biometric access revoked.`
         });
     } catch (error) {
+        if (error.message?.includes('EXIT_WORKFLOW_REQUIRED')) return res.status(409).json({ success: false, error: 'This employee has an open Employment Exit receipt. Review and finalize it through Employment Exit to preserve pending reviews and withdrawal requests.' });
+        if (error.message?.includes('EXIT_NOT_DUE')) return res.status(409).json({ success: false, error: 'The separation effective date has not arrived.' });
         console.error('[EMPLOYEE_ARCHIVE_ERROR]', error);
         res.status(500).json({ success: false, error: error.message });
     }
@@ -1485,7 +1494,7 @@ router.post('/:id/archive', async (req, res) => {
 // POST /api/employees/:id/restore - Enterprise reinstatement from Pending Termination
 router.post('/:id/restore', async (req, res) => {
     try {
-        const isAdmin = req.user?.role === 'admin' || req.user?.role === 'hr';
+        const isAdmin = hasVerifiedManagerRole(req.user);
         if (!isAdmin) {
             return res.status(403).json({ success: false, error: 'Administrative privileges required to reinstate employees.' });
         }
@@ -1495,7 +1504,7 @@ router.post('/:id/restore', async (req, res) => {
         // Fetch current employee record to check lifecycle state
         const { data: targetEmp, error: fetchErr } = await supabase
             .from('employees')
-            .select('id, first_name, last_name, status, is_active, archived_at, separation_date, updated_at')
+            .select('id, first_name, last_name, status, is_active, archived_at, separation_type, separation_date, updated_at')
             .eq('id', targetId)
             .single();
 
@@ -1503,23 +1512,20 @@ router.post('/:id/restore', async (req, res) => {
             return res.status(404).json({ success: false, error: 'Employee record not found.' });
         }
 
-        // Check if employee has passed the 14-day reversible cooldown and entered permanent archive
-        const ts = targetEmp.archived_at || targetEmp.separation_date || targetEmp.updated_at;
-        const PENDING_COOLDOWN_DAYS = 14;
-        let isPermanentlyArchived = false;
-        if (ts) {
-            const elapsedDays = (Date.now() - new Date(ts).getTime()) / (1000 * 60 * 60 * 24);
-            if (elapsedDays >= PENDING_COOLDOWN_DAYS && (targetEmp.status === 'inactive' || targetEmp.status === 'terminated')) {
-                isPermanentlyArchived = true;
-            }
+        if (isFinalVoluntarySeparation(targetEmp)) {
+            return res.status(409).json({ success: false, code: 'EXIT_REACTIVATION_REVIEW_REQUIRED',
+                error: 'A finalized retirement or resignation cannot use generic reinstatement. HR must review any correction or re-employment separately.' });
         }
+
+        const isPermanentlyArchived = getArchiveReviewDaysRemaining(targetEmp) === 0 &&
+            ['inactive', 'terminated'].includes(targetEmp.status);
 
         // In an enterprise model, cold storage records in the Archive Vault cannot be casually restored.
         // Returning employees must undergo formal Re-hire onboarding.
         if (isPermanentlyArchived && !req.body.force_rehire) {
             return res.status(400).json({
                 success: false,
-                error: 'This employee record is permanently archived in cold storage for statutory audit compliance. To re-engage this personnel, initiate a formal Re-hire requisition.'
+                error: 'This record is outside the app archive-review window. HR must review any correction or re-employment separately.'
             });
         }
 
@@ -1636,6 +1642,10 @@ router.post('/:id/restore', async (req, res) => {
         });
     } catch (error) {
         console.error('Error reinstating employee:', error);
+        if (error.message?.includes('EXIT_REACTIVATION_REVIEW_REQUIRED')) {
+            return res.status(409).json({ success: false, code: 'EXIT_REACTIVATION_REVIEW_REQUIRED',
+                error: 'This separation was finalized. Refresh the record; HR must review any correction or re-employment separately.' });
+        }
         res.status(500).json({ success: false, error: error.message });
     }
 });
@@ -1643,13 +1653,15 @@ router.post('/:id/restore', async (req, res) => {
 // PATCH /api/employees/:id/biometric-exemption - Enterprise Medical Grace / Trauma Exemption
 router.patch('/:id/biometric-exemption', async (req, res) => {
     try {
-        const isAdmin = req.user?.role === 'admin' || req.user?.role === 'hr';
+        const isAdmin = hasVerifiedManagerRole(req.user);
         if (!isAdmin) {
             return res.status(403).json({ success: false, error: 'Unauthorized: Administrative privileges required.' });
         }
 
         const targetId = req.params.id;
         const { action, reason, cert_ref, valid_until, document_url } = req.body;
+        if (!['enable', 'revoke'].includes(action)) return res.status(400).json({ success: false, error: 'Choose enable or revoke for Medical Grace.' });
+        if (action === 'enable' && valid_until !== undefined && (!isLeaveDate(valid_until) || valid_until < getManilaWorkDate())) return res.status(400).json({ success: false, error: 'Medical Grace needs a valid current or future expiry date.' });
 
         const { data: emp, error: fetchErr } = await supabase
             .from('employees')
@@ -1664,15 +1676,17 @@ router.patch('/:id/biometric-exemption', async (req, res) => {
         let updatePayload = {};
         let auditAction = '';
         let auditDetails = {};
+        let exemptionData = null;
 
         if (action === 'enable') {
+            if (!hasRegisteredFace(emp)) return res.status(409).json({ success: false, error: 'Face registration is required before Medical Grace can be activated. Register the employee first.' });
             const granterName = [req.user?.first_name, req.user?.last_name].filter(Boolean).join(' ') || 
                                 req.user?.name || 
                                 (req.user?.email && req.user.email !== 'admin@c-point.com' ? req.user.email.split('@')[0] : 'System Administrator');
             const granterRole = req.user?.role === 'admin' ? 'HR Administrator' : (req.user?.job_title || 'HR Officer');
-            const targetDate = valid_until || new Date(Date.now() + 14 * 86400000).toISOString().split('T')[0];
+            const targetDate = valid_until || getManilaWorkDate(Date.now() + 14 * 86400000);
 
-            const exemptionData = {
+            exemptionData = {
                 exempt: true,
                 type: 'MEDICAL_GRACE',
                 reason: reason || 'Physical facial trauma / medical dressing per physician clearance',
@@ -1687,7 +1701,6 @@ router.patch('/:id/biometric-exemption', async (req, res) => {
             };
 
             updatePayload = {
-                has_registered_biometrics: false,
                 medical_record_url: JSON.stringify(exemptionData),
                 updated_at: new Date().toISOString()
             };
@@ -1696,10 +1709,10 @@ router.patch('/:id/biometric-exemption', async (req, res) => {
             auditDetails = exemptionData;
         } else {
             // Revoke exemption
-            let hadBaseline = Boolean(emp.biometric_baseline_path);
+            const hadBaseline = hasRegisteredFace(emp);
             let prevExemption = null;
             try {
-                prevExemption = emp.medical_record_url ? JSON.parse(emp.medical_record_url) : null;
+                prevExemption = typeof emp.medical_record_url === 'string' ? JSON.parse(emp.medical_record_url) : emp.medical_record_url;
             } catch (_) {}
 
             updatePayload = {
@@ -1720,6 +1733,8 @@ router.patch('/:id/biometric-exemption', async (req, res) => {
             .single();
 
         if (updateErr) throw updateErr;
+
+        invalidateAuthUser(targetId);
 
         // Structured Audit Trail
         const { createAuditLog } = await import('./auditLogs.js');

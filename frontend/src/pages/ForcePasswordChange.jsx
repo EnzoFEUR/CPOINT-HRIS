@@ -1,10 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { supabase } from '../supabaseClient';
 import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { fetchWithAuth } from '../utils/api';
 import { isSecurity, isAdmin, isMedicalExempt } from '../routes/guards';
 import { needsProfileCompletion } from '../utils/userAccess.mjs';
+import { getStoredUser } from '../utils/storedUser.mjs';
 import { performLogout } from '../utils/authSession';
 import { isPasswordReuseError, PASSWORD_REUSE_MESSAGE } from '../../../shared/passwordPolicy.mjs';
 
@@ -14,18 +15,13 @@ export default function ForcePasswordChange() {
     const [showPassword, setShowPassword] = useState(false);
     const [showConfirmPassword, setShowConfirmPassword] = useState(false);
     const [error, setError] = useState(null);
-    const [user, setUser] = useState(null);
+    const [user] = useState(getStoredUser);
     
     const navigate = useNavigate();
 
     useEffect(() => {
-        const storedUser = localStorage.getItem('user');
-        if (storedUser) {
-            setUser(JSON.parse(storedUser));
-        } else {
-            navigate('/login');
-        }
-    }, [navigate]);
+        if (!user) navigate('/login');
+    }, [user, navigate]);
 
     // Validation checks
     const hasLength = () => password.length >= 8;

@@ -1,9 +1,9 @@
-import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../../../supabaseClient';
 import { fetchWithAuth } from '../../../utils/api';
 import PageHeader from '../../../components/ui/PageHeader';
-import Badge from '../../../components/ui/Badge';
+
 
 const formatDateKey = (dateObj) => {
     const year = dateObj.getFullYear();
@@ -17,17 +17,12 @@ const timelinePhotoCache = new Map();
 const TimelinePhoto = ({ photoPath, employeeName }) => {
     const photoUrl = photoPath ? `https://lzqshktnrvtlattdiwxf.supabase.co/storage/v1/object/public/public-bucket/${photoPath}` : null;
     const initialStatus = photoUrl ? timelinePhotoCache.get(photoUrl) : null;
-    const [status, setStatus] = useState(() => initialStatus || 'loading');
-
-    useEffect(() => {
-        if (!photoUrl) {
-            setStatus('failed');
-            return;
-        }
-        const cached = timelinePhotoCache.get(photoUrl);
-        if (cached) setStatus(cached);
-        else setStatus('loading');
-    }, [photoUrl]);
+    const [status, setStatus] = useState(() => initialStatus || (photoUrl ? 'loading' : 'failed'));
+    const [previousPhotoUrl, setPreviousPhotoUrl] = useState(photoUrl);
+    if (previousPhotoUrl !== photoUrl) {
+        setPreviousPhotoUrl(photoUrl);
+        setStatus(photoUrl ? timelinePhotoCache.get(photoUrl) || 'loading' : 'failed');
+    }
 
     const handleLoad = () => {
         if (photoUrl) timelinePhotoCache.set(photoUrl, 'loaded');
@@ -76,8 +71,8 @@ const TimelinePhoto = ({ photoPath, employeeName }) => {
 const Calendar = () => {
     const queryClient = useQueryClient();
     const [selectedDate, setSelectedDate] = useState(() => new Date());
-    const hasUserPicked = useRef(Boolean(sessionStorage.getItem('calendar_user_picked')));
-    const hasAutoNavigated = useRef(false);
+    const [hasUserPicked, setHasUserPicked] = useState(() => Boolean(sessionStorage.getItem('calendar_user_picked')));
+    const [hasAutoNavigated, setHasAutoNavigated] = useState(false);
 
     const dateStr = useMemo(() => formatDateKey(selectedDate), [selectedDate]);
 
@@ -94,18 +89,16 @@ const Calendar = () => {
     });
 
     // Auto-focus latest active date on initial load if current day has no records
-    useEffect(() => {
-        if (!hasUserPicked.current && !hasAutoNavigated.current && calendarData) {
+        if (!hasUserPicked && !hasAutoNavigated && calendarData) {
             const logs = calendarData.dailyLogs || [];
             const dates = calendarData.activeDates || [];
             if (logs.length === 0 && dates.length > 0) {
-                hasAutoNavigated.current = true;
+                setHasAutoNavigated(true);
                 const latestDateStr = dates[dates.length - 1];
                 const [y, m, d] = latestDateStr.split('-');
                 setSelectedDate(new Date(Number(y), Number(m) - 1, Number(d)));
             }
         }
-    }, [calendarData]);
 
     const activeDateSet = useMemo(() => {
         const dates = calendarData?.activeDates || [];
@@ -130,19 +123,19 @@ const Calendar = () => {
     }, [queryClient]);
 
     const onPrevMonth = () => {
-        hasUserPicked.current = true;
+        setHasUserPicked(true);
         sessionStorage.setItem('calendar_user_picked', '1');
         setSelectedDate(prev => new Date(prev.getFullYear(), prev.getMonth() - 1, 1));
     };
 
     const onNextMonth = () => {
-        hasUserPicked.current = true;
+        setHasUserPicked(true);
         sessionStorage.setItem('calendar_user_picked', '1');
         setSelectedDate(prev => new Date(prev.getFullYear(), prev.getMonth() + 1, 1));
     };
 
     const onSelectDay = useCallback((day) => {
-        hasUserPicked.current = true;
+        setHasUserPicked(true);
         sessionStorage.setItem('calendar_user_picked', '1');
         setSelectedDate(current => new Date(current.getFullYear(), current.getMonth(), day));
     }, []);

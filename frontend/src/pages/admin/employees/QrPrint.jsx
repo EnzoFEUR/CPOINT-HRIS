@@ -1,5 +1,4 @@
 import printStylesUrl from './QrPrint.print.css?url&no-inline';
-import React from 'react';
 import QRCode from '../../../components/QRCode';
 
 export default function QrPrint({ employee = {} }) {

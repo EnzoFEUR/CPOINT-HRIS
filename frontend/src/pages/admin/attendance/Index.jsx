@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import { supabase } from '../../../supabaseClient';
@@ -7,7 +7,7 @@ import EmployeeAvatar from '../../../components/EmployeeAvatar';
 import PageHeader from '../../../components/ui/PageHeader';
 import Badge from '../../../components/ui/Badge';
 
-const SESSION_CACHE_KEY = 'cpoint_admin_daily_attendance_logs_v2';
+
 
 const getTodayDateString = () => new Date().toISOString().split('T')[0];
 
@@ -18,7 +18,7 @@ const Index = () => {
     useEffect(() => {
         try {
             sessionStorage.removeItem('cpoint_admin_daily_attendance_logs');
-        } catch (_) {}
+        } catch { /* Optional browser capability or storage is unavailable. */ }
     }, []);
 
     const [currentPage, setCurrentPage] = useState(1);
@@ -104,10 +104,7 @@ const Index = () => {
         return logsData;
     };
 
-    const {
-        data: rawLogs = [],
-        isLoading
-    } = useQuery({
+    const { data: rawLogs = [] } = useQuery({
         queryKey: ['adminAttendance', 'date', getTodayDateString(), 'all'],
         queryFn: fetchAttendance,
         staleTime: 15000,

@@ -1,5 +1,7 @@
-import { useState, useRef, useMemo, useEffect } from 'react';
-import { Link, useLocation } from 'react-router-dom';
+import { getArchiveReviewDaysRemaining, getSeparationLabel, isFinalVoluntarySeparation } from '../../../../shared/employmentExit.mjs';
+import { useState, useMemo, useEffect, useCallback } from 'react';
+import { getActiveMedicalGrace, hasRegisteredFace, medicalGraceDaysRemaining } from '../../../../shared/medicalGrace.mjs';
+import { Link } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { fetchWithAuth } from '../../utils/api';
@@ -9,33 +11,22 @@ import QRCode from '../../components/QRCode';
 import { supabase } from '../../supabaseClient';
 import { getDisciplinaryCache, setDisciplinaryCache, clearDisciplinaryCache } from '../../utils/disciplinaryCache';
 import bannerCover from '../../assets/employee-cover.jpg';
-import useEmployeeDocuments from '../../utils/useEmployeeDocuments';
-import useDocumentRequests from '../../utils/useDocumentRequests';
-import { openEmployeeDocument, uploadEmployeeDocument } from '../../utils/documentApi';
-import { DOCUMENT_STATUSES, formatDocumentSize, getDocumentStatus, getDocumentExpiry, formatCleanDocumentFileName } from '../../utils/documentUtils';
-import { DOCUMENT_CATEGORIES, DOCUMENT_TYPES, getDocumentType } from '../../../../shared/documentTypes.mjs';
 import { sanitizePersonnelText } from '../../../../shared/personnelInput.mjs';
-import { HUMAN_TEXT_LIMITS } from '../../../../shared/inputLimits.mjs';
 import { PASSWORD_REUSE_MESSAGE, isPasswordReuseError } from '../../../../shared/passwordPolicy.mjs';
 import { formatPhDisplay } from '../../utils/phoneUtils';
 import { useOtpCooldown } from '../../utils/useOtpCooldown';
-import DocumentThumbnail from '../../components/DocumentThumbnail';
-import DocumentPreviewModal from '../../components/DocumentPreviewModal';
 import PhilippineAddressSelector from '../../components/PhilippineAddressSelector';
 
-const CATEGORIES = ['General', 'Government ID', 'Educational', 'Medical', 'Clearance', 'Contract / Agreement'];
-const EXPIRABLE_CATEGORIES = ['Government ID', 'Clearance'];
 
 export default function MyProfile() {
     const queryClient = useQueryClient();
-    const location = useLocation();
 
     // Reactive current user from storage to instantly sync if session changes
     const [storedUser, setStoredUser] = useState(() => {
         try {
             const raw = localStorage.getItem('user');
             if (raw && raw !== 'undefined') return JSON.parse(raw);
-        } catch { }
+        } catch { /* Best-effort browser cache or fallback lookup. */ }
         return null;
     });
 
@@ -47,7 +38,7 @@ export default function MyProfile() {
                     const parsed = JSON.parse(raw);
                     setStoredUser((prev) => (prev?.id !== parsed?.id ? parsed : prev));
                 }
-            } catch {}
+            } catch { /* Best-effort browser cache or fallback lookup. */ }
         };
         window.addEventListener('storage', handleSync);
         return () => window.removeEventListener('storage', handleSync);
@@ -65,7 +56,7 @@ export default function MyProfile() {
                     remainingCodes: parsed?.totp_backup_codes_count || 0
                 };
             }
-        } catch {}
+        } catch { /* Best-effort browser cache or fallback lookup. */ }
         return { enabled: false, loading: false, remainingCodes: 0 };
     });
     const [showTotpModal, setShowTotpModal] = useState(false);
@@ -83,7 +74,7 @@ export default function MyProfile() {
     const [totpBackupCodes, setTotpBackupCodes] = useState([]);
     const [totpStep, setTotpStep] = useState(1); // 1 = QR & Code, 2 = Backup Codes
 
-    const fetchTotpStatus = async () => {
+    const fetchTotpStatus = useCallback(async () => {
         try {
             const res = await fetchWithAuth('/api/auth/totp/status');
             const data = await res.json();
@@ -105,19 +96,20 @@ export default function MyProfile() {
                         parsed.totp_backup_codes_count = data.backupCodesRemaining || 0;
                         localStorage.setItem('user', JSON.stringify(parsed));
                     }
-                } catch {}
+                } catch { /* Best-effort browser cache or fallback lookup. */ }
             } else {
                 setTotpStatus((prev) => ({ ...prev, loading: false }));
             }
-        } catch (_) {
+        } catch {
             setTotpStatus((prev) => ({ ...prev, loading: false }));
         }
-    };
+    }, []);
 
     // Auto-fetch TOTP status on component mount and whenever user identity changes
     useEffect(() => {
+        // eslint-disable-next-line react-hooks/set-state-in-effect -- Fetches authenticator status asynchronously; browser flags never grant access.
         fetchTotpStatus();
-    }, [storedUser?.id, storedUser?.email]);
+    }, [storedUser?.id, storedUser?.email, fetchTotpStatus]);
 
     const executeTotpSetup = async (pwd = '') => {
         setTotpSubmitting(true);
@@ -267,7 +259,7 @@ const normalizeJobTitle = (title, isAdmin) => {
             date_hired: storedUser.date_hired || null,
             avatar_url: storedUser.avatar_url || storedUser.photo_url || null,
             photo_url: storedUser.photo_url || storedUser.avatar_url || null,
-            has_registered_biometrics: storedUser.has_registered_biometrics ?? true,
+            has_registered_biometrics: hasRegisteredFace(storedUser),
             medical_record_url: storedUser.medical_record_url || null,
             role: storedUser.role || (storedUser.email === 'admin@c-point.com' ? 'admin' : 'employee'),
         };
@@ -296,7 +288,7 @@ const normalizeJobTitle = (title, isAdmin) => {
                     sessionStorage.removeItem(cacheStorageKey);
                 }
             }
-        } catch (_) {}
+        } catch { /* Best-effort browser cache or fallback lookup. */ }
     }, [cacheStorageKey]);
 
     // Query profile and documents with an in-memory SWR cache scoped strictly to the authenticated user ID
@@ -310,7 +302,7 @@ const normalizeJobTitle = (title, isAdmin) => {
                     return cached;
                 }
             }
-        } catch (_) {}
+        } catch { /* Best-effort browser cache or fallback lookup. */ }
         return initialUser ? { success: true, user: initialUser, documents: [] } : undefined;
     })();
 
@@ -332,7 +324,7 @@ const normalizeJobTitle = (title, isAdmin) => {
                 if (!currentUserId || !fetchedId || fetchedId === currentUserId) {
                     writeProfileCache(cacheStorageKey, profileResponse);
                 }
-            } catch (_) {}
+            } catch { /* Best-effort browser cache or fallback lookup. */ }
         }
     }, [profileResponse, cacheStorageKey, currentUserId]);
 
@@ -366,8 +358,8 @@ const normalizeJobTitle = (title, isAdmin) => {
             date_hired: raw.date_hired || null,
             avatar_url: raw.avatar_url || raw.photo_url || raw.photo || raw.profile_picture || raw.image_url || null,
             photo_url: raw.photo_url || raw.avatar_url || raw.photo || raw.profile_picture || raw.image_url || null,
-            has_registered_biometrics: raw.has_registered_biometrics ?? true,
-            medical_record_url: raw.medical_record_url || initialUser?.medical_record_url || null,
+            has_registered_biometrics: hasRegisteredFace(raw),
+            medical_record_url: Object.hasOwn(raw, 'medical_record_url') ? raw.medical_record_url : initialUser?.medical_record_url || null,
             archived_at: raw.archived_at || initialUser?.archived_at || null,
             separation_date: raw.separation_date || initialUser?.separation_date || null,
             separation_type: raw.separation_type || initialUser?.separation_type || null,
@@ -380,63 +372,14 @@ const normalizeJobTitle = (title, isAdmin) => {
     }, [raw, initialUser, storedUser, isAdminAccount]);
 
     // Medical grace protocol state
-    const medicalExemption = useMemo(() => {
-        const rawUrl = profile?.medical_record_url;
-        if (!rawUrl) return null;
-        try {
-            const parsed = typeof rawUrl === 'string' ? JSON.parse(rawUrl) : rawUrl;
-            if (parsed && typeof parsed === 'object' && parsed.type === 'MEDICAL_GRACE_EXEMPTION') {
-                return parsed;
-            }
-            return null;
-        } catch {
-            return null;
-        }
-    }, [profile?.medical_record_url]);
-
-    const isMedicalExempt = useMemo(() => {
-        if (!medicalExemption?.expires_at) return false;
-        return new Date(medicalExemption.expires_at).getTime() > Date.now();
-    }, [medicalExemption]);
-
-    const daysRemaining = useMemo(() => {
-        if (!isMedicalExempt || !medicalExemption?.expires_at) return 0;
-        return Math.max(0, Math.ceil((new Date(medicalExemption.expires_at).getTime() - Date.now()) / (1000 * 60 * 60 * 24)));
-    }, [isMedicalExempt, medicalExemption]);
+    const [medicalClock, setMedicalClock] = useState(() => Date.now());
+    useEffect(() => { const timer = setInterval(() => setMedicalClock(Date.now()), 60_000); return () => clearInterval(timer); }, []);
+    const medicalExemption = getActiveMedicalGrace(profile, medicalClock);
+    const isMedicalExempt = Boolean(medicalExemption);
+    const daysRemaining = medicalGraceDaysRemaining(medicalExemption, medicalClock) ?? 0;
 
     const disciplinaryLogs = isAdminAccount ? [] : (profileResponse?.disciplinary_logs || []);
     const isLoading = isQueryLoading && !profile;
-    const [docSearch, setDocSearch] = useState('');
-    const [docStatus, setDocStatus] = useState('all');
-    const [docCategory, setDocCategory] = useState('All');
-    const [docSort, setDocSort] = useState('newest');
-    const [openingDocument, setOpeningDocument] = useState(null);
-    const documentQuery = useEmployeeDocuments({ employeeId: profile?.id, actorId: currentUserId, enabled: Boolean(profile?.id) && !isAdminAccount, status: docStatus, category: docCategory, sort: docSort, search: docSearch });
-    const documents = useMemo(() => isAdminAccount ? [] : documentQuery.documents, [isAdminAccount, documentQuery.documents]);
-    const requestQuery = useDocumentRequests({ employeeId: profile?.id, actorId: currentUserId, enabled: Boolean(profile?.id) && !isAdminAccount });
-    const activeRequests = isAdminAccount ? [] : (requestQuery.requests || []).filter(r => ['pending', 'submitted'].includes(r.status));
-    useEffect(() => {
-        if (location.hash !== '#documents' || !profile?.id) return;
-        const frame = requestAnimationFrame(() => document.getElementById('documents')?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
-        return () => cancelAnimationFrame(frame);
-    }, [location.hash, profile?.id]);
-    const [activePreviewDoc, setActivePreviewDoc] = useState(null);
-    const handleOpenDocument = (docOrId) => {
-        if (typeof docOrId === 'object' && docOrId !== null) {
-            setActivePreviewDoc(docOrId);
-            return;
-        }
-        const found = documents.find(d => d.id === docOrId);
-        if (found) {
-            setActivePreviewDoc(found);
-        } else {
-            setActivePreviewDoc({ id: docOrId });
-        }
-    };
-    const fileInputRef = useRef(null);
-    const dragCounter = useRef(0);
-    const [isDraggingFile, setIsDraggingFile] = useState(false);
-
     // Disciplinary status and sync
     const [disciplinaryState, setDisciplinaryState] = useState(() => getDisciplinaryCache(initialUser?.id));
 
@@ -527,6 +470,16 @@ const normalizeJobTitle = (title, isAdmin) => {
         };
     }, [profile?.id, queryClient]);
 
+    useEffect(() => {
+        if (!profile?.id) return;
+        const channel = supabase.channel('employment-exit-' + profile.id, { config: { private: true } })
+            .on('broadcast', { event: 'EXIT_CHANGED' }, () => queryClient.invalidateQueries({ queryKey: ['myProfile', profile.id] }))
+            .subscribe(status => {
+                if (status === 'SUBSCRIBED') queryClient.invalidateQueries({ queryKey: ['myProfile', profile.id] });
+            });
+        return () => { supabase.removeChannel(channel); };
+    }, [profile?.id, queryClient]);
+
     // Live activity sync for administrative sessions
     useEffect(() => {
         if (!isAdminAccount || !profile?.id) return;
@@ -544,7 +497,7 @@ const normalizeJobTitle = (title, isAdmin) => {
     const activeSuspensionLog = disciplinaryLogs.find(l => (l.type === 'Suspension' || l.action_taken === 'Suspension') && l.status !== 'Resolved' && l.status !== 'Overturned' && l.status !== 'Dismissed');
     const activeTerminationLog = disciplinaryLogs.find(l => (l.type === 'Termination' || l.action_taken === 'Termination') && l.status !== 'Resolved' && l.status !== 'Overturned' && l.status !== 'Dismissed');
 
-    const isSuspended = !isAdminAccount && !Boolean(activeTerminationLog) && Boolean(
+    const isSuspended = !isAdminAccount && !activeTerminationLog && Boolean(
         activeSuspensionLog ||
         disciplinaryState?.isSuspended ||
         profile?.status === 'suspended' ||
@@ -562,13 +515,8 @@ const normalizeJobTitle = (title, isAdmin) => {
         Boolean(disciplinaryState?.isTerminated)
     );
 
-    const isPendingArchive = Boolean(isTerminated && (profile?.archived_at || profile?.separation_date));
-    const daysUntilPermanentArchive = useMemo(() => {
-        if (!isPendingArchive) return 0;
-        const refDate = new Date(profile?.archived_at || profile?.separation_date || Date.now());
-        const targetDate = new Date(refDate.getTime() + 14 * 24 * 60 * 60 * 1000);
-        return Math.max(0, Math.ceil((targetDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24)));
-    }, [isPendingArchive, profile?.archived_at, profile?.separation_date]);
+    const isPendingArchive = isTerminated && (getArchiveReviewDaysRemaining(profile) ?? 0) > 0;
+    const daysUntilPermanentArchive = isTerminated ? (getArchiveReviewDaysRemaining(profile) ?? 0) : 0;
 
     // Admin Password Management State & Handlers with Multi-Factor OTP & Brute-Force Defense
     const [showChangePasswordModal, setShowChangePasswordModal] = useState(false);
@@ -756,7 +704,7 @@ const normalizeJobTitle = (title, isAdmin) => {
                 }
                 sessionStorage.removeItem(cacheStorageKey);
                 clearProfileCache(cacheStorageKey);
-            } catch (_) {}
+            } catch { /* Best-effort browser cache or fallback lookup. */ }
 
             queryClient.invalidateQueries({ queryKey: ['myProfile'] });
             toast.success('Personal details securely updated.');
@@ -768,142 +716,6 @@ const normalizeJobTitle = (title, isAdmin) => {
         }
     };
 
-    // Modal & Upload States
-    const [showUploadModal, setShowUploadModal] = useState(false);
-    const [isUploading, setIsUploading] = useState(false);
-    const [selectedDocTypeId, setSelectedDocTypeId] = useState('tin');
-    const [uploadForm, setUploadForm] = useState({
-        title: '',
-        category: 'Government ID',
-        documentType: 'BIR Form 1902 / 2316 (TIN Document)',
-        requestId: null,
-        expiryDate: '',
-        file: null
-    });
-
-    const resetUploadForm = () => {
-        setSelectedDocTypeId('tin');
-        setUploadForm({
-            title: '',
-            category: 'Government ID',
-            documentType: 'BIR Form 1902 / 2316 (TIN Document)',
-            requestId: null,
-            expiryDate: '',
-            file: null
-        });
-    };
-
-    const openUploadModal = (file = null) => {
-        if (isAdminAccount) {
-            toast.error('Document uploads are disabled for administrator governance accounts.');
-            return;
-        }
-        if (isTerminated) {
-            toast.error('Document uploads are disabled for separated/terminated accounts.');
-            return;
-        }
-        const defaultType = DOCUMENT_TYPES[0];
-        setSelectedDocTypeId(defaultType.id);
-        const suggestedTitle = file ? file.name.replace(/\.[^/.]+$/, '') : `${defaultType.label} - ${profile?.first_name || ''} ${profile?.last_name || ''}`.trim();
-        setUploadForm({
-            title: suggestedTitle.slice(0, HUMAN_TEXT_LIMITS.title),
-            category: defaultType.category,
-            documentType: defaultType.label,
-            requestId: null,
-            expiryDate: '',
-            file: file || null
-        });
-        setShowUploadModal(true);
-    };
-
-    const openUploadForRequest = (req) => {
-        if (isTerminated) {
-            toast.error('Document uploads are disabled for separated/terminated accounts.');
-            return;
-        }
-        const matched = getDocumentType(req.document_type);
-        setSelectedDocTypeId(matched.id !== 'unknown' ? matched.id : 'unknown');
-        setUploadForm({
-            title: `${req.document_type} - ${profile?.first_name || ''} ${profile?.last_name || ''}`.trim().slice(0, HUMAN_TEXT_LIMITS.title),
-            category: req.category || (matched.id !== 'unknown' ? matched.category : 'Other'),
-            documentType: req.document_type,
-            requestId: req.id,
-            expiryDate: '',
-            file: null
-        });
-        setShowUploadModal(true);
-    };
-
-    const handleUploadDocTypeChange = (typeId) => {
-        setSelectedDocTypeId(typeId);
-        const meta = getDocumentType(typeId);
-        if (meta) {
-            setUploadForm(prev => ({
-                ...prev,
-                category: meta.category,
-                documentType: meta.label,
-                title: (prev.requestId ? prev.title : `${meta.label} - ${profile?.first_name || ''} ${profile?.last_name || ''}`.trim()).slice(0, HUMAN_TEXT_LIMITS.title)
-            }));
-        }
-    };
-
-    const handleUploadSubmit = async (e) => {
-        e.preventDefault();
-
-        if (isAdminAccount) {
-            toast.error('Document uploads are disabled for administrator governance accounts.');
-            return;
-        }
-
-        if (isTerminated) {
-            toast.error('Document uploads are disabled for separated/terminated accounts.');
-            return;
-        }
-
-        if (!profile?.id) {
-            toast.error('User profile not loaded properly. Please refresh.');
-            return;
-        }
-
-        if (!uploadForm.file || !uploadForm.title.trim()) {
-            toast.error('Please fill in the title and select a file');
-            return;
-        }
-
-        if (uploadForm.title.length > HUMAN_TEXT_LIMITS.title) {
-            toast.error(`Document title must be at most ${HUMAN_TEXT_LIMITS.title} characters.`, { id: 'document-title-limit' });
-            return;
-        }
-
-        setIsUploading(true);
-        try {
-            const resolvedTitle = uploadForm.title.trim();
-            const cleanFileName = formatCleanDocumentFileName(resolvedTitle, uploadForm.file.name);
-            const renamedFile = uploadForm.file.name === cleanFileName ? uploadForm.file : new File([uploadForm.file], cleanFileName, { type: uploadForm.file.type });
-
-            await uploadEmployeeDocument({
-                employeeId: profile.id,
-                file: renamedFile,
-                title: resolvedTitle,
-                category: uploadForm.category,
-                documentType: uploadForm.documentType,
-                requestId: uploadForm.requestId,
-                expiryDate: uploadForm.expiryDate || null
-            });
-            toast.success(uploadForm.requestId ? 'Requested document submitted to HR for review!' : 'Document submitted for review.');
-            setShowUploadModal(false);
-            resetUploadForm();
-            documentQuery.refresh();
-            requestQuery.refresh();
-            queryClient.invalidateQueries({ queryKey: ['myProfile'] });
-        } catch (err) {
-            console.error('Document upload error:', err);
-            toast.error(err.message || 'Error uploading document');
-        } finally {
-            setIsUploading(false);
-        }
-    };
-
     const formatDate = (dateString, dateOnly = false) => {
         if (!dateString) return 'N/A';
         return new Date(dateString).toLocaleDateString('en-US', {
@@ -912,87 +724,6 @@ const normalizeJobTitle = (title, isAdmin) => {
             day: 'numeric',
             ...(dateOnly ? { timeZone: 'UTC' } : {})
         });
-    };
-
-    const formatFileSize = formatDocumentSize;
-
-    const getFileMeta = (fileName = '') => {
-        const ext = (fileName.split('.').pop() || '').toLowerCase();
-        switch (ext) {
-            case 'pdf':
-                return { icon: 'ti-file-type-pdf', color: 'text-danger-ink', bg: 'bg-danger-subtle', border: 'border-danger/20' };
-            case 'doc':
-            case 'docx':
-                return { icon: 'ti-file-type-docx', color: 'text-accent', bg: 'bg-accent-subtle', border: 'border-accent/20' };
-            case 'xls':
-            case 'xlsx':
-                return { icon: 'ti-file-type-xls', color: 'text-ink', bg: 'bg-surface-muted', border: 'border-line' };
-            case 'png':
-            case 'jpg':
-            case 'jpeg':
-            case 'heic':
-                return { icon: 'ti-photo', color: 'text-accent', bg: 'bg-accent-subtle', border: 'border-accent/20' };
-            default:
-                return { icon: 'ti-file', color: 'text-slate-500', bg: 'bg-slate-50', border: 'border-slate-100' };
-        }
-    };
-
-    const isImageFile = (fileName = '') => ['png', 'jpg', 'jpeg', 'heic', 'webp'].includes((fileName.split('.').pop() || '').toLowerCase());
-
-    const getExpiryStatus = getDocumentExpiry;
-
-    const expiryBadgeStyles = {
-        expired: 'bg-danger-subtle text-danger-ink border-danger/20',
-        warning: 'bg-warning-subtle text-warning-ink border-warning/20',
-        valid: 'bg-surface-muted text-ink border-line',
-    };
-
-    const alerts = useMemo(() => {
-        if (isAdminAccount) return [];
-        return documents
-            .map((doc) => ({ doc, status: getDocumentExpiry(doc) }))
-            .filter(({ status }) => status && status.level !== 'valid')
-            .sort((a, b) => a.status.daysLeft - b.status.daysLeft);
-    }, [documents, isAdminAccount]);
-
-    const filteredDocuments = useMemo(() => {
-        if (isAdminAccount) return [];
-        const q = docSearch.toLowerCase().trim();
-        return documents.filter((doc) =>
-            (doc.title || '').toLowerCase().includes(q) || (doc.file_name || '').toLowerCase().includes(q)
-        ).sort((a, b) => docSort === 'oldest' ? new Date(a.created_at) - new Date(b.created_at) : new Date(b.created_at) - new Date(a.created_at));
-    }, [documents, docSearch, docSort, isAdminAccount]);
-
-    const showExpiryField = EXPIRABLE_CATEGORIES.includes(uploadForm.category);
-
-    const handleDragEnter = (e) => {
-        e.preventDefault();
-        if (isTerminated || isAdminAccount) return;
-        if (e.dataTransfer.types?.includes('Files')) {
-            dragCounter.current += 1;
-            setIsDraggingFile(true);
-        }
-    };
-    const handleDragLeave = (e) => {
-        e.preventDefault();
-        dragCounter.current -= 1;
-        if (dragCounter.current <= 0) {
-            dragCounter.current = 0;
-            setIsDraggingFile(false);
-        }
-    };
-    const handleDragOver = (e) => e.preventDefault();
-    const handleDrop = (e) => {
-        e.preventDefault();
-        dragCounter.current = 0;
-        setIsDraggingFile(false);
-        if (isAdminAccount) return;
-        if (isTerminated) {
-            toast.error('Document uploads are disabled for separated/terminated accounts.');
-            return;
-        }
-        const file = e.dataTransfer.files?.[0];
-        if (file) openUploadModal(file);
     };
 
     if (isLoading && !profile) {
@@ -1007,20 +738,8 @@ const normalizeJobTitle = (title, isAdmin) => {
     return (
         <div
             className="max-w-5xl mx-auto space-y-5 pb-20 px-4 sm:px-6 font-sans relative"
-            onDragEnter={handleDragEnter}
-            onDragLeave={handleDragLeave}
-            onDragOver={handleDragOver}
-            onDrop={handleDrop}
         >
-            {isDraggingFile && (
-                <div className="fixed inset-0 z-[60] bg-slate-900/20 flex items-center justify-center pointer-events-none">
-                    <div className="bg-white rounded-lg shadow-xl border-2 border-dashed border-accent px-10 py-8 flex flex-col items-center">
-                        <i className="ti ti-cloud-upload text-4xl text-accent mb-2" />
-                        <p className="font-bold text-slate-800 text-sm uppercase tracking-wider">Drop to Upload</p>
-                        <p className="text-xs text-slate-500 font-medium mt-0.5">Attach to your documents</p>
-                    </div>
-                </div>
-            )}
+
 
             {/* Profile header */}
             <div className="bg-slate-900 rounded-lg p-5 sm:p-7 border border-slate-800 text-white shadow-2xs relative">
@@ -1057,7 +776,14 @@ const normalizeJobTitle = (title, isAdmin) => {
 
                     <div className="flex-1 min-w-0">
                         <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2 mb-2">
-                            {isAdminAccount ? (
+                            {!isAdminAccount && isTerminated && isFinalVoluntarySeparation(profile) && (
+                <div role="status" className="bg-slate-50 border border-slate-200 rounded-lg p-4 text-sm text-slate-700">
+                    <p className="font-semibold">{getSeparationLabel(profile)} · Records-only account</p>
+                    <p className="text-xs mt-1">Your separation is recorded in the employee archive. Attendance and new employment transactions are disabled; permitted historical records and your exit case remain accessible. Final pay and retirement pay are processed separately.</p>
+                </div>
+            )}
+
+            {isAdminAccount ? (
                                 <>
                                     <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 bg-slate-800 text-slate-200 text-xs font-mono font-bold rounded-md border border-slate-700">
                                         <i className="ti ti-shield-lock text-accent" /> {profile?.company_id || 'CP-MAIN'}
@@ -1078,7 +804,7 @@ const normalizeJobTitle = (title, isAdmin) => {
                                                 : 'bg-danger/20 text-danger border-danger/30'
                                         }`}>
                                             <i className={`ti ${isPendingArchive ? 'ti-clock-pause' : 'ti-circle-x'}`} />
-                                            {isPendingArchive ? `Pending Archive (${daysUntilPermanentArchive}d)` : 'Separated'}
+                                            {isPendingArchive ? `Archive review (${daysUntilPermanentArchive}d)` : getSeparationLabel(profile)}
                                         </span>
                                     )}
                                     <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 bg-slate-800 text-slate-200 text-xs font-mono font-bold rounded-md border border-slate-700">
@@ -1129,29 +855,14 @@ const normalizeJobTitle = (title, isAdmin) => {
                         </div>
                     </div>
 
-                    <div className="flex sm:flex-col items-center sm:items-end gap-2 w-full sm:w-auto shrink-0 mt-2 sm:mt-0">
+                    <div className="flex flex-wrap sm:flex-col items-center sm:items-end gap-2 w-full sm:w-auto shrink-0 mt-2 sm:mt-0">
                         {isAdminAccount ? (
                             <div className="w-full sm:w-auto h-9 px-3.5 bg-slate-800/90 text-slate-200 border border-slate-700 rounded-md text-xs font-semibold shadow-2xs flex items-center justify-center gap-2 select-none">
                             </div>
                         ) : (
                             <>
-                                {alerts.length > 0 && (
-                                    <div className="w-full sm:w-auto inline-flex items-center justify-center gap-1.5 px-3 py-1.5 bg-warning/20 text-warning border border-warning/30 rounded-md text-xs font-semibold">
-                                        <i className="ti ti-alert-triangle text-warning text-sm" /> {alerts.length} Doc{alerts.length > 1 ? 's' : ''} Need Attention
-                                    </div>
-                                )}
-                                {isTerminated ? (
-                                    <span className="w-full sm:w-auto h-9 px-3.5 bg-slate-800 text-slate-400 border border-slate-700 rounded-md text-xs font-medium flex items-center justify-center gap-1.5 cursor-not-allowed select-none">
-                                        <i className="ti ti-lock text-sm" /> Uploads Disabled
-                                    </span>
-                                ) : (
-                                    <button
-                                        onClick={() => openUploadModal()}
-                                        className="w-full sm:w-auto h-9 px-3.5 bg-accent hover:bg-accent-hover text-white rounded-md text-xs font-medium transition-colors duration-100 shadow-2xs flex items-center justify-center gap-1.5 cursor-pointer"
-                                    >
-                                        <i className="ti ti-upload text-sm" /> Upload Document
-                                    </button>
-                                )}
+                                <Link to="/employee/documents" className="w-full sm:w-auto h-9 px-3.5 bg-slate-800 hover:bg-slate-700 text-white border border-slate-700 rounded-md text-xs font-semibold flex items-center justify-center gap-1.5"><i className="ti ti-folders text-sm" aria-hidden="true" />Personnel Documents</Link>
+                                <Link to="/employee/employment-exit" title="Retirement requests, resignation notices and case history" className="w-full sm:w-auto h-9 px-3.5 bg-slate-800 hover:bg-slate-700 text-white border border-slate-700 rounded-md text-xs font-semibold flex items-center justify-center gap-1.5"><i className="ti ti-door-exit text-sm" aria-hidden="true" />Employment Exit</Link>
                             </>
                         )}
                     </div>
@@ -1190,7 +901,7 @@ const normalizeJobTitle = (title, isAdmin) => {
                         </div>
                         <div>
                             <div className="flex items-center gap-2">
-                                <h4 className="font-bold text-warning-ink text-sm">Account in Clearance Cooldown</h4>
+                                <h4 className="font-bold text-warning-ink text-sm">Archive Review Pending</h4>
                                 <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 bg-warning-subtle text-warning-ink border border-warning/20 text-xs font-semibold rounded-md">
                                     <span className="w-1.5 h-1.5 rounded-full bg-warning" />
                                     {daysUntilPermanentArchive} Days Left
@@ -1199,13 +910,13 @@ const normalizeJobTitle = (title, isAdmin) => {
                             <p className="text-xs text-warning-ink mt-1 leading-relaxed">
                                 Your employment profile has been queued for archival ({profile?.separation_type || 'Separated'}). 
                                 {profile?.separation_reason ? ` Reason: "${profile.separation_reason}".` : ''} 
-                                Access to biometrics and turnstiles is restricted during clearance. Historical documents remain accessible.
+                                Operational access is disabled because separation has been recorded. This internal archive review does not postpone final pay or employment-record requests. Historical documents remain accessible.
                             </p>
                         </div>
                     </div>
                     <div className="shrink-0 flex items-center gap-2">
                         <span className="text-[11px] font-mono font-medium text-warning-ink bg-warning-subtle/60 px-2.5 py-1 rounded-md border border-warning/20">
-                            Clearance Cooldown: 14 Days
+                            Internal archive review window
                         </span>
                     </div>
                 </div>
@@ -1625,7 +1336,7 @@ const normalizeJobTitle = (title, isAdmin) => {
                                     Medical Grace Protocol Active
                                 </span>
                                 <span className="font-mono text-slate-600 font-semibold">
-                                    Valid Through: {new Date(medicalExemption.expires_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                                    Valid Through: {new Date(medicalExemption.valid_until).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
                                 </span>
                             </div>
                             <p className="text-slate-700 leading-relaxed font-medium">
@@ -1798,403 +1509,9 @@ const normalizeJobTitle = (title, isAdmin) => {
                 </div>
             </div>
 
-            {/* Compliance & Disciplinary Standing */}
-            <div className="min-w-0 [overflow-wrap:anywhere] bg-white rounded-lg p-5 sm:p-6 shadow-2xs border border-slate-200 space-y-4">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">
-                    <div className="flex items-center gap-2.5">
-                        <div className="h-9 w-9 rounded-md bg-warning-subtle text-warning-ink flex items-center justify-center border border-warning/20">
-                            <i className="ti ti-scale text-lg" />
-                        </div>
-                        <div>
-                            <h3 className="font-bold text-slate-900 text-sm sm:text-base">Policy &amp; Incident Reports</h3>
-                        </div>
-                    </div>
 
-                    <div className="flex items-center gap-2">
-                        <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-bold uppercase tracking-wider border ${
-                            isTerminated ? 'bg-danger-subtle text-danger-ink border-danger/20' :
-                            isSuspended ? 'bg-warning-subtle text-warning-ink border-warning/20' :
-                            disciplinaryLogs.some(l => l.status === 'Active') ? 'bg-danger-subtle text-danger-ink border-danger/20' :
-                            'bg-surface-muted text-ink border-line'
-                        }`}>
-                            <i className={`ti ${
-                                isTerminated ? 'ti-circle-x' :
-                                isSuspended ? 'ti-clock-pause' :
-                                disciplinaryLogs.some(l => l.status === 'Active') ? 'ti-alert-triangle' :
-                                'ti-circle-check'
-                            }`} />
-                            {isTerminated ? 'Separated' :
-                             isSuspended ? 'Suspension Active' :
-                             disciplinaryLogs.some(l => l.status === 'Active') ? 'Action Required' :
-                             'Good Standing'}
-                        </span>
-                    </div>
-                </div>
 
-                {disciplinaryLogs.length === 0 ? (
-                    <div className="flex flex-col sm:flex-row items-center gap-3.5 p-4 rounded-md bg-surface-muted border border-line text-xs">
-                        <div className="w-8 h-8 rounded-md bg-surface-muted text-ink flex items-center justify-center shrink-0">
-                            <i className="ti ti-shield-check text-base" />
-                        </div>
-                        <div className="flex-1 text-center sm:text-left">
-                            <p className="font-bold text-ink">Clean Disciplinary Standing</p>
-                            <p className="text-ink mt-0.5">
-                                You currently have no disciplinary infractions, warnings, or sanctions on file. Your account is in full compliance with company policies and DOLE standards.
-                            </p>
-                        </div>
-                    </div>
-                ) : (
-                    <div className="space-y-3">
-                        {disciplinaryLogs.map((log) => {
-                            const isOverturnedOrResolved = log.status === 'Resolved' || log.status === 'Overturned';
-                            const isResolvedTermination = log.type === 'Termination' && isOverturnedOrResolved;
-                            const isReinstatedNote = (log.reason || '').includes('[REINSTATED') || (log.reason || '').includes('[EXONERATED') || (log.reason || '').includes('[CLEARED');
 
-                            return (
-                                <div
-                                    key={log.id}
-                                    className={`p-4 rounded-md border text-xs transition-colors duration-100 ${
-                                        isResolvedTermination
-                                            ? 'bg-success-subtle/30 border-success/20'
-                                            : log.status === 'Active'
-                                            ? 'bg-danger-subtle/30 border-danger/20'
-                                            : log.status === 'Acknowledged'
-                                            ? 'bg-accent-subtle/30 border-accent/20'
-                                            : 'bg-slate-50/70 border-slate-200'
-                                    }`}
-                                >
-                                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2.5 border-b border-slate-200/60">
-                                        <div className="flex flex-wrap items-center gap-2">
-                                            <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wider border flex items-center gap-1 ${
-                                                isResolvedTermination
-                                                    ? 'bg-success-subtle text-success-ink border-success/20'
-                                                    : log.type === 'Termination'
-                                                    ? 'bg-danger-subtle text-danger-ink border-danger/20'
-                                                    : log.type === 'Suspension'
-                                                    ? 'bg-warning-subtle text-warning-ink border-warning/20'
-                                                    : 'bg-warning-subtle text-warning-ink border-warning/20'
-                                            }`}>
-                                                <i className={`ti ${
-                                                    isResolvedTermination ? 'ti-circle-check' :
-                                                    log.type === 'Termination' ? 'ti-ban' :
-                                                    log.type === 'Suspension' ? 'ti-player-pause' : 'ti-alert-triangle'
-                                                }`} />
-                                                {isResolvedTermination ? 'Termination (Revoked / Restored)' : log.type}
-                                            </span>
-
-                                            <span className="text-slate-500 font-medium flex items-center gap-1">
-                                                <i className="ti ti-calendar text-xs" />
-                                                {formatDate(log.date || log.created_at)}
-                                            </span>
-                                        </div>
-
-                                        <div className="flex items-center gap-1.5">
-                                            <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wider border flex items-center gap-1 ${
-                                                log.status === 'Resolved' ? 'bg-success-subtle text-success-ink border-success/20' :
-                                                log.status === 'Overturned' ? 'bg-success-subtle text-success-ink border-success/20' :
-                                                log.status === 'Acknowledged' ? 'bg-accent-subtle text-accent-strong border-accent/20' :
-                                                'bg-danger-subtle text-danger-ink border-danger/20'
-                                            }`}>
-                                                {log.status === 'Resolved' && <i className="ti ti-circle-check" />}
-                                                {log.status === 'Overturned' && <i className="ti ti-shield-check" />}
-                                                {log.status === 'Acknowledged' && <i className="ti ti-checks" />}
-                                                {log.status === 'Active' && <i className="ti ti-alert-triangle" />}
-                                                <span>
-                                                    {log.status === 'Resolved' ? 'Resolved' :
-                                                     log.status === 'Overturned' ? 'Cleared' :
-                                                     log.status === 'Acknowledged' ? 'Acknowledged' :
-                                                     'Action Required'}
-                                                </span>
-                                            </span>
-                                        </div>
-                                    </div>
-
-                                    <p className="mt-2 text-slate-700 leading-relaxed whitespace-pre-line font-medium">
-                                        {log.reason || 'No details provided.'}
-                                    </p>
-
-                                    {log.status === 'Active' && (
-                                        <div className="mt-2.5 pt-2 border-t border-danger/60 flex items-center justify-between gap-2 text-[11px] text-danger-ink">
-                                            <span className="flex items-center gap-1">
-                                                <i className="ti ti-alert-circle text-sm" /> Formal acknowledgment required under DOLE due process.
-                                            </span>
-                                            <Link
-                                                to="/employee/dashboard"
-                                                className="h-7 px-2.5 bg-danger hover:bg-danger-ink text-white font-semibold rounded-md text-[10px] uppercase transition-colors duration-100 shrink-0 flex items-center justify-center shadow-2xs"
-                                            >
-                                                Review Notice
-                                            </Link>
-                                        </div>
-                                    )}
-
-                                    {log.status === 'Acknowledged' && (
-                                        <div className="mt-2 pt-2 border-t border-accent/20 text-[11px] text-accent font-medium flex items-center gap-1">
-                                            <i className="ti ti-checks text-sm" />
-                                            <span>Receipt formally acknowledged on employee portal.</span>
-                                        </div>
-                                    )}
-
-                                    {isReinstatedNote && (
-                                        <div className="mt-2 pt-2 border-t border-success/20 text-[11px] text-success-ink font-bold flex items-center gap-1">
-                                            <i className="ti ti-check text-sm" />
-                                            <span>Sanction revoked and operational standing restored.</span>
-                                        </div>
-                                    )}
-                                </div>
-                            );
-                        })}
-                    </div>
-                )}
-            </div>
-
-            {/* Employee documents */}
-            <div id="documents" className="space-y-4 scroll-mt-20">
-                {documentQuery.error && (
-                    <div role="alert" className="rounded-md border border-danger/20 bg-danger-subtle p-3 text-xs text-danger-ink">
-                        {documentQuery.error.message} <button type="button" onClick={() => documentQuery.refetch()} className="ml-2 font-semibold underline">Retry</button>
-                    </div>
-                )}
-
-                {/* Active Document Requests from HR */}
-                {activeRequests.length > 0 && !isTerminated && (
-                    <div className="bg-amber-50/80 border border-amber-200 rounded-lg p-4 sm:p-5 shadow-2xs space-y-3">
-                        <div className="flex items-start justify-between gap-3">
-                            <div className="flex items-start gap-3">
-                                <div className="h-8 w-8 shrink-0 bg-amber-100 text-amber-700 rounded-md flex items-center justify-center border border-amber-200">
-                                    <i className="ti ti-mail-forward text-base" />
-                                </div>
-                                <div>
-                                    <div className="flex items-center gap-2">
-                                        <h4 className="text-xs sm:text-sm font-bold text-amber-900">
-                                            Action Required: {activeRequests.length} Document{activeRequests.length > 1 ? 's' : ''} Requested by HR
-                                        </h4>
-                                        <span className="px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-amber-200/80 text-amber-800">
-                                            Compliance Hold
-                                        </span>
-                                    </div>
-                                    <p className="text-xs text-amber-800 font-medium mt-0.5">
-                                        Please upload the missing personnel documents below to fulfill your statutory document requirements.
-                                    </p>
-                                </div>
-                            </div>
-                        </div>
-
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5 pt-1">
-                            {activeRequests.map(req => (
-                                <div
-                                    key={req.id}
-                                    className="p-3 bg-white rounded-lg border border-amber-200/80 flex items-start justify-between gap-3 shadow-2xs"
-                                >
-                                    <div className="space-y-1">
-                                        <div className="flex items-center gap-1.5 flex-wrap">
-                                            <span className="font-bold text-xs text-slate-900">{req.document_type}</span>
-                                            <span className={`text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.2 rounded border ${
-                                                req.priority === 'urgent'
-                                                    ? 'bg-rose-50 text-rose-700 border-rose-200'
-                                                    : req.priority === 'high'
-                                                    ? 'bg-amber-50 text-amber-700 border-amber-200'
-                                                    : 'bg-slate-50 text-slate-600 border-slate-200'
-                                            }`}>
-                                                {req.priority}
-                                            </span>
-                                        </div>
-                                        {req.due_date && (
-                                            <p className="text-[11px] text-amber-800 font-medium">
-                                                Due: <strong>{req.due_date}</strong>
-                                            </p>
-                                        )}
-                                        {req.notes && (
-                                            <p className="text-[11px] text-slate-600 italic">
-                                                &quot;{req.notes}&quot;
-                                            </p>
-                                        )}
-                                        {req.status === 'submitted' && (
-                                            <span className="inline-flex text-[10px] font-bold uppercase tracking-wider text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-200">
-                                                Submitted · Under HR Review
-                                            </span>
-                                        )}
-                                    </div>
-
-                                    {req.status === 'pending' && (
-                                        <button
-                                            type="button"
-                                            onClick={() => openUploadForRequest(req)}
-                                            className="h-7 px-3 bg-slate-900 hover:bg-slate-800 text-white font-semibold text-xs rounded transition-colors shadow-2xs flex items-center gap-1 shrink-0 cursor-pointer"
-                                        >
-                                            <i className="ti ti-upload text-xs" />
-                                            <span>Upload</span>
-                                        </button>
-                                    )}
-                                </div>
-                            ))}
-                        </div>
-                    </div>
-                )}
-                {alerts.length > 0 && (
-                    <div className="bg-warning-subtle border border-warning/20 rounded-lg p-4 sm:p-5 shadow-2xs">
-                        <div className="flex items-start gap-3">
-                            <div className="h-8 w-8 shrink-0 bg-warning-subtle text-warning-ink rounded-md flex items-center justify-center">
-                                <i className="ti ti-alert-triangle text-base" />
-                            </div>
-                            <div className="flex-1 min-w-0">
-                                <p className="text-xs sm:text-sm font-bold text-warning-ink">
-                                    {alerts.length} document{alerts.length > 1 ? 's need' : ' needs'} renewal
-                                </p>
-                                <p className="text-xs text-warning-ink font-medium mt-0.5">Please update or submit renewals before the expiry date.</p>
-                                <div className="flex flex-wrap gap-2 mt-2.5">
-                                    {alerts.map(({ doc, status }) => (
-                                        <span
-                                            key={doc.id}
-                                            className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md border text-[10px] font-semibold ${expiryBadgeStyles[status.level]}`}
-                                        >
-                                            <i className={`ti ${status.level === 'expired' ? 'ti-circle-x' : 'ti-clock'} text-xs`} />
-                                            {doc.title || doc.file_name} · {status.label}
-                                        </span>
-                                    ))}
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                )}
-
-                <div className="bg-white rounded-lg p-5 sm:p-6 shadow-2xs border border-slate-200">
-                    {/* Separation notice */}
-                    {isTerminated && (
-                        <div className="mb-5 p-4 rounded-md bg-danger-subtle border border-danger/20 flex items-start gap-3.5">
-                            <div className="w-8 h-8 rounded-md bg-danger-subtle text-danger-ink flex items-center justify-center shrink-0 border border-danger/20">
-                                <i className="ti ti-lock text-base font-bold" />
-                            </div>
-                            <div className="text-xs">
-                                <p className="font-bold text-danger-ink uppercase tracking-wide">Personnel Vault Locked · Read-Only Access</p>
-                                <p className="text-danger-ink/90 mt-0.5 leading-relaxed font-medium">
-                                    Official employment contract has concluded. Document uploads and file modifications are disabled. Historical records remain preserved below for your personal reference and clearance requirements.
-                                </p>
-                            </div>
-                        </div>
-                    )}
-
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-5 pb-4 border-b border-slate-100">
-                        <div className="flex items-center gap-3">
-                            <div className="h-9 w-9 rounded-md bg-accent-subtle text-accent flex items-center justify-center border border-accent/20">
-                                <i className="ti ti-folders text-lg" />
-                            </div>
-                            <div>
-                                <h3 className="font-bold text-slate-900 text-sm sm:text-base">Personnel Documents</h3>
-                            </div>
-                        </div>
-                        <div className="flex flex-wrap items-center gap-2">
-                            <select aria-label="Document review status" value={docStatus} onChange={e => setDocStatus(e.target.value)} className="h-8 rounded-md border border-slate-200 px-2 text-xs">
-                                {DOCUMENT_STATUSES.map(status => <option key={status.key} value={status.key}>{status.label}</option>)}
-                            </select>
-                            <select aria-label="Document category" value={docCategory} onChange={e => setDocCategory(e.target.value)} className="h-8 rounded-md border border-slate-200 px-2 text-xs">
-                                {['All', ...new Set([...CATEGORIES, 'Contract', 'Certificate', 'Performance', 'Other'])].map(category => <option key={category}>{category}</option>)}
-                            </select>
-                            <select aria-label="Document sort order" value={docSort} onChange={e => setDocSort(e.target.value)} className="h-8 rounded-md border border-slate-200 px-2 text-xs">
-                                <option value="newest">Newest first</option><option value="oldest">Oldest first</option>
-                            </select>
-                            {(documents.length > 0 || docSearch) && (
-                                <div className="relative">
-                                    <i className="ti ti-search absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 text-xs" />
-                                    <input
-                                        type="text"
-                                        maxLength={200}
-                                        placeholder="Search files..."
-                                        value={docSearch}
-                                        onChange={(e) => setDocSearch(e.target.value)}
-                                        className="h-8 pl-7 pr-3 bg-slate-50 border border-slate-200 rounded-md outline-none focus:bg-white focus:border-slate-400 font-medium text-xs text-slate-800 transition-colors duration-100 w-36 sm:w-48"
-                                    />
-                                </div>
-                            )}
-                            <span className="px-2.5 py-1 bg-slate-100 text-slate-700 rounded-md font-mono text-xs font-semibold whitespace-nowrap">
-                                {filteredDocuments.length} File{filteredDocuments.length !== 1 ? 's' : ''}
-                            </span>
-                        </div>
-                    </div>
-
-                    {documentQuery.isPending ? <p className="py-8 text-center text-xs text-slate-500">Loading documents…</p> : documents.length === 0 && (docStatus !== 'all' || docCategory !== 'All' || docSearch.trim()) ? (
-                        <p className="py-8 text-center text-xs text-slate-500">No documents match these filters.</p>
-                    ) : documents.length === 0 ? (
-                        isTerminated ? (
-                            <div className="text-center py-10 bg-slate-50 rounded-md border border-dashed border-slate-200 space-y-2">
-                                <i className="ti ti-folder-off text-3xl text-slate-400 block" />
-                                <div>
-                                    <p className="font-semibold text-slate-700 text-xs sm:text-sm">No documents on file</p>
-                                    <p className="text-[11px] text-slate-500">Document uploads are locked for separated employee accounts.</p>
-                                </div>
-                            </div>
-                        ) : isAdminAccount ? (
-                            <div className="text-center py-10 bg-slate-50 rounded-md border border-slate-200 space-y-2">
-                                <i className="ti ti-shield-lock text-3xl text-slate-400 block" />
-                                <div>
-                                    <p className="font-semibold text-slate-700 text-xs sm:text-sm">Administrative Governance Account</p>
-                                    <p className="text-[11px] text-slate-500">Personnel 201 compliance documents are not applicable to administrator profiles.</p>
-                                </div>
-                            </div>
-                        ) : (
-                            <div
-                                onClick={() => openUploadModal()}
-                                className="text-center py-10 bg-slate-50 rounded-md border-2 border-dashed border-slate-200 space-y-2.5 cursor-pointer hover:border-slate-300 hover:bg-slate-100/50 transition-colors duration-100"
-                            >
-                                <i className="ti ti-folder-plus text-3xl text-slate-400 block" />
-                                <div>
-                                    <p className="font-semibold text-slate-700 text-xs sm:text-sm">No documents uploaded yet</p>
-                                    <p className="text-[11px] text-slate-500">Click here or drag files to upload government IDs and certificates.</p>
-                                </div>
-                            </div>
-                        )
-                    ) : filteredDocuments.length === 0 ? (
-                        <div className="text-center py-10 bg-slate-50 rounded-md border border-dashed border-slate-200">
-                            <i className="ti ti-file-search text-3xl text-slate-400 block mb-1" />
-                            <p className="font-semibold text-slate-600 text-xs">No files match "{docSearch}"</p>
-                        </div>
-                    ) : (
-                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5">
-                            {filteredDocuments.map((doc) => {
-                                const meta = getFileMeta(doc.file_name || doc.title);
-                                const status = getExpiryStatus(doc);
-                                const review = getDocumentStatus(doc);
-
-                                return (
-                                    <div key={doc.id} className="p-3.5 rounded-lg border border-slate-200 hover:border-slate-300 transition-all duration-100 flex items-start gap-3 bg-white hover:shadow-2xs">
-                                        <DocumentThumbnail
-                                            document={doc}
-                                            size="md"
-                                            onPreview={() => handleOpenDocument(doc)}
-                                        />
-                                        <div className="min-w-0 flex-1">
-                                            <p
-                                                className="text-xs font-semibold text-slate-800 truncate cursor-pointer hover:text-accent transition-colors"
-                                                title={doc.title || doc.file_name}
-                                                onClick={() => handleOpenDocument(doc)}
-                                            >
-                                                {doc.title || doc.file_name}
-                                            </p>
-                                            <div className="flex flex-wrap items-center gap-1.5 mt-1">
-                                                <span className={`rounded-md border px-1.5 text-[10px] font-semibold ${review.className}`}>{review.label}</span>
-                                                {doc.category && (
-                                                    <span className="inline-block px-1.5 py-0.2 bg-surface-muted text-ink-muted font-semibold text-[10px] rounded-md border border-line">
-                                                        {doc.category}
-                                                    </span>
-                                                )}
-                                                {status && (
-                                                    <span className={`inline-flex items-center gap-1 px-1.5 py-0.2 rounded-md border text-[10px] font-semibold ${expiryBadgeStyles[status.level]}`}>
-                                                        {status.level === 'valid' ? 'Valid' : status.label}
-                                                    </span>
-                                                )}
-                                            </div>
-                                            {review.key === 'rejected' && doc.rejection_reason && <p className="mt-1 text-xs text-danger-ink">{doc.rejection_reason}</p>}
-                                            <p className="mt-1 text-[10px] text-slate-400 font-mono truncate" title={doc.file_name}>
-                                                {doc.file_name} · {formatFileSize(doc.file_size)}
-                                            </p>
-                                        </div>
-                                    </div>
-                                );
-                            })}
-                        </div>
-                    )}
-                    {documentQuery.hasNextPage && <button type="button" disabled={documentQuery.isFetchingNextPage} onClick={() => documentQuery.fetchNextPage()} className="mt-4 rounded-md border border-slate-200 px-4 py-2 text-xs font-semibold">{documentQuery.isFetchingNextPage ? 'Loading…' : 'Load more documents'}</button>}
-                </div>
-            </div>
             </>
             )}
 
@@ -2324,239 +1641,7 @@ const normalizeJobTitle = (title, isAdmin) => {
                 </div>
             )}
 
-            {/* Modal for file upload */}
-            {showUploadModal && !isTerminated && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 overflow-y-auto">
-                    <div className="bg-white rounded-lg p-5 sm:p-6 max-w-md w-full shadow-xl border border-slate-200 space-y-5 my-auto max-h-[90vh] overflow-y-auto">
-                        <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-                            <div className="flex items-center gap-2.5">
-                                <div className="h-8 w-8 bg-accent-subtle text-accent rounded-md flex items-center justify-center shrink-0 border border-accent/20">
-                                    <i className="ti ti-file-upload text-base" />
-                                </div>
-                                <div>
-                                    <h3 className="font-bold text-slate-900 text-sm sm:text-base">Upload Document</h3>
-                                    <p className="text-[11px] text-slate-500">Attach file to your permanent HR record</p>
-                                </div>
-                            </div>
-                            <button
-                                type="button"
-                                onClick={() => { if (!isUploading) { setShowUploadModal(false); resetUploadForm(); } }}
-                                disabled={isUploading}
-                                className="h-7 w-7 rounded-md bg-slate-100 hover:bg-slate-200 text-slate-600 flex items-center justify-center transition-colors duration-100 shrink-0 cursor-pointer"
-                            >
-                                <i className="ti ti-x text-xs" />
-                            </button>
-                        </div>
 
-                        <form onSubmit={handleUploadSubmit} className="space-y-3.5">
-                            {uploadForm.requestId && (
-                                <div className="p-3 bg-amber-500/10 border border-amber-500/20 rounded-md text-amber-950 flex items-start gap-2.5">
-                                    <i className="ti ti-alert-circle text-amber-600 text-sm mt-0.5 shrink-0" />
-                                    <div className="text-xs">
-                                        <div className="font-bold">Fulfilling HR Document Request</div>
-                                        <div className="text-[11px] text-amber-800 mt-0.5">
-                                            Submitting file for <span className="font-semibold underline">{uploadForm.documentType}</span>
-                                        </div>
-                                    </div>
-                                </div>
-                            )}
-
-                            <div>
-                                <label className="block text-xs font-semibold text-slate-700 mb-1">
-                                    Document Type
-                                </label>
-                                <select
-                                    value={selectedDocTypeId}
-                                    onChange={(e) => handleUploadDocTypeChange(e.target.value)}
-                                    className="w-full h-9 px-3 rounded-md border border-slate-200 text-xs font-medium text-slate-800 focus:border-slate-400 focus:outline-none cursor-pointer bg-white"
-                                >
-                                    {DOCUMENT_CATEGORIES.map((cat) => {
-                                        const types = DOCUMENT_TYPES.filter(t => t.category === cat);
-                                        if (types.length === 0) return null;
-                                        return (
-                                            <optgroup key={cat} label={cat}>
-                                                {types.map((type) => (
-                                                    <option key={type.id} value={type.id}>
-                                                        {type.label} {type.is201Required ? '(Required Document)' : ''}
-                                                    </option>
-                                                ))}
-                                            </optgroup>
-                                        );
-                                    })}
-                                </select>
-                                {(() => {
-                                    const currentMeta = getDocumentType(selectedDocTypeId);
-                                    if (!currentMeta?.description) return null;
-                                    return (
-                                        <p className="text-[11px] text-slate-500 mt-1">
-                                            {currentMeta.description}
-                                        </p>
-                                    );
-                                })()}
-                            </div>
-
-                            <div>
-                                <div className="flex items-center justify-between mb-1">
-                                    <label htmlFor="upload-document-title" className="block text-xs font-semibold text-slate-700">Document Title</label>
-                                    <span id="upload-document-title-count" className="text-[10px] text-ink-muted">{uploadForm.title.length}/{HUMAN_TEXT_LIMITS.title}</span>
-                                </div>
-                                <input maxLength={HUMAN_TEXT_LIMITS.title}
-                                    id="upload-document-title"
-                                    aria-describedby="upload-document-title-count"
-                                    type="text"
-                                    placeholder="e.g. SSS E-1 Form, Pag-IBIG MID, Valid ID"
-                                    value={uploadForm.title}
-                                    onChange={(e) => setUploadForm({ ...uploadForm, title: e.target.value.slice(0, HUMAN_TEXT_LIMITS.title) })}
-                                    className="w-full h-9 px-3 rounded-md border border-slate-200 text-xs font-medium text-slate-800 focus:border-slate-400 focus:outline-none"
-                                    required
-                                />
-                            </div>
-
-                            <div className="grid grid-cols-2 gap-3">
-                                <div>
-                                    <label className="block text-xs font-semibold text-slate-700 mb-1">Category</label>
-                                    <input
-                                        type="text"
-                                        value={uploadForm.category}
-                                        readOnly
-                                        className="w-full h-9 px-3 rounded-md border border-slate-200 text-xs font-medium text-slate-500 bg-slate-50 cursor-not-allowed"
-                                    />
-                                </div>
-                                <div>
-                                    <label className="block text-xs font-semibold text-slate-700 mb-1">
-                                        Expiry Date {(() => {
-                                            const currentMeta = getDocumentType(selectedDocTypeId);
-                                            return currentMeta?.requiresExpiry ? (
-                                                <span className="font-semibold text-amber-600">(Recommended)</span>
-                                            ) : (
-                                                <span className="font-normal text-slate-400">(Optional)</span>
-                                            );
-                                        })()}
-                                    </label>
-                                    <input
-                                        type="date"
-                                        value={uploadForm.expiryDate}
-                                        onChange={(e) => setUploadForm({ ...uploadForm, expiryDate: e.target.value })}
-                                        className="w-full h-9 px-3 rounded-md border border-slate-200 text-xs font-medium text-slate-800 focus:border-slate-400 focus:outline-none"
-                                    />
-                                </div>
-                            </div>
-
-                            <div>
-                                <label className="block text-xs font-medium text-slate-700 mb-1">Select File</label>
-                                <div className="relative border-2 border-dashed border-slate-200 rounded-md p-4 text-center hover:bg-slate-50 hover:border-slate-300 transition-colors duration-100 cursor-pointer overflow-hidden min-h-[110px] flex items-center justify-center">
-                                    <input
-                                        ref={fileInputRef}
-                                        type="file"
-                                        accept="image/*,application/pdf,.pdf,.doc,.docx,.xls,.xlsx"
-                                        onChange={(e) => {
-                                            const file = e.target.files?.[0];
-                                            if (file) {
-                                                setUploadForm((prev) => ({
-                                                    ...prev,
-                                                    file,
-                                                    title: (prev.title || file.name.replace(/\.[^/.]+$/, '')).slice(0, HUMAN_TEXT_LIMITS.title)
-                                                }));
-                                            }
-                                        }}
-                                        onClick={(e) => {
-                                            e.stopPropagation();
-                                            e.target.value = null;
-                                        }}
-                                        className="absolute inset-0 w-full h-full opacity-0 z-10 cursor-pointer"
-                                    />
-                                    {(() => {
-                                        if (!uploadForm.file) {
-                                            return (
-                                                <div className="z-0 py-1">
-                                                    <i className="ti ti-cloud-upload text-2xl text-accent mb-1 block" />
-                                                    <p className="text-xs font-semibold text-slate-700">Tap here to choose file / take photo</p>
-                                                    <p className="text-[10px] text-slate-400 mt-0.5">PDF, Images (JPG, PNG, WebP) up to 10MB</p>
-                                                </div>
-                                            );
-                                        }
-
-                                        const cleanPreviewName = formatCleanDocumentFileName(
-                                            uploadForm.title || uploadForm.documentType || 'document',
-                                            uploadForm.file.name
-                                        );
-                                        const isImage = isImageFile(uploadForm.file.name);
-                                        const isPdf = uploadForm.file.type === 'application/pdf' || uploadForm.file.name.toLowerCase().endsWith('.pdf');
-
-                                        return (
-                                            <div className="w-full flex items-center gap-3 text-left z-0 p-1">
-                                                <div className="relative shrink-0 w-14 h-14 rounded-lg overflow-hidden border border-slate-200 bg-slate-50 flex items-center justify-center shadow-2xs">
-                                                    {isImage ? (
-                                                        <img
-                                                            src={URL.createObjectURL(uploadForm.file)}
-                                                            alt="Preview"
-                                                            className="w-full h-full object-cover"
-                                                        />
-                                                    ) : isPdf ? (
-                                                        <div className="flex flex-col items-center justify-center text-rose-600">
-                                                            <i className="ti ti-file-type-pdf text-2xl leading-none" />
-                                                            <span className="text-[9px] font-bold uppercase tracking-wider mt-0.5">PDF</span>
-                                                        </div>
-                                                    ) : (
-                                                        <div className="flex flex-col items-center justify-center text-slate-500">
-                                                            <i className={`ti ${getFileMeta(uploadForm.file.name).icon} text-2xl leading-none ${getFileMeta(uploadForm.file.name).color}`} />
-                                                            <span className="text-[9px] font-bold uppercase tracking-wider mt-0.5">FILE</span>
-                                                        </div>
-                                                    )}
-                                                </div>
-
-                                                <div className="flex-1 min-w-0">
-                                                    <div className="flex items-center gap-1.5 mb-0.5">
-                                                        <span className="inline-flex items-center gap-1 text-[9px] font-bold uppercase tracking-wider text-accent bg-accent/10 px-1.5 py-0.5 rounded">
-                                                            <i className="ti ti-wand text-[10px]" />
-                                                            Auto-renamed to
-                                                        </span>
-                                                        <span className="text-[10px] text-slate-400 font-medium">({formatFileSize(uploadForm.file.size)})</span>
-                                                    </div>
-                                                    <p className="text-xs font-bold text-slate-800 font-mono truncate" title={cleanPreviewName}>
-                                                        {cleanPreviewName}
-                                                    </p>
-                                                    <p className="text-[10px] text-slate-400 truncate mt-0.5" title={uploadForm.file.name}>
-                                                        Original: {uploadForm.file.name}
-                                                    </p>
-                                                    <p className="text-[10px] text-accent font-semibold mt-1">Tap to change file</p>
-                                                </div>
-                                            </div>
-                                        );
-                                    })()}
-                                </div>
-                            </div>
-
-                            <div className="pt-3 flex items-center justify-end gap-2 border-t border-slate-100">
-                                <button
-                                    type="button"
-                                    onClick={() => { setShowUploadModal(false); resetUploadForm(); }}
-                                    disabled={isUploading}
-                                    className="h-9 px-4 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-md text-xs font-medium transition-colors duration-100 disabled:opacity-50 cursor-pointer"
-                                >
-                                    Cancel
-                                </button>
-                                <button
-                                    type="submit"
-                                    disabled={isUploading || !uploadForm.file}
-                                    className="h-9 px-4 bg-accent hover:bg-accent-hover disabled:opacity-50 text-white rounded-md text-xs font-medium transition-colors duration-100 shadow-2xs flex items-center gap-1.5 cursor-pointer"
-                                >
-                                    {isUploading ? (
-                                        <>
-                                            <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                                            Uploading...
-                                        </>
-                                    ) : (
-                                        <>
-                                            <i className="ti ti-upload" /> Submit Document
-                                        </>
-                                    )}
-                                </button>
-                            </div>
-                        </form>
-                    </div>
-                </div>
-            )}
 
             {/* Authenticator Setup & Backup Codes Modal */}
             {showTotpModal && (
@@ -3054,12 +2139,7 @@ const normalizeJobTitle = (title, isAdmin) => {
                 </div>
             )}
 
-            <DocumentPreviewModal
-                isOpen={Boolean(activePreviewDoc)}
-                onClose={() => setActivePreviewDoc(null)}
-                document={activePreviewDoc}
-                isAdmin={false}
-            />
+
         </div>
     );
 }

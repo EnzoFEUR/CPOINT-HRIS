@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams, useLocation, Link } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
 import { isPasswordReuseError, PASSWORD_REUSE_MESSAGE } from '../../../shared/passwordPolicy.mjs';
@@ -74,7 +74,7 @@ export default function ResetPassword() {
     length: password.length >= 10,
     case: /[A-Z]/.test(password) && /[a-z]/.test(password),
     number: /[0-9]/.test(password),
-    special: /[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/.test(password),
+    special: /[!@#$%^&*()_+\-=[\]{};':"\\|,.<>/?]/.test(password),
   };
 
   const passedCount = Object.values(checks).filter(Boolean).length;

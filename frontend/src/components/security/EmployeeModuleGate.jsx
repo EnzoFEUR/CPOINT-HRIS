@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useCallback } from 'react';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { getUser } from '../../routes/guards';
@@ -22,34 +22,30 @@ export default function EmployeeModuleGate({ children }) {
 
     const [isUnlocked, setIsUnlocked] = useState(checkIsUnlocked);
 
-    const isUnlockedRef = useRef(isUnlocked);
-    isUnlockedRef.current = isUnlocked;
-
     // Do not auto-pop the modal upon arrival; user opens it via button
     const [isModalOpen, setIsModalOpen] = useState(false);
 
-    // Keep unlock status in sync across navigations and session events
-    useEffect(() => {
+    const [checkedLocation, setCheckedLocation] = useState({ pathname: location.pathname, unlockKey });
+    if (checkedLocation.pathname !== location.pathname || checkedLocation.unlockKey !== unlockKey) {
+        setCheckedLocation({ pathname: location.pathname, unlockKey });
         const unlocked = checkIsUnlocked();
-        isUnlockedRef.current = unlocked;
         setIsUnlocked(unlocked);
         if (unlocked) {
             setIsModalOpen(false);
         }
-    }, [location.pathname, checkIsUnlocked]);
+    }
 
-    const handleVerificationSuccess = (data) => {
+    const handleVerificationSuccess = (_data) => {
         try {
             sessionStorage.setItem(unlockKey, 'true');
-        } catch {}
-        isUnlockedRef.current = true;
+        } catch { /* Optional browser capability or storage is unavailable. */ }
         setIsUnlocked(true);
         setIsModalOpen(false);
         toast.success('Employee module access verified');
 
         // Maintain or ensure route remains on employee module - never dashboard
         const currentPath = location.pathname;
-        if (currentPath === '/' || (!currentPath.startsWith('/admin/employees') && !currentPath.startsWith('/admin/archive'))) {
+        if (currentPath === '/' || (!currentPath.startsWith('/admin/employees') && !currentPath.startsWith('/admin/archive') && currentPath !== '/admin/employment-exit')) {
             navigate('/admin/employees', { replace: true });
         }
     };

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import { fetchWithAuth } from '../../../utils/api';
@@ -9,15 +9,16 @@ import PageHeader from '../../../components/ui/PageHeader';
 import Badge from '../../../components/ui/Badge';
 import { isDisciplinaryExempt } from '../../../routes/guards';
 import { HUMAN_TEXT_LIMITS } from '../../../../../shared/inputLimits.mjs';
+import { useCurrentTime } from '../../../utils/useCurrentTime';
 
 export default function DisciplinaryIndex() {
+    const now = useCurrentTime();
     const queryClient = useQueryClient();
     const disciplinaryMutation = useMemo(() => createDisciplinaryMutation(fetchWithAuth), []);
     // Query for disciplinary records with 30s staleTime & 5min gcTime
     const {
         data: serverRecords,
         isLoading: isRecordsLoading,
-        isFetching: isRecordsFetching,
     } = useQuery({
         queryKey: ['adminDisciplinaryRecords'],
         queryFn: async () => {
@@ -32,11 +33,7 @@ export default function DisciplinaryIndex() {
     });
 
     // Query for employees with 30s staleTime & 5min gcTime
-    const {
-        data: serverEmployees,
-        isLoading: isEmployeesLoading,
-        isFetching: isEmployeesFetching,
-    } = useQuery({
+    const { data: serverEmployees } = useQuery({
         queryKey: ['adminEmployees'],
         queryFn: async () => {
             const res = await fetchWithAuth('/api/employees');
@@ -73,16 +70,20 @@ export default function DisciplinaryIndex() {
     };
 
     // Server responses are authoritative; employment state is never inferred from a case status.
-    useEffect(() => {
+    const [previousRecords, setPreviousRecords] = useState(serverRecords);
+    if (previousRecords !== serverRecords) {
+        setPreviousRecords(serverRecords);
         if (serverRecords) setRecords(serverRecords);
-    }, [serverRecords]);
+    }
 
     // Reconcile server employees
-    useEffect(() => {
+    const [previousEmployees, setPreviousEmployees] = useState(serverEmployees);
+    if (previousEmployees !== serverEmployees) {
+        setPreviousEmployees(serverEmployees);
         if (serverEmployees) {
             setEmployees(serverEmployees.filter(e => !isDisciplinaryExempt(e)));
         }
-    }, [serverEmployees]);
+    }
 
     // Keep query cache synchronized with local state
     useEffect(() => {
@@ -94,7 +95,6 @@ export default function DisciplinaryIndex() {
     // One-time loading screen: only shows on cold start when no cached data exists in memory
     const hasRecordsInCache = Boolean(queryClient.getQueryData(['adminDisciplinaryRecords']));
     const isLoading = isRecordsLoading && !hasRecordsInCache;
-    const isRefreshing = isRecordsFetching || isEmployeesFetching;
     
     // Search, Filter & Sort State
     const [searchQuery, setSearchQuery] = useState('');
@@ -344,8 +344,8 @@ export default function DisciplinaryIndex() {
         };
     }, [records]);
 
-    const isEmployeeSuspended = (emp) => getEmployeeStanding(emp).isSuspended;
-    const isEmployeeTerminated = (emp) => getEmployeeStanding(emp).isTerminated;
+
+
 
     // Selected employee for modal preview
     const selectedEmployeeObj = useMemo(() => {
@@ -359,7 +359,6 @@ export default function DisciplinaryIndex() {
 
     const isAlreadySuspended = selectedStanding.isSuspended;
     const isAlreadyTerminated = selectedStanding.isTerminated;
-    const hasPriorWarnings = selectedStanding.hasWarning;
 
     // Filtered personnel list for the target personnel custom dropdown
     const filteredPersonnel = useMemo(() => {
@@ -460,29 +459,9 @@ export default function DisciplinaryIndex() {
     };
 
     // Lift suspension or resolve disciplinary action
-    const handleResolve = async (id, empId, isSuspension = false) => {
-        const record = records.find(item => item.id === id);
-        try {
-            const res = await disciplinaryMutation(`/api/disciplinary/${id}/status`, { method: 'PUT', body: JSON.stringify({ status: 'Resolved', expected_status: record?.status }) });
-            const data = await res.json();
-            if (!res.ok) throw new Error(data.error || 'Unable to resolve the record.');
-            applyCommittedDisciplinary(data);
-            toast.success(isSuspension ? 'Suspension record resolved. Employment status: ' + data.employee.status + '.' : 'Record resolved.');
-        } catch (error) { toast.error(error.message || 'The outcome could not be confirmed. Retry the same action.'); }
-    };
 
-    const handleDeleteRecord = async (id) => {
-        if (!window.confirm('Permanently delete this disciplinary record? An audit entry will be retained.')) return;
-        const record = records.find(item => item.id === id);
-        try {
-            const res = await disciplinaryMutation(`/api/disciplinary/${id}`, { method: 'DELETE', body: JSON.stringify({ expected_status: record?.status }) });
-            const data = await res.json();
-            if (!res.ok) throw new Error(data.error || 'Unable to delete the record.');
-            setRecords(previous => previous.filter(item => item.id !== id));
-            applyCommittedDisciplinary(data, false);
-            toast.success('Disciplinary record deleted.');
-        } catch (error) { toast.error(error.message || 'The outcome could not be confirmed. Retry the same action.'); }
-    };
+
+
 
 
     // Open employee profile modal
@@ -993,8 +972,6 @@ export default function DisciplinaryIndex() {
                 {/* MOBILE RESPONSIVE CARDS VIEW */}
                 <div className="md:hidden divide-y divide-slate-100">
                     {paginatedRecords.length > 0 ? paginatedRecords.map((record) => {
-                        const isSuspended = record.type === 'Suspension' && !['Resolved', 'Overturned', 'Dismissed', 'Closed'].includes(record.status);
-                        const isTerminated = record.type === 'Termination' && !['Resolved', 'Overturned', 'Dismissed', 'Closed'].includes(record.status);
 
                         return (
                             <div key={record.id} className="min-w-0 p-4 space-y-3">
@@ -1599,7 +1576,7 @@ export default function DisciplinaryIndex() {
                                     <div className="pt-2 border-t border-warning/60 flex items-center justify-between text-[11px] text-warning-ink">
                                         <span>Reinstatement Date:</span>
                                         <strong className="font-mono font-semibold text-warning-ink">
-                                            {new Date(Date.now() + (parseInt(customDays || durationDays, 10) || 3) * 86400000).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                                            {new Date(now + (parseInt(customDays || durationDays, 10) || 3) * 86400000).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
                                         </strong>
                                     </div>
 

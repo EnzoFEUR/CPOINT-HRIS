@@ -1,8 +1,8 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { supabase } from '../../../supabaseClient';
-import { fetchWithAuth } from '../../../utils/api';
+
 import JSZip from 'jszip';
 import { saveAs } from 'file-saver';
 import { formatPhDisplay } from '../../../utils/phoneUtils';
@@ -293,7 +293,7 @@ export default function ArchivedEmployeeProfile() {
         <div className="flex flex-wrap items-center gap-2">
           <div className="h-8 inline-flex items-center gap-1.5 px-3 bg-slate-100 border border-slate-200 text-slate-600 rounded-md text-xs font-medium">
             <i className="ti ti-lock text-slate-500 text-sm"></i>
-            <span>Permanent Archive · Cold Storage</span>
+            <span>Archived Employment Record</span>
           </div>
 
           <button
@@ -316,9 +316,9 @@ export default function ArchivedEmployeeProfile() {
             <i className="ti ti-shield-check text-sm"></i>
           </div>
           <div>
-            <p className="font-bold text-slate-800 text-xs">Immutable Compliance Record</p>
+            <p className="font-bold text-slate-800 text-xs">Archived Employment Record</p>
             <p className="text-slate-500 font-medium text-[11px]">
-              This personnel record is permanently archived for statutory audit and regulatory retention. Direct restoration is prohibited to protect historical tax and payroll integrity. To re-engage this personnel, initiate a formal Re-hire onboarding process.
+              This archived record preserves the separation reason and employment history for authorized HR use. Retention follows applicable legal obligations and company policy. Re-employment requires HR review without overwriting prior employment history.
             </p>
           </div>
         </div>

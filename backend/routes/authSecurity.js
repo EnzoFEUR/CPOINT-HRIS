@@ -9,8 +9,10 @@ import { createAuditLog } from './auditLogs.js';
 import { invalidateAuthUser } from '../middleware/authMiddleware.js';
 import { resetVerifiedPassword } from '../services/passwordService.js';
 import { isPasswordReuseError, PASSWORD_REUSE_MESSAGE } from '../../shared/passwordPolicy.mjs';
+import { createEmploymentStatusHandler } from '../services/employmentStatus.js';
 
 const router = express.Router();
+router.post('/refresh-employment-status', createEmploymentStatusHandler());
 
 // In-memory rate limiting store: key -> { count, firstAttempt, lastAttempt }
 const rateLimitStore = new Map();

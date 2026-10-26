@@ -1,5 +1,5 @@
 import scannerStylesUrl from './Scanner.css?url&no-inline';
-import React, { useState, useReducer, useEffect, useRef, useCallback, useMemo } from 'react';
+import { useState, useReducer, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Html5Qrcode, Html5QrcodeSupportedFormats } from 'html5-qrcode';
 import * as faceapi from 'face-api.js';
 import toast from 'react-hot-toast';
@@ -28,12 +28,12 @@ import {
   Monitor
 } from 'lucide-react';
 import { fetchWithAuth } from '../utils/api';
-import { compressImage } from '../utils/imageCompress';
 import { supabase } from '../supabaseClient';
 import { requestHardwareCamera, stopHardwareStream } from '../utils/hardwareCamera';
 import { playScannerSound as playSound } from '../utils/audio';
 import { performLogout } from '../utils/authSession';
 import { isOfflineFeatureActive } from '../routes/OfflineRouteGate.js';
+import { hasRegisteredFace } from '../../../shared/medicalGrace.mjs';
 import { getStoredUser } from '../utils/storedUser.mjs';
 import { isAdmin, isSecurity } from '../utils/userAccess.mjs';
 
@@ -172,7 +172,7 @@ const MODES = Object.freeze({
 });
 
 const initialState = {
-  mode: MODES.BOOT,
+  mode: MODES.QR,
   modelsLoaded: false,
   loadingMsg: 'Starting attendance kiosk...',
   clockTime: '',
@@ -229,7 +229,7 @@ function reducer(state, action) {
 }
 
 // Main component
-const Scanner = () => {
+const ScannerTerminal = () => {
   const [state, dispatch] = useReducer(reducer, initialState);
   const [showPermHelp, setShowPermHelp] = useState(false);
   const [permTab, setPermTab] = useState('ios');
@@ -246,25 +246,6 @@ const Scanner = () => {
     };
   });
 
-  // Auth Gate
-  const user = useMemo(() => getStoredUser(), []);
-  const isAuthorized = isSecurity(user) || isAdmin(user);
-
-  if (!isAuthorized) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-black p-6">
-        <div className="bg-slate-900 p-10 rounded-2xl shadow-2xl max-w-md text-center border border-danger/40">
-          <div className="flex justify-center mb-6">
-            <Lock className="w-16 h-16 text-danger-ink" />
-          </div>
-          <h2 className="text-2xl font-bold text-white mb-2">Access restricted</h2>
-          <p className="text-danger text-sm mb-8">This terminal is restricted to security staff and administrators.</p>
-          <button onClick={() => window.location.href = '/login'} className="py-3 px-6 w-full bg-danger hover:bg-danger text-white font-semibold rounded-md transition-colors text-sm">Sign in to your account</button>
-        </div>
-      </div>
-    );
-  }
-
   // Camera facing mode ('user' = front, 'environment' = rear)
   const [cameraFacing, setCameraFacing] = useState('user');
 
@@ -279,7 +260,7 @@ const Scanner = () => {
   const debugHoldTimerRef = useRef(null);
 
   // Mutable detection state
-  const vault = useRef({
+  const vaultRef = useRef({
     processing: false,
     submitLock: false,
     lockFrames: 0,
@@ -299,7 +280,8 @@ const Scanner = () => {
     lastUiUpdate: 0,
     isMedicalExempt: false,
     medicalExemption: null,
-  }).current;
+    lastStatusText: null,
+  });
 
   // Derived Styles
   const statusMeta = useMemo(() => {
@@ -326,18 +308,18 @@ const Scanner = () => {
 
   // UI status and throttled dispatch
   const updateStatus = useCallback((text) => {
-    if (updateStatus.lastText === text) return;
-    updateStatus.lastText = text;
+    if (vaultRef.current.lastStatusText === text) return;
+    vaultRef.current.lastStatusText = text;
     dispatch({ type: 'SET_DEBUG_INFO', payload: { statusText: text } });
   }, [dispatch]);
 
   const throttledDispatch = useCallback((updates) => {
     const now = Date.now();
-    if (now - vault.lastUiUpdate < 80) return; // ~12fps UI updates
-    vault.lastUiUpdate = now;
+    if (now - vaultRef.current.lastUiUpdate < 80) return; // ~12fps UI updates
+    vaultRef.current.lastUiUpdate = now;
     if ('scanProgress' in updates) dispatch({ type: 'SET_PROGRESS', payload: updates.scanProgress });
     if ('matchScore' in updates) dispatch({ type: 'SET_MATCH', payload: updates.matchScore });
-  }, [vault, dispatch]);
+  }, [dispatch]);
 
   // Camera Stop Controls
   const stopFaceCamera = useCallback(() => {
@@ -369,27 +351,27 @@ const Scanner = () => {
   // Session Reset
   const handleReset = useCallback(() => {
     stopFaceCamera();
-    vault.processing = false;
-    vault.submitLock = false;
-    vault.lockFrames = 0;
-    vault.blinkCount = 0;
-    vault.blinkFrames = 0;
-    vault.earHistory = [];
-    vault.depthSamples = [];
-    vault.padStage = 'ALIGN';
-    vault.targetDirection = null;
-    vault.challengeTurnFrames = 0;
-    vault.challengePassed = false;
-    vault.recenterFrames = 0;
-    vault.flashActive = false;
-    vault.matchScore = null;
-    vault.employeeId = null;
-    vault.baseline = null;
-    vault.isMedicalExempt = false;
-    vault.medicalExemption = null;
+    vaultRef.current.processing = false;
+    vaultRef.current.submitLock = false;
+    vaultRef.current.lockFrames = 0;
+    vaultRef.current.blinkCount = 0;
+    vaultRef.current.blinkFrames = 0;
+    vaultRef.current.earHistory = [];
+    vaultRef.current.depthSamples = [];
+    vaultRef.current.padStage = 'ALIGN';
+    vaultRef.current.targetDirection = null;
+    vaultRef.current.challengeTurnFrames = 0;
+    vaultRef.current.challengePassed = false;
+    vaultRef.current.recenterFrames = 0;
+    vaultRef.current.flashActive = false;
+    vaultRef.current.matchScore = null;
+    vaultRef.current.employeeId = null;
+    vaultRef.current.baseline = null;
+    vaultRef.current.isMedicalExempt = false;
+    vaultRef.current.medicalExemption = null;
     dispatch({ type: 'RESET' });
     dispatch({ type: 'SET_MODE', payload: MODES.QR });
-  }, [vault, stopFaceCamera, dispatch]);
+  }, [stopFaceCamera, dispatch]);
 
   // Listen for real-time security events
   useEffect(() => {
@@ -398,7 +380,7 @@ const Scanner = () => {
       .on('broadcast', { event: 'DISCIPLINARY_CREATED' }, ({ payload }) => {
         if (!payload) return;
         const isSuspOrTerm = payload.type === 'Suspension' || payload.type === 'Termination' || payload.employee_status === 'suspended';
-        if (isSuspOrTerm && vault.employeeId && vault.employeeId === payload.employee_id) {
+        if (isSuspOrTerm && vaultRef.current.employeeId && vaultRef.current.employeeId === payload.employee_id) {
           handleReset();
           playSound('error');
           haptic('error');
@@ -409,7 +391,7 @@ const Scanner = () => {
         }
       })
       .on('broadcast', { event: 'EMPLOYEE_TERMINATED' }, ({ payload }) => {
-        if (payload && vault.employeeId && vault.employeeId === payload.employee_id) {
+        if (payload && vaultRef.current.employeeId && vaultRef.current.employeeId === payload.employee_id) {
           handleReset();
           playSound('error');
           haptic('error');
@@ -444,14 +426,9 @@ const Scanner = () => {
         }
       })
       .on('broadcast', { event: 'BIOMETRIC_EXEMPTION_UPDATED' }, ({ payload }) => {
-        if (payload?.employee_id && vault.employeeId === payload.employee_id) {
-          vault.isMedicalExempt = Boolean(payload.is_exempt);
-          toast.success(
-            payload.is_exempt 
-              ? 'Medical Grace Exemption authorized by HR. Face matching bypassed.' 
-              : 'Medical Grace Exemption ended by HR. Standard dual-factor restored.',
-            { id: 'biometric-exemption-sync', duration: 4000 }
-          );
+        if (payload?.employee_id && vaultRef.current.employeeId === payload.employee_id) {
+          handleReset();
+          toast('Medical Grace changed. Scan the QR again to verify the current authorization.', { id: 'biometric-exemption-sync', duration: 4000 });
         }
       })
       .subscribe();
@@ -459,36 +436,42 @@ const Scanner = () => {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [vault, handleReset]);
+  }, [handleReset]);
 
   // Capture frame and submit to backend
   const captureAndSubmit = useCallback(async (finalScore, blinkCount, earHistory) => {
-    if (vault.submitLock) return;
-    vault.submitLock = true;
+    if (vaultRef.current.submitLock) return;
+    vaultRef.current.submitLock = true;
     dispatch({ type: 'SET_MODE', payload: MODES.PROCESSING });
     dispatch({ type: 'SET_LOADING', payload: 'Submitting verification...' });
 
     // Capture camera snapshot
     let img64 = null;
-    if (videoRef.current && videoRef.current.videoWidth) {
-      const c = document.createElement('canvas');
-      const vw = videoRef.current.videoWidth;
-      const vh = videoRef.current.videoHeight;
-      const maxDim = 1024;
-      const scale = Math.min(1.0, maxDim / Math.max(vw, vh));
-      c.width = Math.round(vw * scale);
-      c.height = Math.round(vh * scale);
-      const ctx = c.getContext('2d');
-      // Natural orientation capture
-      if (cameraFacing === 'user') {
-        ctx.translate(c.width, 0);
-        ctx.scale(-1, 1);
+    try {
+      const captureVideo = vaultRef.current.isMedicalExempt ? document.querySelector('#qr-reader video') : videoRef.current;
+      if (captureVideo && captureVideo.readyState >= 2 && captureVideo.videoWidth) {
+        const c = document.createElement('canvas');
+        const vw = captureVideo.videoWidth;
+        const vh = captureVideo.videoHeight;
+        const maxDim = 1024;
+        const scale = Math.min(1.0, maxDim / Math.max(vw, vh));
+        c.width = Math.round(vw * scale);
+        c.height = Math.round(vh * scale);
+        const ctx = c.getContext('2d');
+        // Natural orientation capture
+        if (!vaultRef.current.isMedicalExempt && cameraFacing === 'user') {
+          ctx.translate(c.width, 0);
+          ctx.scale(-1, 1);
+        }
+        ctx.drawImage(captureVideo, 0, 0, c.width, c.height);
+        img64 = c.toDataURL('image/jpeg', 0.88);
       }
-      ctx.drawImage(videoRef.current, 0, 0, c.width, c.height);
-      img64 = c.toDataURL('image/jpeg', 0.88);
+    } catch {
+      // An optional QR-camera audit frame must not start or require face verification.
+      img64 = null;
     }
 
-    const eid = vault.employeeId;
+    const eid = vaultRef.current.employeeId;
     if (!eid || !isValidUUID(eid)) {
       dispatch({ type: 'SET_FEEDBACK', payload: { type: 'error', title: 'SYSTEM ERROR', message: 'Invalid employee session. Scan again.', code: 'INVALID_SESSION' } });
       playSound('error'); haptic('error');
@@ -497,15 +480,15 @@ const Scanner = () => {
     }
 
     // Build liveness telemetry payload
-    const depthVariance = calculateVariance(vault.depthSamples);
-    const livenessPayload = vault.isMedicalExempt ? {
+    const depthVariance = calculateVariance(vaultRef.current.depthSamples);
+    const livenessPayload = vaultRef.current.isMedicalExempt ? {
       method: 'medical_grace_exemption',
       is_exempt: true,
       client_timestamp: new Date().toISOString()
     } : {
       method: 'active_3d_head_challenge',
-      challenge_type: vault.targetDirection || 'TURN_LEFT',
-      challenge_passed: Boolean(vault.challengePassed),
+      challenge_type: vaultRef.current.targetDirection || 'TURN_LEFT',
+      challenge_passed: Boolean(vaultRef.current.challengePassed),
       depth_variance: depthVariance,
       blink_count: blinkCount,
       ear_min: earHistory.length ? Math.min(...earHistory) : 0.0,
@@ -525,7 +508,7 @@ const Scanner = () => {
         body: JSON.stringify({
           employee_id: eid,
           image_data: img64,
-          face_match_score: finalScore ?? vault.matchScore ?? 0,
+          face_match_score: vaultRef.current.isMedicalExempt ? undefined : finalScore ?? vaultRef.current.matchScore ?? 0,
           liveness_data: livenessPayload,
         }),
       });
@@ -541,7 +524,6 @@ const Scanner = () => {
 
         // Map HTTP status codes to user-friendly messages
         if (res.status === 429) friendly = 'Too many scans. Please wait 60 seconds.';
-        else if (res.status === 403) friendly = friendly;
         else if (res.status === 503) friendly = 'Attendance scanner is temporarily offline. Please notify HR.';
         else if (res.status === 409) friendly = 'Attendance already recorded today.';
         else if (res.status === 404) friendly = 'Employee record not found.';
@@ -572,7 +554,7 @@ const Scanner = () => {
     }
 
     setTimeout(handleReset, ENV.FEEDBACK_DISPLAY_MS);
-  }, [vault, cameraFacing, handleReset, dispatch]);
+  }, [cameraFacing, handleReset, dispatch]);
 
   // Face Detection Loop
   const runDetectionLoop = useCallback(() => {
@@ -590,18 +572,18 @@ const Scanner = () => {
     syncCanvas();
 
     // Reset state for new session with challenge direction
-    vault.lockFrames = 0;
-    vault.blinkCount = 0;
-    vault.blinkFrames = 0;
-    vault.earHistory = [];
-    vault.depthSamples = [];
-    vault.padStage = 'ALIGN';
-    vault.targetDirection = Math.random() > 0.5 ? 'TURN_LEFT' : 'TURN_RIGHT';
-    vault.challengeTurnFrames = 0;
-    vault.challengePassed = false;
-    vault.recenterFrames = 0;
-    vault.flashActive = false;
-    vault.submitLock = false;
+    vaultRef.current.lockFrames = 0;
+    vaultRef.current.blinkCount = 0;
+    vaultRef.current.blinkFrames = 0;
+    vaultRef.current.earHistory = [];
+    vaultRef.current.depthSamples = [];
+    vaultRef.current.padStage = 'ALIGN';
+    vaultRef.current.targetDirection = Math.random() > 0.5 ? 'TURN_LEFT' : 'TURN_RIGHT';
+    vaultRef.current.challengeTurnFrames = 0;
+    vaultRef.current.challengePassed = false;
+    vaultRef.current.recenterFrames = 0;
+    vaultRef.current.flashActive = false;
+    vaultRef.current.submitLock = false;
 
     dispatch({ type: 'SET_PROGRESS', payload: 0 });
     dispatch({ type: 'SET_MATCH', payload: null });
@@ -609,7 +591,7 @@ const Scanner = () => {
       type: 'SET_LIVENESS', 
       payload: { 
         stage: 'ALIGN', 
-        targetDirection: vault.targetDirection, 
+        targetDirection: vaultRef.current.targetDirection,
         status: 'ALIGNING', 
         blinkCount: 0, 
         ear: null, 
@@ -623,23 +605,6 @@ const Scanner = () => {
       const ctx = canvas.getContext('2d');
       ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-      // Handle medical exemption
-      if (vault.isMedicalExempt) {
-        vault.lockFrames += 1;
-        const targetFrames = 4; // ~400ms stabilization for camera auto-exposure
-        const progress = Math.min((vault.lockFrames / targetFrames) * 100, 100);
-        throttledDispatch({ scanProgress: progress, matchScore: 100 });
-        updateStatus('RECORDING MEDICAL ATTENDANCE SNAPSHOT...');
-
-        if (vault.lockFrames >= targetFrames) {
-          clearInterval(detectionRef.current);
-          detectionRef.current = null;
-          updateStatus('SNAPSHOT ACQUIRED');
-          captureAndSubmit(100, 0, [0.35]);
-        }
-        return;
-      }
-
       // Face detection using TinyFaceDetector
       const det = await faceapi
         .detectSingleFace(video, new faceapi.TinyFaceDetectorOptions({
@@ -650,8 +615,8 @@ const Scanner = () => {
         .withFaceDescriptor();
 
       if (!det) {
-        vault.lockFrames = Math.max(0, vault.lockFrames - 2);
-        throttledDispatch({ scanProgress: Math.max(0, (vault.lockFrames / ENV.REQUIRED_LOCK_FRAMES) * 100), matchScore: null });
+        vaultRef.current.lockFrames = Math.max(0, vaultRef.current.lockFrames - 2);
+        throttledDispatch({ scanProgress: Math.max(0, (vaultRef.current.lockFrames / ENV.REQUIRED_LOCK_FRAMES) * 100), matchScore: null });
         updateStatus('Look directly at the camera to clock in');
         return;
       }
@@ -669,30 +634,29 @@ const Scanner = () => {
 
       // Identity match Euclidean distance
       let matched = true;
-      let dist = 0;
       let currentScore = 0;
 
-      if (vault.baseline && liveDsc) {
-        dist = faceapi.euclideanDistance(vault.baseline, liveDsc);
+      if (vaultRef.current.baseline && liveDsc) {
+        const dist = faceapi.euclideanDistance(vaultRef.current.baseline, liveDsc);
         matched = dist < ENV.FACE_MATCH_THRESHOLD;
         currentScore = Math.round((1 - dist) * 100);
-        vault.matchScore = currentScore;
-      } else if (!vault.baseline) {
+        vaultRef.current.matchScore = currentScore;
+      } else if (!vaultRef.current.baseline) {
         // No baseline = photo-only mode (backend will decide if allowed)
         currentScore = 0;
         matched = true;
       }
 
       if (!centered || !bigEnough) {
-        vault.lockFrames = Math.max(0, vault.lockFrames - 1);
-        throttledDispatch({ scanProgress: Math.max(0, (vault.lockFrames / ENV.REQUIRED_LOCK_FRAMES) * 100) });
+        vaultRef.current.lockFrames = Math.max(0, vaultRef.current.lockFrames - 1);
+        throttledDispatch({ scanProgress: Math.max(0, (vaultRef.current.lockFrames / ENV.REQUIRED_LOCK_FRAMES) * 100) });
         updateStatus(!bigEnough ? 'Move closer to the camera' : 'Center your face in the frame');
         drawFaceMesh(ctx, det.landmarks, box, 'scanning');
         return;
       }
 
       if (!matched) {
-        vault.lockFrames = 0;
+        vaultRef.current.lockFrames = 0;
         throttledDispatch({ scanProgress: 0, matchScore: currentScore });
         updateStatus('Face not recognized. Try again');
         drawFaceMesh(ctx, det.landmarks, box, 'mismatch');
@@ -702,54 +666,54 @@ const Scanner = () => {
       // Calculate Head Pose and Eye Aspect Ratio
       const pose = getHeadPose(det.landmarks);
       const ear = getEAR(det.landmarks);
-      vault.earHistory.push(ear);
-      if (vault.earHistory.length > 50) vault.earHistory.shift();
+      vaultRef.current.earHistory.push(ear);
+      if (vaultRef.current.earHistory.length > 50) vaultRef.current.earHistory.shift();
 
       // Track depth metric
       if (pose.eyeDistance > 0) {
         const eyeMidX = (det.landmarks.positions[36].x + det.landmarks.positions[45].x) / 2;
         const depthMetric = (det.landmarks.positions[30].x - eyeMidX) / pose.eyeDistance;
-        vault.depthSamples.push(depthMetric);
-        if (vault.depthSamples.length > 60) vault.depthSamples.shift();
+        vaultRef.current.depthSamples.push(depthMetric);
+        if (vaultRef.current.depthSamples.length > 60) vaultRef.current.depthSamples.shift();
       }
 
       // Track consecutive blinks
       if (ear < ENV.BLINK_EAR_THRESHOLD) {
-        vault.blinkFrames += 1;
+        vaultRef.current.blinkFrames += 1;
       } else {
-        if (vault.blinkFrames >= ENV.BLINK_CONSEC_FRAMES) {
-          vault.blinkCount += 1;
+        if (vaultRef.current.blinkFrames >= ENV.BLINK_CONSEC_FRAMES) {
+          vaultRef.current.blinkCount += 1;
         }
-        vault.blinkFrames = 0;
+        vaultRef.current.blinkFrames = 0;
       }
 
       // Challenge state machine
       // 1. Align face
-      if (vault.padStage === 'ALIGN') {
+      if (vaultRef.current.padStage === 'ALIGN') {
         if (pose.isCentered) {
-          vault.lockFrames += 1;
-          const progress = Math.min((vault.lockFrames / 3) * 25, 25);
+          vaultRef.current.lockFrames += 1;
+          const progress = Math.min((vaultRef.current.lockFrames / 3) * 25, 25);
           throttledDispatch({ scanProgress: progress, matchScore: currentScore });
           updateStatus('Face detected. Checking presence...');
           drawFaceMesh(ctx, det.landmarks, box, 'scanning');
 
-          if (vault.lockFrames >= 3) {
-            vault.padStage = 'CHALLENGE';
-            vault.challengeTurnFrames = 0;
+          if (vaultRef.current.lockFrames >= 3) {
+            vaultRef.current.padStage = 'CHALLENGE';
+            vaultRef.current.challengeTurnFrames = 0;
             playSound('scan');
             haptic('scan');
             dispatch({
               type: 'SET_LIVENESS',
               payload: {
                 stage: 'CHALLENGE',
-                targetDirection: vault.targetDirection,
-                status: vault.targetDirection === 'TURN_LEFT' ? 'TURN_LEFT' : 'TURN_RIGHT',
+                targetDirection: vaultRef.current.targetDirection,
+                status: vaultRef.current.targetDirection === 'TURN_LEFT' ? 'TURN_LEFT' : 'TURN_RIGHT',
                 ear
               }
             });
           }
         } else {
-          vault.lockFrames = Math.max(0, vault.lockFrames - 1);
+          vaultRef.current.lockFrames = Math.max(0, vaultRef.current.lockFrames - 1);
           updateStatus('Look directly at the camera');
           drawFaceMesh(ctx, det.landmarks, box, 'scanning');
         }
@@ -757,30 +721,30 @@ const Scanner = () => {
       }
 
       // 2. Head turn challenge
-      if (vault.padStage === 'CHALLENGE') {
-        const targetTurnMet = vault.targetDirection === 'TURN_LEFT' ? pose.isTurnedLeft : pose.isTurnedRight;
-        const directiveText = vault.targetDirection === 'TURN_LEFT'
+      if (vaultRef.current.padStage === 'CHALLENGE') {
+        const targetTurnMet = vaultRef.current.targetDirection === 'TURN_LEFT' ? pose.isTurnedLeft : pose.isTurnedRight;
+        const directiveText = vaultRef.current.targetDirection === 'TURN_LEFT'
           ? 'Turn your head slightly to the left'
           : 'Turn your head slightly to the right';
 
         if (targetTurnMet) {
-          vault.challengeTurnFrames += 1;
-          const progress = 25 + Math.min((vault.challengeTurnFrames / 2) * 35, 35);
+          vaultRef.current.challengeTurnFrames += 1;
+          const progress = 25 + Math.min((vaultRef.current.challengeTurnFrames / 2) * 35, 35);
           throttledDispatch({ scanProgress: progress, matchScore: currentScore });
           updateStatus('Head turn detected');
           drawFaceMesh(ctx, det.landmarks, box, 'locked');
 
-          if (vault.challengeTurnFrames >= 2) {
-            vault.challengePassed = true;
-            vault.padStage = 'CENTER_BLINK';
-            vault.recenterFrames = 0;
+          if (vaultRef.current.challengeTurnFrames >= 2) {
+            vaultRef.current.challengePassed = true;
+            vaultRef.current.padStage = 'CENTER_BLINK';
+            vaultRef.current.recenterFrames = 0;
             playSound('scan');
             haptic('scan');
             dispatch({
               type: 'SET_LIVENESS',
               payload: {
                 stage: 'CENTER_BLINK',
-                targetDirection: vault.targetDirection,
+                targetDirection: vaultRef.current.targetDirection,
                 status: 'CENTER_AND_BLINK',
                 ear
               }
@@ -795,7 +759,7 @@ const Scanner = () => {
       }
 
       // 3. Re-center and blink
-      if (vault.padStage === 'CENTER_BLINK') {
+      if (vaultRef.current.padStage === 'CENTER_BLINK') {
         if (!pose.isCentered) {
           throttledDispatch({ scanProgress: 60, matchScore: currentScore });
           updateStatus('Turn face back to center');
@@ -803,7 +767,7 @@ const Scanner = () => {
           return;
         }
 
-        if (vault.blinkCount < ENV.REQUIRED_BLINKS) {
+        if (vaultRef.current.blinkCount < ENV.REQUIRED_BLINKS) {
           throttledDispatch({ scanProgress: 75, matchScore: currentScore });
           updateStatus('Blink your eyes to confirm');
           dispatch({
@@ -811,7 +775,7 @@ const Scanner = () => {
             payload: {
               stage: 'CENTER_BLINK',
               status: 'BLINK_TO_VERIFY',
-              blinkCount: vault.blinkCount,
+              blinkCount: vaultRef.current.blinkCount,
               ear
             }
           });
@@ -820,7 +784,7 @@ const Scanner = () => {
         }
 
         // Completed challenge and blink
-        vault.padStage = 'FLASH_CAPTURE';
+        vaultRef.current.padStage = 'FLASH_CAPTURE';
         throttledDispatch({ scanProgress: 90, matchScore: currentScore });
         updateStatus('Face verified. Recording clock-in...');
         dispatch({
@@ -829,7 +793,7 @@ const Scanner = () => {
             stage: 'FLASH_CAPTURE',
             status: 'PASSED',
             passed: true,
-            blinkCount: vault.blinkCount,
+            blinkCount: vaultRef.current.blinkCount,
             flashActive: true,
             ear
           }
@@ -841,12 +805,12 @@ const Scanner = () => {
         detectionRef.current = null;
 
         setTimeout(() => {
-          captureAndSubmit(currentScore, vault.blinkCount, vault.earHistory);
+          captureAndSubmit(currentScore, vaultRef.current.blinkCount, vaultRef.current.earHistory);
         }, 180);
         return;
       }
     }, ENV.DETECTION_INTERVAL_MS);
-  }, [vault, dispatch, throttledDispatch, updateStatus, captureAndSubmit]);
+  }, [dispatch, throttledDispatch, updateStatus, captureAndSubmit]);
 
   // Start face camera
   const startFaceCamera = useCallback(async (facing = cameraFacing) => {
@@ -893,8 +857,8 @@ const Scanner = () => {
 
   // QR Success Handler
   const onQrSuccess = useCallback(async (text) => {
-    if (vault.processing) return;
-    vault.processing = true;
+    if (vaultRef.current.processing) return;
+    vaultRef.current.processing = true;
     playSound('scan');
     haptic('scan');
     dispatch({ type: 'SET_LOADING', payload: 'Verifying employee...' });
@@ -907,7 +871,7 @@ const Scanner = () => {
       const data = await res.json();
       
       if (!res.ok || data.status !== 'success') {
-        throw new Error('EMPLOYEE_NOT_FOUND');
+        throw new Error(data.message?.includes('BIOMETRICS REQUIRED') ? 'BIOMETRICS_NOT_REGISTERED' : 'EMPLOYEE_NOT_FOUND');
       }
       
       const emp = data.data;
@@ -924,25 +888,27 @@ const Scanner = () => {
       }
 
       // Check biometric registration
-      const hasBiometrics = Boolean(emp.has_registered_biometrics || emp.biometric_baseline_path);
-      if (!hasBiometrics && !emp.is_medical_exempt) {
+      const hasBiometrics = hasRegisteredFace(emp);
+      if (!hasBiometrics) {
         throw new Error('BIOMETRICS_NOT_REGISTERED');
       }
 
-      vault.employeeId = emp.id;
-      vault.isMedicalExempt = Boolean(emp.is_medical_exempt);
-      vault.medicalExemption = emp.medical_exemption || null;
+      vaultRef.current.employeeId = emp.id;
+      vaultRef.current.isMedicalExempt = Boolean(emp.is_medical_exempt);
+      vaultRef.current.medicalExemption = emp.medical_exemption || null;
       dispatch({ type: 'SET_EMPLOYEE', payload: emp });
-      dispatch({ type: 'SET_MODE', payload: MODES.PREP });
 
-      // Handle medical exemption
+      // HR-authorized grace records attendance directly from this QR scan.
       if (emp.is_medical_exempt) {
-        vault.baseline = null;
+        vaultRef.current.baseline = null;
         dispatch({ type: 'SET_BASELINE', payload: null });
         dispatch({ type: 'SET_PHOTO', payload: emp.avatar_url || null });
-        dispatch({ type: 'SET_LOADING', payload: '' });
+        await captureAndSubmit(null, 0, []);
         return;
       }
+
+      if (!state.modelsLoaded) throw new Error('FACE_MODELS_NOT_READY');
+      dispatch({ type: 'SET_MODE', payload: MODES.PREP });
 
       // Load baseline biometrics with timeout
       const storagePath = emp.biometric_baseline_path;
@@ -983,15 +949,15 @@ const Scanner = () => {
         }
 
         if (det?.descriptor) {
-          vault.baseline = det.descriptor;
+          vaultRef.current.baseline = det.descriptor;
           dispatch({ type: 'SET_BASELINE', payload: det.descriptor });
         } else {
-          vault.baseline = null;
+          vaultRef.current.baseline = null;
           dispatch({ type: 'SET_BASELINE', payload: null });
         }
       } catch (baselineErr) {
         console.warn('[QR_FLOW] Baseline image skipped or timed out:', baselineErr);
-        vault.baseline = null;
+        vaultRef.current.baseline = null;
         dispatch({ type: 'SET_BASELINE', payload: null });
         dispatch({ type: 'SET_PHOTO', payload: emp.avatar_url || null });
       }
@@ -999,7 +965,7 @@ const Scanner = () => {
       dispatch({ type: 'SET_LOADING', payload: '' });
     } catch (err) {
       console.error('[QR_FLOW]', err);
-      vault.baseline = null;
+      vaultRef.current.baseline = null;
       dispatch({ type: 'SET_BASELINE', payload: null });
       dispatch({ type: 'SET_LOADING', payload: '' });
       dispatch({ type: 'SET_MODE', payload: MODES.PREP });
@@ -1009,6 +975,7 @@ const Scanner = () => {
         err.message === 'EMPLOYEE_SUSPENDED' ? 'Account suspended. Please speak with HR.' :
         err.message === 'EMPLOYEE_TERMINATED' ? 'Account inactive. Please contact HR.' :
         err.message === 'EMPLOYEE_INACTIVE' ? 'Account inactive. Please contact HR.' :
+        err.message === 'FACE_MODELS_NOT_READY' ? 'Face verification is still loading or unavailable. Please wait or refresh the kiosk.' :
         err.message === 'BIOMETRICS_NOT_REGISTERED' ? 'Face scan not registered. Please visit HR to set up your profile.' :
         (err.message?.includes('BIOMETRICS REQUIRED') ? 'Face scan not registered. Please visit HR to set up your profile.' : 'Identification error. Please try again.');
       toast.error(errFriendly, { id: 'qr-scan-error', duration: 4500 });
@@ -1016,11 +983,11 @@ const Scanner = () => {
       haptic('error');
       updateStatus(errFriendly);
       setTimeout(() => {
-        vault.processing = false;
+        vaultRef.current.processing = false;
         dispatch({ type: 'SET_MODE', payload: MODES.QR });
       }, 2500);
     }
-  }, [vault, dispatch, updateStatus]);
+  }, [dispatch, updateStatus, captureAndSubmit, state.modelsLoaded]);
 
   // QR scanner initialization
   const startQr = useCallback(async (isUserGesture = false) => {
@@ -1100,7 +1067,7 @@ const Scanner = () => {
       }
     } catch (err) {
       console.warn('[Scanner] Automated camera start paused (permission required on mobile):', err);
-      try { qrRef.current?.clear(); } catch {}
+      try { qrRef.current?.clear(); } catch { /* Camera cleanup remains best effort after a failed start. */ }
       qrRef.current = null;
       dispatch({ type: 'SET_LOADING', payload: '' });
       // Show permission prompt screen on mobile
@@ -1110,7 +1077,8 @@ const Scanner = () => {
 
   // Mode Lifecycle
   useEffect(() => {
-    if (state.mode === MODES.QR && state.modelsLoaded) {
+    if (state.mode === MODES.QR) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- The camera SDK lifecycle reports permission/loading state while starting the device.
       startQr(false);
     }
     if (state.mode !== MODES.QR) {
@@ -1146,12 +1114,10 @@ const Scanner = () => {
         ]);
         if (mounted) {
           dispatch({ type: 'SET_MODELS_LOADED' });
-          dispatch({ type: 'SET_MODE', payload: MODES.QR });
         }
       } catch (err) {
         console.error('[BOOT]', err);
-        toast.error('Unable to load face scanner. Check network connection.');
-        dispatch({ type: 'SET_ERROR', payload: { message: 'Failed to load face scanner. Refresh to retry.', code: 'MODEL_LOAD_ERROR' } });
+        if (mounted) toast.error('Face verification unavailable. Approved Medical Grace QR attendance remains available. Refresh to retry face verification.');
       }
     })();
 
@@ -1172,6 +1138,12 @@ const Scanner = () => {
     // Clock
     const tick = setInterval(() => {
       dispatch({ type: 'SET_CLOCK', payload: new Date().toLocaleTimeString('en-US', { hour12: false }) });
+      const vault = vaultRef.current;
+      dispatch({ type: 'SET_DEBUG_INFO', payload: {
+        employeeId: vault.employeeId, hasBaseline: Boolean(vault.baseline),
+        padStage: vault.padStage, targetDirection: vault.targetDirection,
+        depthVariance: calculateVariance(vault.depthSamples), lockFrames: vault.lockFrames,
+      } });
     }, 1000);
 
     // Online status
@@ -1434,7 +1406,7 @@ const Scanner = () => {
                     <span>Medical exemption on file</span>
                   </div>
                   <p className="text-[11px] text-white/80 mt-1 leading-tight">
-                    Face scan bypassed. A photo will be saved for attendance records.
+                    HR-authorized QR-only attendance. No face scan or liveness challenge is required.
                   </p>
                   {state.employee?.medical_exemption?.valid_until && (
                     <div className="mt-1.5 text-[10px] text-warning/90 font-mono">
@@ -1449,11 +1421,11 @@ const Scanner = () => {
               )}
 
               <button
-                onClick={() => dispatch({ type: 'SET_MODE', payload: MODES.FACE })}
+                onClick={() => state.employee?.is_medical_exempt ? captureAndSubmit(null, 0, []) : dispatch({ type: 'SET_MODE', payload: MODES.FACE })}
                 className={`w-full h-10 ${state.employee?.is_medical_exempt ? 'bg-warning hover:bg-warning' : 'bg-accent hover:bg-accent'} text-white rounded-md font-semibold text-xs tracking-wide transition-colors duration-100 flex items-center justify-center gap-2 shadow-2xs cursor-pointer`}
               >
                 {state.employee?.is_medical_exempt ? <Camera className="w-4 h-4" /> : <Scan className="w-4 h-4" />}
-                <span>{state.employee?.is_medical_exempt ? 'Take attendance photo' : 'Start face scan'}</span>
+                <span>{state.employee?.is_medical_exempt ? 'Record QR attendance' : 'Start face scan'}</span>
               </button>
               <button
                 onClick={handleReset}
@@ -1521,7 +1493,7 @@ const Scanner = () => {
                 {state.employee?.is_medical_exempt ? (
                   <>
                     <HeartPulse className="w-3.5 h-3.5 text-warning" />
-                    <span>Medical exemption: Recording photo...</span>
+                    <span>Medical Grace: Recording QR attendance...</span>
                   </>
                 ) : state.liveness.stage === 'ALIGN' ? (
                   <>
@@ -1764,14 +1736,14 @@ const Scanner = () => {
           <h3 className="text-xs font-bold text-accent-on-dark mb-2 uppercase">Debug Info</h3>
           <div className="space-y-1">
             <p>Mode: {state.mode}</p>
-            <p>EmpID: {vault.employeeId?.slice(0, 8) || '—'}...</p>
-            <p>Baseline: {vault.baseline ? 'Loaded' : 'None'}</p>
+            <p>EmpID: {state.debugInfo.employeeId?.slice(0, 8) || '—'}...</p>
+            <p>Baseline: {state.debugInfo.hasBaseline ? 'Loaded' : 'None'}</p>
             <p>Match: {state.matchScore ?? '—'}%</p>
-            <p>PAD Stage: {vault.padStage} ({vault.targetDirection || '—'})</p>
-            <p>Depth Var: {calculateVariance(vault.depthSamples).toFixed(5)}</p>
+            <p>PAD Stage: {state.debugInfo.padStage || 'ALIGN'} ({state.debugInfo.targetDirection || '—'})</p>
+            <p>Depth Var: {(state.debugInfo.depthVariance || 0).toFixed(5)}</p>
             <p>Blinks: {state.liveness.blinkCount}</p>
             <p>EAR: {state.liveness.ear?.toFixed(3) ?? '—'}</p>
-            <p>Lock: {vault.lockFrames}/{ENV.REQUIRED_LOCK_FRAMES}</p>
+            <p>Lock: {state.debugInfo.lockFrames || 0}/{ENV.REQUIRED_LOCK_FRAMES}</p>
             <p>Online: {state.isOnline ? 'Yes' : 'No'}</p>
             <p>Net: {navigator.connection?.effectiveType || '—'}</p>
           </div>
@@ -1779,6 +1751,28 @@ const Scanner = () => {
       )}
     </div>
   );
+};
+
+const Scanner = () => {
+  const [user] = useState(getStoredUser);
+  const isAuthorized = isSecurity(user) || isAdmin(user);
+
+  if (!isAuthorized) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-black p-6">
+        <div className="bg-slate-900 p-10 rounded-2xl shadow-2xl max-w-md text-center border border-danger/40">
+          <div className="flex justify-center mb-6">
+            <Lock className="w-16 h-16 text-danger-ink" />
+          </div>
+          <h2 className="text-2xl font-bold text-white mb-2">Access restricted</h2>
+          <p className="text-danger text-sm mb-8">This terminal is restricted to security staff and administrators.</p>
+          <button onClick={() => window.location.href = '/login'} className="py-3 px-6 w-full bg-danger hover:bg-danger text-white font-semibold rounded-md transition-colors text-sm">Sign in to your account</button>
+        </div>
+      </div>
+    );
+  }
+
+  return <ScannerTerminal />;
 };
 
 export default Scanner;

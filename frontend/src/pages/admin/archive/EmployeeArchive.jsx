@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import { getArchiveReviewDaysRemaining, getSeparationLabel, isFinalVoluntarySeparation } from '../../../../../shared/employmentExit.mjs';
+import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { supabase } from '../../../supabaseClient';
@@ -31,22 +32,7 @@ function isTerminatedStatus(emp) {
   return status === 'terminated' || status === 'inactive' || emp.is_active === false;
 }
 
-function getTerminationCooldown(terminatedAt, cooldownDays = 30) {
-  if (!terminatedAt) return { inCooldown: false, remainingDays: 0 };
 
-  const startDate = new Date(terminatedAt);
-  const expiryDate = new Date(startDate);
-  expiryDate.setDate(startDate.getDate() + cooldownDays);
-
-  const today = new Date();
-  const diffTime = expiryDate - today;
-  const remainingDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-
-  return {
-    inCooldown: remainingDays > 0,
-    remainingDays: Math.max(0, remainingDays),
-  };
-}
 
 export default function EmployeeArchive() {
   const navigate = useNavigate();
@@ -54,8 +40,40 @@ export default function EmployeeArchive() {
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
 
+async function fetchArchivedEmployees() {
+  setLoading(true);
+  try {
+    const { data, error } = await supabase
+      .from('employees')
+      .select('*, production_groups(name)') // Joins production_groups table
+      .or('status.ilike.terminated,status.ilike.inactive,is_active.eq.false')
+      .neq('status', 'suspended') // Suspended is a temporary, reversible state — exclude it from the terminated/inactive archive
+      .order('updated_at', { ascending: false });
+
+    if (error) throw error;
+
+    // Finalized voluntary exits archive immediately; other separations retain the existing review window.
+    const now = Date.now();
+    const fullyArchived = (data || []).filter(emp => {
+      const remaining = getArchiveReviewDaysRemaining(emp, now);
+      return isFinalVoluntarySeparation(emp) || remaining === null || remaining === 0;
+    });
+
+    setEmployees(fullyArchived);
+  } catch (err) {
+    console.error('Error fetching archived employees:', err);
+    toast.error('Failed to load archived employees');
+  } finally {
+    setLoading(false);
+  }
+};
+
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- Initial load and realtime events share this asynchronous database reader.
     fetchArchivedEmployees();
+    const exitChannel = supabase.channel('employment-exit-hr', { config: { private: true } })
+      .on('broadcast', { event: 'EXIT_CHANGED' }, fetchArchivedEmployees)
+      .subscribe();
 
     // Subscribe to realtime employee changes
     const channel = supabase
@@ -73,41 +91,13 @@ export default function EmployeeArchive() {
 
     return () => {
       supabase.removeChannel(channel);
+      supabase.removeChannel(exitChannel);
     };
   }, []);
 
-const PENDING_TERMINATION_DAYS = 14; // Must match the Employee Directory's pending-termination window
+ // Share the Directory's separation classification and archive-review window.
 
-const fetchArchivedEmployees = async () => {
-  setLoading(true);
-  try {
-    const { data, error } = await supabase
-      .from('employees')
-      .select('*, production_groups(name)') // Joins production_groups table
-      .or('status.ilike.terminated,status.ilike.inactive,is_active.eq.false')
-      .neq('status', 'suspended') // Suspended is a temporary, reversible state — exclude it from the terminated/inactive archive
-      .order('updated_at', { ascending: false });
 
-    if (error) throw error;
-
-    // Recently-terminated employees stay in the Employee Directory under "Pending Termination"
-    // for PENDING_TERMINATION_DAYS — don't surface them here until that window has elapsed.
-    const now = Date.now();
-    const fullyArchived = (data || []).filter((emp) => {
-      const ts = emp.archived_at || emp.separation_date || emp.updated_at;
-      if (!ts) return true; // no timestamp to judge by — show it rather than silently hide it
-      const elapsedDays = (now - new Date(ts).getTime()) / (1000 * 60 * 60 * 24);
-      return elapsedDays >= PENDING_TERMINATION_DAYS;
-    });
-
-    setEmployees(fullyArchived);
-  } catch (err) {
-    console.error('Error fetching archived employees:', err);
-    toast.error('Failed to load archived employees');
-  } finally {
-    setLoading(false);
-  }
-};
 
   const filteredEmployees = useMemo(() => {
     return employees.filter((emp) => {
@@ -123,7 +113,7 @@ const fetchArchivedEmployees = async () => {
         companyId.includes(query) ||
         dept.includes(query) ||
         lineGroup.includes(query) ||
-        compMode.includes(query)
+        compMode.includes(query) || getSeparationLabel(emp).toLowerCase().includes(query) || (emp.separation_type || '').toLowerCase().includes(query)
       );
     });
   }, [employees, searchQuery]);
@@ -162,7 +152,7 @@ const fetchArchivedEmployees = async () => {
       escapeCSV(emp.department || ''),
       escapeCSV(emp.line_group || emp.line_assignment || emp.shoe_production_station || ''),
       escapeCSV(emp.compensation_mode || emp.pay_type || ''),
-      escapeCSV(emp.status || emp.operational_status || 'TERMINATED'),
+      escapeCSV(getSeparationLabel(emp)),
     ]);
 
     const csvContent =
@@ -172,7 +162,7 @@ const fetchArchivedEmployees = async () => {
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement('a');
     link.setAttribute('href', encodedUri);
-    link.setAttribute('download', `Terminated_Employees_${new Date().toISOString().slice(0, 10)}.csv`);
+    link.setAttribute('download', `Archived_Employees_${new Date().toISOString().slice(0, 10)}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -189,7 +179,7 @@ const fetchArchivedEmployees = async () => {
           <div>
             <h1 className="text-xl font-bold text-slate-900">Employee Archive</h1>
             <p className="text-xs text-slate-500">
-              Records of terminated personnel.
+              Retired, resigned and other separated personnel.
             </p>
           </div>
         </div>
@@ -231,7 +221,7 @@ const fetchArchivedEmployees = async () => {
               <div className="w-10 h-10 bg-slate-50 rounded-md flex items-center justify-center mx-auto mb-2 text-slate-400 border border-slate-200">
                 <i className="ti ti-archive-off text-xl"></i>
               </div>
-              <p className="text-xs font-semibold text-slate-700">No terminated employees found</p>
+              <p className="text-xs font-semibold text-slate-700">No separated employee records found</p>
               <p className="text-[11px] text-slate-400 mt-0.5">Try adjusting your search terms.</p>
             </div>
           ) : (
@@ -239,7 +229,7 @@ const fetchArchivedEmployees = async () => {
               const initials = `${emp.first_name?.[0] || ''}${emp.last_name?.[0] || ''}`.toUpperCase() || 'EM';
               const avatarUrl = getAvatarUrl(emp);
               const inactive = isTerminatedStatus(emp);
-              const { inCooldown, remainingDays } = getTerminationCooldown(emp.updated_at || emp.created_at, 30);
+
               const compMode = emp.compensation_mode || emp.wage_structure || (Number(emp.daily_rate) > 0 ? 'Daily Rate' : Number(emp.hourly_rate) > 0 ? 'Hourly Rate' : '—');
 
               return (
@@ -272,17 +262,7 @@ const fetchArchivedEmployees = async () => {
                     </div>
 
                     <div className="shrink-0">
-                      {inCooldown ? (
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-warning-subtle text-warning-ink border border-warning/20">
-                          <i className="ti ti-clock-hour-4 text-xs animate-pulse" />
-                          {remainingDays}d cooldown
-                        </span>
-                      ) : (
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-danger-subtle text-danger-ink border border-danger/20">
-                          <span className="w-1 h-1 rounded-full bg-danger" />
-                          Archived
-                        </span>
-                      )}
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-semibold bg-slate-100 text-slate-700 border border-slate-200">{getSeparationLabel(emp)} · Archived</span>
                     </div>
                   </div>
 
@@ -344,7 +324,7 @@ const fetchArchivedEmployees = async () => {
                     <div className="w-10 h-10 bg-slate-50 rounded-md flex items-center justify-center mx-auto mb-2 text-slate-400 border border-slate-200">
                       <i className="ti ti-archive-off text-xl"></i>
                     </div>
-                    <p className="text-xs font-semibold text-slate-700">No terminated employees found</p>
+                    <p className="text-xs font-semibold text-slate-700">No separated employee records found</p>
                     <p className="text-[11px] text-slate-400 mt-0.5">Try adjusting your search terms.</p>
                   </td>
                 </tr>
@@ -406,25 +386,7 @@ const fetchArchivedEmployees = async () => {
                         }
                         </td>
                     <td className="py-3 px-4">
-                    {(() => {
-                        const { inCooldown, remainingDays } = getTerminationCooldown(emp.updated_at || emp.created_at, 30);
-                        
-                        if (inCooldown) {
-                        return (
-                            <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md text-xs font-semibold bg-warning-subtle text-warning-ink border border-warning/20" title="In 30-day clearance cooldown">
-                            <i className="ti ti-clock-hour-4 text-xs animate-pulse" />
-                            Cooldown ({remainingDays}d left)
-                            </span>
-                        );
-                        }
-
-                        return (
-                        <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md text-xs font-semibold bg-danger-subtle text-danger-ink border border-danger/20">
-                            <span className="w-1.5 h-1.5 rounded-full bg-danger" />
-                            Archived / Locked
-                        </span>
-                        );
-                    })()}
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-semibold bg-slate-100 text-slate-700 border border-slate-200">{getSeparationLabel(emp)} · Archived</span>
                     </td>
                       <td className="py-3 px-4 text-right">
                         <button

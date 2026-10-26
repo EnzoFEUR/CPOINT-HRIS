@@ -1,11 +1,11 @@
 import { getManilaWorkDate } from '../../../../../shared/workPolicy.mjs';
-import React, { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { fetchWithAuth } from '../../../utils/api';
 import { FACTORY_SHOE_ROLES, extractProductionLines, getShoeRoleDetails, parseProductionGroup } from '../../../utils/factoryRoles';
-import { formatPhPhone, validatePhPhone, cleanPhPhone } from '../../../utils/phoneUtils';
+import { formatPhPhone, validatePhPhone } from '../../../utils/phoneUtils';
 import PhilippineAddressSelector from '../../../components/PhilippineAddressSelector';
 import EmailDomainWarning from '../../../components/EmailDomainWarning';
 import { sanitizePersonnelText, isPersonnelEmailInput, isValidPersonnelEmail, isEmployeePayInput, getEmployeePayError } from '../../../../../shared/personnelInput.mjs';
@@ -175,15 +175,21 @@ export default function Edit() {
         };
     }, [id, navigate, cachedEmp]);
 
+    const currentEmailInput = String(emailInput || '').trim().toLowerCase();
+    const currentEmployeeEmail = String(employee?.email || '').trim().toLowerCase();
+    const [checkedEmail, setCheckedEmail] = useState({ input: currentEmailInput, current: currentEmployeeEmail });
+    if (checkedEmail.input !== currentEmailInput || checkedEmail.current !== currentEmployeeEmail) {
+        setCheckedEmail({ input: currentEmailInput, current: currentEmployeeEmail });
+        if (!currentEmailInput) setEmailStatus({ state: 'empty', message: '' });
+        else if (currentEmailInput === currentEmployeeEmail) setEmailStatus({ state: 'current', message: '' });
+    }
     // Real-time low-latency email conflict and archive availability check
     useEffect(() => {
         const clean = String(emailInput || '').trim().toLowerCase();
         if (!clean) {
-            setEmailStatus({ state: 'empty', message: '' });
             return;
         }
         if (clean === String(employee?.email || '').trim().toLowerCase()) {
-            setEmailStatus({ state: 'current', message: '' });
             return;
         }
 
@@ -207,7 +213,7 @@ export default function Edit() {
                         message: data.message || 'Email in use by active personnel'
                     });
                 }
-            } catch (_) {
+            } catch {
                 setEmailStatus({ state: 'idle', message: '' });
             }
         }, 300);
@@ -380,7 +386,7 @@ export default function Edit() {
             } else {
                 toast.error(result.error || result.message || 'Update failed');
             }
-        } catch (err) {
+        } catch {
             toast.error('Network error. Failed to update account.');
         }
     };

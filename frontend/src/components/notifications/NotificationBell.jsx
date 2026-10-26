@@ -4,7 +4,7 @@ import toast from 'react-hot-toast';
 import { supabase } from '../../supabaseClient';
 import { fetchWithAuth } from '../../utils/api';
 import { playNotificationChime } from '../../utils/audio';
-import { getNotificationVisuals, getNotificationAvatar, normalizeNotification } from '../../utils/notificationHelpers';
+import { getNotificationVisuals, getNotificationAvatar, normalizeNotification, mergeNotificationRows, getEmploymentExitNotificationPath } from '../../utils/notificationHelpers';
 import NotificationAvatar from './NotificationAvatar';
 import { getNotificationPermission, subscribeUserToPush, sendTestPush } from '../../utils/pushNotifications';
 
@@ -17,12 +17,17 @@ const checkIsMobileDevice = () => {
 };
 
 export const NotificationBell = ({ user }) => {
+  const userId = user?.id;
+  const userRole = user?.role;
   const [notifications, setNotifications] = useState([]);
   const [showNotifications, setShowNotifications] = useState(false);
   const [employeeMap, setEmployeeMap] = useState(new Map());
   const [pushStatus, setPushStatus] = useState(() => getNotificationPermission());
   const [isMobile, setIsMobile] = useState(checkIsMobileDevice);
   const containerRef = useRef(null);
+  const announcedNotificationIds = useRef(new Set());
+  const notificationRealtimeReady = useRef(false);
+  const realtimeNotificationReceiver = useRef(null);
   const navigate = useNavigate();
 
   // Real-time mobile viewport and orientation synchronizer
@@ -68,42 +73,67 @@ export const NotificationBell = ({ user }) => {
   useEffect(() => {
     if (!user?.id) return;
     let isCancelled = false;
+    let loading = false;
+    announcedNotificationIds.current.clear();
 
     const loadNotifications = async () => {
+      if (isCancelled || loading) return;
+      loading = true;
       try {
-        const res = await fetchWithAuth('/api/notifications');
-        if (res.ok) {
-          const data = await res.json();
-          if (Array.isArray(data) && !isCancelled) {
-            setNotifications(data.slice(0, 40).map(normalizeNotification).filter(Boolean));
-            return;
+        try {
+          const res = await fetchWithAuth('/api/notifications');
+          if (res.ok) {
+            const data = await res.json();
+            if (Array.isArray(data) && !isCancelled) {
+              setNotifications((previous) => mergeNotificationRows(previous, data));
+              return;
+            }
           }
+        } catch {
+          // Silent fallback to direct Supabase query
         }
-      } catch {
-        // Silent fallback to direct Supabase query
-      }
 
-      // Direct Supabase fallback
-      try {
-        let query = supabase.from('notifications').select('*').order('created_at', { ascending: false }).limit(40);
-        if (user.role === 'admin') {
-          query = query.or(`target.eq.admin,target.eq.${user.id}`);
-        } else {
-          query = query.eq('target', user.id);
+        // Direct Supabase fallback
+        try {
+          let query = supabase
+            .from('notifications')
+            .select('*')
+            .order('created_at', { ascending: false })
+            .limit(40);
+        if (['admin', 'hr', 'hr_manager'].includes(user.role)) {
+            query = query.or(`target.eq.admin,target.eq.${user.id}`);
+          } else {
+            query = query.eq('target', user.id);
+          }
+          const { data } = await query;
+          if (Array.isArray(data) && !isCancelled) {
+            setNotifications((previous) => mergeNotificationRows(previous, data));
+          }
+        } catch (dbErr) {
+          console.error('[NOTIFICATIONS] Direct DB query error:', dbErr);
         }
-        const { data } = await query;
-        if (Array.isArray(data) && !isCancelled) {
-          setNotifications(data.slice(0, 40).map(normalizeNotification).filter(Boolean));
-        }
-      } catch (dbErr) {
-        console.error('[NOTIFICATIONS] Direct DB query error:', dbErr);
+      } finally {
+        loading = false;
       }
     };
 
     loadNotifications();
+    const refreshVisible = () => {
+      if (document.visibilityState === 'visible') loadNotifications();
+    };
+    const timer = setInterval(() => {
+      if (!notificationRealtimeReady.current) refreshVisible();
+    }, 30000);
+    window.addEventListener('refresh_notifications', refreshVisible);
+    window.addEventListener('online', refreshVisible);
+    document.addEventListener('visibilitychange', refreshVisible);
 
     return () => {
       isCancelled = true;
+      clearInterval(timer);
+      window.removeEventListener('refresh_notifications', refreshVisible);
+      window.removeEventListener('online', refreshVisible);
+      document.removeEventListener('visibilitychange', refreshVisible);
     };
   }, [user?.id, user?.role]);
 
@@ -114,54 +144,69 @@ export const NotificationBell = ({ user }) => {
     }
   }, [user?.id, isMobile]);
 
-  const handleNotificationClick = useCallback(async (notif) => {
-    setNotifications(prev => prev.map(n => n.id === notif.id ? { ...n, read: true } : n));
-    setShowNotifications(false);
+  const handleNotificationClick = useCallback(
+    async (notif) => {
+      setNotifications((prev) => prev.map((n) => (n.id === notif.id ? { ...n, read: true } : n)));
+      setShowNotifications(false);
 
-    try {
-      await fetchWithAuth('/api/notifications/read-all', {
-        method: 'PUT',
-        body: JSON.stringify({ user_id: user?.id, role: user?.role })
-      });
-    } catch {
-      // Silent fallback
-    }
+      const visuals = getNotificationVisuals(notif.type);
+      const exitPath = getEmploymentExitNotificationPath(notif, userRole);
+      let targetPath = exitPath || visuals.path;
+      const normalizedRole = (userRole || '').toLowerCase();
+      const isAdminRole = ['admin', 'hr', 'hr_manager'].includes(normalizedRole);
 
-    const visuals = getNotificationVisuals(notif.type);
-    let targetPath = visuals.path;
-    const userRole = (user?.role || '').toLowerCase();
-    const isAdminRole = ['admin', 'hr', 'hr_manager'].includes(userRole);
-
-    if (!isAdminRole) {
-      if (notif.type === 'disciplinary' || notif.type === 'warning') {
-        targetPath = '/employee/dashboard?view=disciplinary';
-        window.dispatchEvent(new CustomEvent('open_disciplinary_modal', { detail: notif }));
-      } else if (String(notif.type || '').startsWith('document_')) {
-        targetPath = '/employee/profile#documents';
-      } else {
-        targetPath = '/employee/dashboard';
+      if (!exitPath && !isAdminRole) {
+        if (notif.type === 'disciplinary' || notif.type === 'warning') {
+          targetPath = '/employee/dashboard?view=disciplinary';
+          window.dispatchEvent(new CustomEvent('open_disciplinary_modal', { detail: notif }));
+        } else if (String(notif.type || '').startsWith('document_')) {
+          targetPath = '/employee/documents';
+        } else {
+          targetPath = '/employee/dashboard';
+        }
       }
-    }
 
-    navigate(targetPath);
-  }, [user?.id, user?.role, navigate]);
+      navigate(targetPath);
 
-  // Real-time Supabase Broadcast Channel listener
-  useEffect(() => {
-    if (!user || !user.id) return;
+      try {
+        await fetchWithAuth('/api/notifications/read-all', {
+          method: 'PUT',
+          body: JSON.stringify({ user_id: userId, role: userRole }),
+        });
+      } catch {
+        // Silent fallback
+      }
+    },
+    [userId, userRole, navigate]
+  );
 
-    const broadcastChannel = supabase
-      .channel('system-notifications')
-      .on('broadcast', { event: 'NEW_NOTIFICATION' }, (payload) => {
-        const notif = normalizeNotification(payload?.payload);
-        if (!notif) return;
-        if (notif.target === user.id || (user.role === 'admin' && notif.target === 'admin')) {
-          playNotificationChime();
-          const visuals = getNotificationVisuals(notif.type);
-          const avatar = getNotificationAvatar(notif, employeeMap);
+  // Recipient-scoped realtime table events are authorized by database RLS.
+  const handleRealtimeNotification = useCallback(
+    (input) => {
+      if (!userId) return;
 
-          toast.custom((t) => (
+      const notif = normalizeNotification(input);
+      if (!notif) return;
+    if (notif.target === userId || (['admin', 'hr', 'hr_manager'].includes(userRole) && notif.target === 'admin')) {
+        const deliveryId = String(notif.id);
+        if (announcedNotificationIds.current.has(deliveryId)) return;
+        announcedNotificationIds.current.add(deliveryId);
+        if (announcedNotificationIds.current.size > 200)
+          announcedNotificationIds.current.delete(
+            announcedNotificationIds.current.values().next().value
+          );
+        playNotificationChime();
+        const visuals = getNotificationVisuals(notif.type);
+        const avatar = getNotificationAvatar(notif, employeeMap);
+
+        toast.custom(
+          (t) => (
             <div
+              role="button"
+              tabIndex={0}
+              onKeyDown={event => {
+                if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); event.currentTarget.click(); }
+              }}
               onClick={() => {
                 toast.dismiss(t.id);
                 handleNotificationClick(notif);
@@ -182,26 +227,57 @@ export const NotificationBell = ({ user }) => {
                   <span className="text-[10px] font-semibold px-2 py-0.5 rounded-md bg-slate-800 text-slate-200 border border-slate-700">
                     {visuals.label}
                   </span>
-                  <p dir="auto" className="min-w-0 text-xs font-bold text-slate-200 truncate">{notif.title || 'System Notification'}</p>
+                  <p dir="auto" className="min-w-0 text-xs font-bold text-slate-200 truncate">
+                    {notif.title || 'System Notification'}
+                  </p>
                 </div>
-                <p dir="auto" className="text-xs text-slate-300 font-medium mt-1 leading-snug line-clamp-2 [overflow-wrap:anywhere]">{notif.text}</p>
+                <p
+                  dir="auto"
+                  className="text-xs text-slate-300 font-medium mt-1 leading-snug line-clamp-2 [overflow-wrap:anywhere]"
+                >
+                  {notif.text}
+                </p>
               </div>
             </div>
-          ), { duration: 6000 });
+          ),
+          { duration: 6000 }
+        );
 
-          setNotifications(prev => [notif, ...prev.filter(item => item.id !== notif.id)].slice(0, 40));
+        setNotifications((prev) => mergeNotificationRows(prev, [notif]));
 
-          window.dispatchEvent(new Event('refresh_dashboard'));
-          window.dispatchEvent(new Event('refresh_leaves'));
-          window.dispatchEvent(new Event('refresh_attendance'));
-        }
-      })
-      .subscribe();
+        window.dispatchEvent(new Event('refresh_dashboard'));
+        window.dispatchEvent(new Event('refresh_leaves'));
+        window.dispatchEvent(new Event('refresh_attendance'));
+      }
+    },
+    [userId, userRole, employeeMap, handleNotificationClick]
+  );
 
+  useEffect(() => { realtimeNotificationReceiver.current = handleRealtimeNotification; }, [handleRealtimeNotification]);
+
+  useEffect(() => {
+    if (!userId) return;
+    const notificationChannel = supabase
+      .channel('recipient-notifications-' + userId)
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'notifications', filter: 'target=eq.' + userId },
+        payload => realtimeNotificationReceiver.current?.(payload.new)
+      );
+    if (['admin', 'hr', 'hr_manager'].includes(userRole)) {
+      notificationChannel.on('postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'notifications', filter: 'target=eq.admin' },
+        payload => realtimeNotificationReceiver.current?.(payload.new));
+    }
+    notificationChannel.subscribe(status => {
+      notificationRealtimeReady.current = status === 'SUBSCRIBED';
+      if (status === 'SUBSCRIBED') window.dispatchEvent(new Event('refresh_notifications'));
+    });
     return () => {
-      supabase.removeChannel(broadcastChannel);
+      notificationRealtimeReady.current = false;
+      supabase.removeChannel(notificationChannel);
     };
-  }, [user, employeeMap, handleNotificationClick]);
+  }, [userId, userRole]);
 
   const markAllRead = async () => {
     setNotifications(prev => prev.map(n => ({ ...n, read: true })));
@@ -286,6 +362,11 @@ export const NotificationBell = ({ user }) => {
                 return (
                   <div
                     key={notif.id}
+                    role="button"
+                    tabIndex={0}
+                    onKeyDown={event => {
+                      if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); event.currentTarget.click(); }
+                    }}
                     onClick={() => handleNotificationClick(notif)}
                     className={`p-3.5 hover:bg-slate-50 transition-colors duration-100 flex items-start gap-3 cursor-pointer ${
                       !notif.read ? 'bg-accent-subtle/30' : ''

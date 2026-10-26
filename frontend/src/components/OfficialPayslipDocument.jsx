@@ -1,5 +1,4 @@
 import printStylesUrl from './OfficialPayslipDocument.print.css?url&no-inline';
-import React from 'react';
 import dayjs from 'dayjs';
 import EmployeeAvatar from './EmployeeAvatar';
 import { SilCashEarnings } from './SilPaymentCard';
@@ -19,15 +18,7 @@ import { printHtmlElement } from '../utils/printDocument';
  * - Dynamic document title for automatic, meaningful PDF file naming on export.
  * - Dual sign-off verification (Employer / HR Administrator & Employee Acknowledgment).
  */
-export default function OfficialPayslipDocument({
-    payroll,
-    employee: employeeOverride,
-    variant = 'admin', // 'admin' | 'employee' | 'document-only'
-    onBack,
-    onClose,
-    onDelete,
-    pagination,
-}) {
+export default function OfficialPayslipDocument({ payroll, employee: employeeOverride, onBack, onClose, onDelete, pagination }) {
     if (!payroll) return null;
 
     const emp = payroll.employees || employeeOverride || {};

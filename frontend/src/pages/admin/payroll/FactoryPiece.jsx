@@ -1,5 +1,5 @@
-import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
-import { matchJobTitle } from './Create';
+import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
+import { matchJobTitle } from './utils/payrollHelpers';
 import { PAYROLL_NUMBER_LIMITS, isBoundedDecimalInput, MAX_FACTORY_ROW_TOTAL, getFactoryRowsError } from '../../../../../shared/inputLimits.mjs';
 
 export default function FactoryPiece({
@@ -11,10 +11,7 @@ export default function FactoryPiece({
     handleGroupTabChange,
     factoryEmployees = [],
     activeGroupEmployees = [],
-    grandTotalFactoryPayout = 0,
-    factoryRows = [],
-    setFactoryRows,
-    computedFactoryRows = []
+    factoryRows = []
 }) {
     const [localRows, setLocalRows] = useState(factoryRows);
     const draftsRef = useRef({});
@@ -47,7 +44,7 @@ export default function FactoryPiece({
             const rawAssigned = Array.isArray(row.assignedEmployeeIds) ? row.assignedEmployeeIds : [];
             const groupAssignedIds = rawAssigned.filter(id => activeGroupSet.has(String(id)));
 
-            let effectiveAssignedIds = [];
+            let effectiveAssignedIds;
 
             if (row.isExplicitlyEmpty) {
                 effectiveAssignedIds = [];
@@ -156,9 +153,11 @@ export default function FactoryPiece({
         draftsRef.current = {};
     };
 
-    useEffect(() => {
+    const [previousHasEmptyRows, setPreviousHasEmptyRows] = useState(hasEmptyRows);
+    if (previousHasEmptyRows !== hasEmptyRows) {
+        setPreviousHasEmptyRows(hasEmptyRows);
         if (!hasEmptyRows) setSaveError('');
-    }, [hasEmptyRows]);
+    }
 
     // Close on Escape key without saving
     useEffect(() => {

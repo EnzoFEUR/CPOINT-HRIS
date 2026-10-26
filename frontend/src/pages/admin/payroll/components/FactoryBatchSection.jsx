@@ -22,7 +22,6 @@ const FactoryBatchSection = ({
     isSubmitting,
     isInvalidDateRange,
     handleSubmitBatch,
-    absenteeInfo,
     absenteeValidation,
     setIsAbsenteeModalOpen,
     expectedWorkingDays

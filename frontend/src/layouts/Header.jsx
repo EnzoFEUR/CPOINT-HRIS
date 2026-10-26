@@ -20,7 +20,7 @@ export const Header = ({ user }) => {
 
       <div className="flex items-center gap-2 sm:gap-3 relative">
         <GlobalSearch user={user} />
-        <NotificationBell user={user} />
+        <NotificationBell key={user?.id} user={user} />
       </div>
     </header>
   );

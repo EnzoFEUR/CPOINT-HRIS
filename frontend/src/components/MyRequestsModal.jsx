@@ -1,7 +1,9 @@
 import { useState, useMemo, useEffect, useRef } from 'react';
+import { Link } from 'react-router-dom';
 import { createPortal } from 'react-dom';
 import { CASH_OUT_LABELS } from '../../../shared/leavePolicy.js';
 import Badge from './ui/Badge';
+import { useCurrentTime } from '../utils/useCurrentTime';
 
 const formatDate = value => {
     if (!value) return '';
@@ -26,6 +28,7 @@ export default function MyRequestsModal({
     onRequestNewLeave,
 }) {
     const dialogRef = useRef(null);
+    const now = useCurrentTime();
     const [categoryFilter, setCategoryFilter] = useState('all'); // 'all' | 'leave' | 'cashout'
     const [statusFilter, setStatusFilter] = useState('all'); // 'all' | 'pending' | 'approved' | 'rejected'
     const [searchQuery, setSearchQuery] = useState('');
@@ -75,7 +78,7 @@ export default function MyRequestsModal({
                 c.status === 'rejected' && decidedDate
                     ? new Date(new Date(decidedDate).getTime() + 24 * 60 * 60 * 1000)
                     : null;
-            const cooldownActive = Boolean(cooldownExpiry && cooldownExpiry.getTime() > Date.now());
+            const cooldownActive = Boolean(cooldownExpiry && cooldownExpiry.getTime() > now);
 
             return {
                 id: `cash-${c.id}`,
@@ -106,7 +109,7 @@ export default function MyRequestsModal({
         return [...leaveRecords, ...cashRecords].sort(
             (a, b) => new Date(b.date || 0).getTime() - new Date(a.date || 0).getTime()
         );
-    }, [leaves, cashRequests, cashEvents]);
+    }, [leaves, cashRequests, cashEvents, now]);
 
     const counts = useMemo(() => {
         const total = unifiedRequests.length;
@@ -183,6 +186,7 @@ export default function MyRequestsModal({
                     </div>
                 </div>
 
+                <Link to="/employee/employment-exit" onClick={onClose} className="px-5 py-3 text-sm font-semibold text-accent underline border-b border-slate-100">Retirement inquiries, resignation notices and exit receipts</Link>
                 {/* Filter Controls & Interactive Metrics */}
                 <div className="p-4 sm:p-5 border-b border-slate-100 space-y-3.5 bg-slate-50/50">
                     {/* Clickable Status Metric Tabs */}

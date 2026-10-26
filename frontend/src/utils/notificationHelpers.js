@@ -1,4 +1,21 @@
+import { isCreditUuid } from '../../../shared/leaveCredits.mjs';
+
 const notificationText = (value, limit) => typeof value === 'string' ? value.slice(0, limit).replace(/[\uD800-\uDBFF]$/u, '') : '';
+
+export const getEmploymentExitNotificationPath = (notification, role) => {
+  if (String(notification?.type || '').toLowerCase() !== 'employment_exit') return null;
+  const path = ['admin', 'hr', 'hr_manager'].includes(String(role || '').toLowerCase()) ? '/admin/employment-exit' : '/employee/employment-exit';
+  return isCreditUuid(notification.exit_request_id) ? path + '?id=' + encodeURIComponent(notification.exit_request_id) : path;
+};
+
+export const mergeNotificationRows = (existing, incoming) => {
+  const rows = new Map();
+  for (const item of [...existing, ...incoming]) {
+    const notification = normalizeNotification(item);
+    if (notification) rows.set(notification.id, notification);
+  }
+  return [...rows.values()].sort((a, b) => (Date.parse(b.created_at) || 0) - (Date.parse(a.created_at) || 0)).slice(0, 40);
+};
 
 // Normalize display copies only; stored notification content remains unchanged.
 export const normalizeNotification = notification => {
@@ -20,6 +37,14 @@ export const normalizeNotification = notification => {
 // Category Icon, Color & Route Mapping Helper
 export const getNotificationVisuals = (type) => {
   switch (notificationText(type, 80).toLowerCase()) {
+    case 'employment_exit':
+      return {
+        icon: 'ti-door-exit',
+        bg: 'bg-accent-subtle text-accent border-accent/20',
+        badge: 'bg-accent',
+        label: 'Employment Exit',
+        path: '/admin/employment-exit'
+      };
     case 'payroll':
       return {
         icon: 'ti-cash-banknote',
@@ -85,7 +110,7 @@ export const getNotificationVisuals = (type) => {
         bg: 'bg-success-subtle text-success-ink border-success/20',
         badge: 'bg-success',
         label: 'Document Sent',
-        path: '/employee/profile#documents'
+        path: '/employee/documents'
       };
     case 'document_request':
     case 'document_reminder':
@@ -94,7 +119,7 @@ export const getNotificationVisuals = (type) => {
         bg: 'bg-warning-subtle text-warning-ink border-warning/20',
         badge: 'bg-warning',
         label: 'Document Needed',
-        path: '/employee/profile#documents'
+        path: '/employee/documents'
       };
     case 'document_approved':
       return {
@@ -102,7 +127,7 @@ export const getNotificationVisuals = (type) => {
         bg: 'bg-success-subtle text-success-ink border-success/20',
         badge: 'bg-success',
         label: 'Document Approved',
-        path: '/employee/profile#documents'
+        path: '/employee/documents'
       };
     case 'document_rejected':
       return {
@@ -110,7 +135,7 @@ export const getNotificationVisuals = (type) => {
         bg: 'bg-danger-subtle text-danger-ink border-danger/20',
         badge: 'bg-danger',
         label: 'Document Rejected',
-        path: '/employee/profile#documents'
+        path: '/employee/documents'
       };
     default:
       return {
@@ -128,6 +153,7 @@ export const notifAvatarCache = new Map();
 // Extract or generate employee profile picture / initials with rich employee database matching
 export const getNotificationAvatar = (notif, employeeMap) => {
   notif = notif && typeof notif === 'object' ? notif : {};
+  if (String(notif.type || '').toLowerCase() === 'employment_exit') return { initials: 'EX', avatarSrc: null };
   const title = notificationText(notif.title, 200);
   const text = notificationText(notif.text, 2000);
   const senderName = notificationText(notif.sender_name, 201).trim();
