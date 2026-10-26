@@ -155,6 +155,20 @@ const getPendingWeeks = (cycleBounds, now = new Date()) => {
 const filterUnpaidWeeks = (weeks, paidRanges = []) =>
     weeks.filter(week => !paidRanges.some(range => range.start <= week.end && range.end >= week.start));
 
+// A week only needs payroll when the employee actually worked in it (a completed
+// time-in/time-out log) or has an approved PAID leave overlapping it. Workers with neither
+// are left out of Pending so they don't hold a finished group open.
+const hasActivityInWeek = (week, activity) => {
+    if (!activity) return false;
+    const worked = (activity.workedDates || []).some(d => d >= week.start && d <= week.end);
+    if (worked) return true;
+    return (activity.leaveRanges || []).some(r => r.start <= week.end && r.end >= week.start);
+};
+
+// One rule for "this record is paid", shared by the sorting, the counters and the group header. A saved record with status Pending/Draft is NOT paid.
+const isPaidRecord = (p) =>
+    !p.isPending && (p.status === 'Completed' || p.status === 'Paid');
+
 const countDistinctWorkers = (items = []) =>
     new Set(items.map(i => String(i.employee_id ?? i.id))).size;
 
@@ -945,7 +959,91 @@ export default function PayrollIndex() {
         refetchOnWindowFocus: true,
     });
 
-    const isLoading = isLoadingPayrolls || isLoadingEmployees;
+    // Attendance + approved paid leave for the selected month, loaded with a handful of requests
+    // (one leave list + a few attendance pages, NOT one per employee, which tripped the server's
+    // rate limit). Only used to decide which employees still need a Pending row. If the lookup fails or looks unusable, it fails open: everyone
+    // stays in Pending exactly as before, so the page can never break or hide people by mistake.
+    const activityMonth = useMemo(() => {
+        const y = currentYear ? parseInt(currentYear, 10) : currentYearNum;
+        const m = currentMonth ? parseInt(currentMonth, 10) : (new Date().getMonth() + 1);
+        const start = dayjs(`${y}-${String(m).padStart(2, '0')}-01`);
+        return {
+            from: start.format('YYYY-MM-DD'),
+            to: start.endOf('month').format('YYYY-MM-DD'),
+            // Pending rows only exist for the current month, so skip the lookup for past months.
+            isCurrentMonth: y === currentYearNum && m === (new Date().getMonth() + 1),
+        };
+    }, [currentMonth, currentYear, currentYearNum]);
+
+    const { data: activityData, isLoading: isLoadingActivity } = useQuery({
+        queryKey: ['adminPayrollActivity', activityMonth.from, activityMonth.to],
+        enabled: activityMonth.isCurrentMonth,
+        retry: false,
+        queryFn: async ({ signal }) => {
+            const { from, to } = activityMonth;
+            const LIMIT = 250; // the backend's maximum page size
+            const MAX_PAGES = 40;
+            const byEmployee = {};
+            let usableRows = 0;
+
+            try {
+                // One request for everyone's leaves; keep Approved + paid ones overlapping this month.
+                // If it fails we can't tell who is on paid leave, so the whole lookup is unavailable
+                // (everyone stays in Pending) instead of hiding people who may be owed leave pay.
+                const leaveRes = await fetchWithAuth('/api/leaves', { signal });
+                const leaveBody = await leaveRes.json();
+                if (!leaveRes.ok || !Array.isArray(leaveBody)) return { available: false, byEmployee: {} };
+
+                leaveBody.forEach(l => {
+                    if (!l?.employee_id || l.status !== 'Approved' || !l.is_paid) return;
+                    const start = String(l.start_date || '').substring(0, 10);
+                    const end = String(l.end_date || l.start_date || '').substring(0, 10);
+                    if (!start || start > to || end < from) return;
+                    (byEmployee[String(l.employee_id)] ??= { workedDates: [], leaveRanges: [] })
+                        .leaveRanges.push({ start, end });
+                });
+
+                for (let page = 1; page <= MAX_PAGES; page++) {
+                    const res = await fetchWithAuth(
+                        `/api/attendance?start_date=${from}&end_date=${to}&limit=${LIMIT}&page=${page}`,
+                        { signal }
+                    );
+                    const body = await res.json();
+                    if (!res.ok || !Array.isArray(body.data)) return { available: false, byEmployee: {} };
+
+                    body.data.forEach(row => {
+                        const empId = row?.employee_id ?? row?.employees?.id;
+                        if (empId === undefined || empId === null) return;
+                        usableRows++;
+                        // Same rule as the process page: only a completed time-in/time-out log counts.
+                        if (!row.time_in || !row.time_out) return;
+                        const day = String(row.date || row.time_in).substring(0, 10);
+                        if (!day) return;
+                        const key = String(empId);
+                        (byEmployee[key] ??= { workedDates: [], leaveRanges: [] }).workedDates.push(day);
+                    });
+
+                    const totalPages = Number.isInteger(body.meta?.totalPages) ? body.meta.totalPages : 1;
+                    if (page >= totalPages) {
+                        // Nothing usable for the whole month: the endpoint may not support
+                        // "all employees", so don't trust it (fail open).
+                        return { available: usableRows > 0, byEmployee };
+                    }
+                }
+                // More pages than we are willing to load: incomplete data would hide real workers.
+                return { available: false, byEmployee: {} };
+            } catch (err) {
+                if (signal?.aborted) throw err;
+                return { available: false, byEmployee: {} };
+            }
+        },
+        staleTime: 60_000,
+        gcTime: 600_000,
+        refetchOnMount: true,
+        refetchOnWindowFocus: true,
+    });
+
+    const isLoading = isLoadingPayrolls || isLoadingEmployees || isLoadingActivity;
     const listError = payrollsError || employeesError;
 
     const cycleBounds = useMemo(() => {
@@ -1033,7 +1131,12 @@ export default function PayrollIndex() {
         const pendingEntries = employees
             .filter(emp => !isExcludedStatus(emp))
             .flatMap(emp => {
-                const openWeeks = filterUnpaidWeeks(pendingWeeks, employeePeriods.get(String(emp.id)));
+                const unpaidWeeks = filterUnpaidWeeks(pendingWeeks, employeePeriods.get(String(emp.id)));
+                // Only hide no-attendance weeks when the attendance lookup actually worked.
+                const empActivity = activityData?.byEmployee?.[String(emp.id)];
+                const openWeeks = activityData?.available
+                    ? unpaidWeeks.filter(week => hasActivityInWeek(week, empActivity))
+                    : unpaidWeeks;
                 if (openWeeks.length === 0) return [];
 
                 const mockPayroll = { employees: emp };
@@ -1078,7 +1181,7 @@ export default function PayrollIndex() {
             });
 
         return [...enrichedActual, ...pendingEntries];
-    }, [payrolls, employees, cycleBounds, isActiveCycle]);
+    }, [payrolls, employees, cycleBounds, isActiveCycle, activityData]);
 
     const departments = useMemo(() => {
         const depts = new Set();
@@ -1211,7 +1314,7 @@ export default function PayrollIndex() {
     const sortedPayrolls = useMemo(() => {
         const getTierScores = (p) => {
             const isGroup = isFactoryDept(p._dept) || Boolean(p._line);
-            const isPaid = !p.isPending && (p.status === 'Completed' || p.status === 'Paid');
+            const isPaid = isPaidRecord(p);
             const groupScore = isGroup ? 0 : 1;
             const statusScore = isPaid ? 0 : 1;
             return { isGroup, isPaid, tier: groupScore * 2 + statusScore };
@@ -1277,7 +1380,7 @@ export default function PayrollIndex() {
 
         for (let i = 0; i < statusAgnosticPayrolls.length; i++) {
             const p = statusAgnosticPayrolls[i];
-            if (p.isPending) {
+            if (!isPaidRecord(p)) {
                 pendingCount++;
             } else {
                 completedCount++;
@@ -1341,7 +1444,7 @@ export default function PayrollIndex() {
                 }
                 const grp = factoryGroupsMap[groupId];
                 grp.items.push(payroll);
-                if (payroll.isPending) {
+                if (!isPaidRecord(payroll)) {
                     grp.pendingCount++;
                 } else {
                     grp.completedCount++;
@@ -1384,7 +1487,7 @@ export default function PayrollIndex() {
 
         regularItems.forEach(item => {
             const p = item.data;
-            const isPaid = !p.isPending && (p.status === 'Completed' || p.status === 'Paid');
+            const isPaid = isPaidRecord(p);
             if (isPaid) {
                 regularPaidItems.push(item);
             } else {
