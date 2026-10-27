@@ -175,11 +175,12 @@ Respond with strictly valid JSON:
         }
 
         const parsed = safeParseJson(rawText, null);
-        if (!parsed) {
+        if (!parsed || typeof parsed.is_real_person !== 'boolean' ||
+            !Number.isFinite(parsed.confidence) || parsed.confidence < 0 || parsed.confidence > 1) {
           return {
             passed: false,
             confidence: 0,
-            reason: 'Forensic biometric AI output unparseable (fail-closed security enforced)',
+            reason: 'Biometric AI returned an invalid verification result. Please retry.',
             error: true
           };
         }
@@ -266,7 +267,11 @@ Respond with strictly valid JSON:
         }
 
         const parsed = safeParseJson(rawText, null);
-        if (!parsed) {
+        if (!parsed || typeof parsed.is_same_person !== 'boolean' || typeof parsed.is_live_person !== 'boolean' ||
+            !Number.isFinite(parsed.match_confidence) || parsed.match_confidence < 0 || parsed.match_confidence > 1 ||
+            !Number.isFinite(parsed.liveness_confidence) || parsed.liveness_confidence < 0 || parsed.liveness_confidence > 1 ||
+            !Number.isFinite(parsed.similarity_score_percent) || parsed.similarity_score_percent < 0 || parsed.similarity_score_percent > 100 ||
+            !['VERIFIED_MATCH', 'IDENTITY_MISMATCH', 'SUSPECTED_SPOOF'].includes(parsed.verdict)) {
           return {
             passed: false,
             is_same_person: false,
@@ -275,7 +280,7 @@ Respond with strictly valid JSON:
             liveness_confidence: 0,
             similarity_score_percent: 0,
             verdict: 'FORENSIC_PARSE_ERROR',
-            reason: 'Biometric AI returned unparseable output (fail-closed security enforced)',
+            reason: 'Biometric AI returned an invalid identity result. Please retry.',
             error: true
           };
         }

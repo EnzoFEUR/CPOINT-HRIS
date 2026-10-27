@@ -204,8 +204,9 @@ export const verifyIdentityToken = async (req, res, next) => {
         );
 
         const isAllowedExitReview = req.method === 'POST' && /^\/api\/employment-exit\/[a-f0-9-]{36}\/review-request$/.test(path);
+        const isAllowedMediaRead = req.method === 'POST' && path === '/api/storage/media-urls';
         const isAllowedNotificationReadState = req.method === 'PUT' && path === '/api/notifications/read-all';
-        if (!isLoginBootstrap && !isAllowedArchiveRead && !isAllowedNoticeAcknowledge && !isAllowedExitReview && !isAllowedNotificationReadState) {
+        if (!isLoginBootstrap && !isAllowedArchiveRead && !isAllowedNoticeAcknowledge && !isAllowedExitReview && !isAllowedMediaRead && !isAllowedNotificationReadState) {
             return res.status(403).json({ 
                 error: 'ACCESS REVOKED: Personnel account has been separated. Operational write actions are disabled under DOLE retention policy.' 
             });

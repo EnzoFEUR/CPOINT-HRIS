@@ -1,3 +1,4 @@
+import ProtectedImage from '../../../components/ProtectedImage';
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
@@ -448,13 +449,13 @@ const Index = () => {
                                                     )}
                                                     {log.time_in_photo && (
                                                         <button
-                                                            onClick={(e) => { e.stopPropagation(); openImageModal(`https://lzqshktnrvtlattdiwxf.supabase.co/storage/v1/object/public/public-bucket/${log.time_in_photo}`, 'Time In'); }}
+                                                            onClick={(e) => { e.stopPropagation(); openImageModal(`${log.time_in_photo}`, 'Time In'); }}
                                                             onContextMenu={(e) => e.preventDefault()}
                                                             className="relative w-8 h-8 rounded-md overflow-hidden border border-slate-200 shadow-2xs hover:border-accent transition-colors duration-100 cursor-zoom-in select-none"
                                                             title="Inspect punch verification proof"
                                                         >
-                                                            <img
-                                                                src={`https://lzqshktnrvtlattdiwxf.supabase.co/storage/v1/object/public/public-bucket/${log.time_in_photo}`}
+                                                            <ProtectedImage
+                                                                src={`${log.time_in_photo}`}
                                                                 onContextMenu={(e) => e.preventDefault()}
                                                                 draggable={false}
                                                                 className="w-full h-full object-cover pointer-events-none select-none"
@@ -485,13 +486,13 @@ const Index = () => {
                                                     )}
                                                     {log.time_out_photo && (
                                                         <button
-                                                            onClick={(e) => { e.stopPropagation(); openImageModal(`https://lzqshktnrvtlattdiwxf.supabase.co/storage/v1/object/public/public-bucket/${log.time_out_photo}`, 'Time Out'); }}
+                                                            onClick={(e) => { e.stopPropagation(); openImageModal(`${log.time_out_photo}`, 'Time Out'); }}
                                                             onContextMenu={(e) => e.preventDefault()}
                                                             className="relative w-8 h-8 rounded-md overflow-hidden border border-slate-200 shadow-2xs hover:border-accent transition-colors duration-100 cursor-zoom-in select-none"
                                                             title="Inspect punch verification proof"
                                                         >
-                                                            <img
-                                                                src={`https://lzqshktnrvtlattdiwxf.supabase.co/storage/v1/object/public/public-bucket/${log.time_out_photo}`}
+                                                            <ProtectedImage
+                                                                src={`${log.time_out_photo}`}
                                                                 onContextMenu={(e) => e.preventDefault()}
                                                                 draggable={false}
                                                                 className="w-full h-full object-cover pointer-events-none select-none"
@@ -593,7 +594,7 @@ const Index = () => {
                             onContextMenu={(e) => e.preventDefault()}
                             className="bg-slate-900/5 rounded-md overflow-hidden flex justify-center min-h-[200px] border border-slate-200 select-none"
                         >
-                            <img
+                            <ProtectedImage
                                 key={selectedImage}
                                 src={selectedImage}
                                 onContextMenu={(e) => e.preventDefault()}

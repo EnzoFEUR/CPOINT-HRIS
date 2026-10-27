@@ -27,6 +27,7 @@ import totpRoutes from './routes/totp.js';
 import authSecurityRoutes from './routes/authSecurity.js';
 import productionGroupRoutes from './routes/productionGroups.js';
 import documentRouter from './routes/document.js';
+import storageRoutes from './routes/storage.js';
 import { mountOfflineAttendance } from './routes/mountOfflineAttendance.js';
 
 // Middleware & Utilities
@@ -82,6 +83,7 @@ const verifiedUserLimiter = apiRateLimiter({ windowMs: API_RATE_POLICY.windowMs,
 const verifyToken = (req, res, next) => verifyIdentityToken(req, res, () => verifiedUserLimiter(req, res, next));
 await mountOfflineAttendance(app, verifyToken);
 app.use('/api/documents', verifyToken, documentRouter);
+app.use('/api/storage', verifyToken, storageRoutes);
 app.use('/api/employees', verifyToken, checkVerifiedManagerOrOwnership, employeeRoutes);
 app.use('/api/attendance', verifyToken, attendanceRoutes);
 app.use('/api/payroll', verifyToken, checkVerifiedManagerOrOwnership, payrollRoutes);

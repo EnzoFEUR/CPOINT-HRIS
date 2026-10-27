@@ -1,3 +1,4 @@
+import ProtectedImage from '../../../components/ProtectedImage';
 import { useEffect, useMemo, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
@@ -29,7 +30,7 @@ function getAvatarUrl(emp) {
     emp.biometric_baseline_path ||
     (emp.company_id && emp.id ? `face-baselines/${emp.company_id}/${emp.id}.jpg` : null);
   if (!photoPath) return null;
-  return `https://lzqshktnrvtlattdiwxf.supabase.co/storage/v1/object/public/public-bucket/${photoPath.replace(/^\/+/, '')}`;
+  return photoPath.replace(/^\/+/, '');
 }
 
 function isTerminatedStatus(emp) {
@@ -335,7 +336,7 @@ export default function ArchivedEmployeeProfile() {
               const avatarUrl = getAvatarUrl(employee);
               const inactive = isTerminatedStatus(employee);
               return avatarUrl ? (
-                <img
+                <ProtectedImage
                   src={avatarUrl}
                   alt={`${employee.first_name} ${employee.last_name}`}
                   className={`w-16 h-16 rounded-md object-cover ring-2 ring-white/10 shadow-2xs shrink-0 ${

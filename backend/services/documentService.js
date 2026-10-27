@@ -7,6 +7,7 @@ export const DOCUMENT_MAX_BYTES = 10 * 1024 * 1024;
 export const DOCUMENT_URL_TTL = 900;
 const UUID = /^[a-f\d]{8}(?:-[a-f\d]{4}){3}-[a-f\d]{12}$/i;
 const FILE_TYPES = new Set(['pdf', 'doc', 'docx', 'xls', 'xlsx', 'txt', 'csv', 'jpg', 'jpeg', 'png', 'gif', 'webp', 'heic', 'heif', 'tif', 'tiff']);
+const DOCUMENT_STORAGE_FOLDERS = Object.freeze({ Contract: 'employment-contracts', 'Government ID': 'government-identification', Clearance: 'clearances', Certificate: 'certificates', Performance: 'performance-records' });
 const broadcasts = new WeakMap();
 
 export class DocumentError extends Error {
@@ -21,6 +22,12 @@ export function requireDocumentAdmin(req, res, next) {
 export function assertUuid(value, label = 'ID') {
     if (typeof value !== 'string' || !UUID.test(value)) throw new DocumentError(400, `${label} must be a valid UUID.`);
     return value.toLowerCase();
+}
+export function buildDocumentStoragePath(employeeId, category, extension) {
+    const id = assertUuid(employeeId, 'Employee ID');
+    if (!FILE_TYPES.has(extension)) throw new DocumentError(400, 'Unsupported document type.');
+    const folder = Object.hasOwn(DOCUMENT_STORAGE_FOLDERS, category) ? DOCUMENT_STORAGE_FOLDERS[category] : 'other-personnel-documents';
+    return `${id}/${folder}/${new Date().getUTCFullYear()}/${randomUUID()}.${extension}`;
 }
 export function assertDocumentId(value) {
     if (typeof value !== 'string' || (!UUID.test(value) && !/^[1-9]\d{0,19}$/.test(value))) throw new DocumentError(400, 'Document ID must be a UUID or positive integer.');
@@ -183,7 +190,7 @@ export async function uploadDocument(client, user, body, file, { notify = create
         if (bucketInfo.public === true) throw new DocumentError(503, 'The documents bucket is public. In Supabase Storage, change documents to Private, then retry the import.', 'DOCUMENT_VAULT_PUBLIC');
         if (bucketInfo.public !== false) throw new DocumentError(503, 'Document storage returned incomplete privacy settings. Check the documents bucket configuration.', 'DOCUMENT_VAULT_UNAVAILABLE');
     }
-    const filePath = `${metadata.employee_id}/${randomUUID()}.${file.originalname.split('.').pop().toLowerCase()}`;
+    const filePath = buildDocumentStoragePath(metadata.employee_id, metadata.category, file.originalname.split('.').pop().toLowerCase());
     const bucket = client.storage.from('documents');
     const { error: storageError } = await bucket.upload(filePath, file.buffer, { contentType: file.mimetype || 'application/octet-stream', upsert: false });
     if (storageError) throw storageError;

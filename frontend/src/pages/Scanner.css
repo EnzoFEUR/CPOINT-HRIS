@@ -9,11 +9,13 @@
         background: #000 !important;
       }
       #qr-reader video {
-        width: 100% !important;
-        height: 100% !important;
-        object-fit: cover !important;
-        position: absolute !important;
-        inset: 0 !important;
+        width: auto !important;
+        height: auto !important;
+        max-width: 100% !important;
+        max-height: 100% !important;
+        object-fit: contain !important;
+        position: static !important;
+        flex: none !important;
       }
       #qr-reader__dashboard_section_csr, #qr-reader__dashboard_section_swaplink,
       #qr-reader__status_span, #qr-reader__header_message { display:none!important; }

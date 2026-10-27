@@ -1205,7 +1205,7 @@ export default function DisciplinaryIndex() {
                                                     employee={selectedEmployeeObj}
                                                     companyId={selectedEmployeeObj.company_id}
                                                     employeeId={selectedEmployeeObj.id}
-                                                    photoUrl={selectedEmployeeObj.biometric_baseline_path ? `https://lzqshktnrvtlattdiwxf.supabase.co/storage/v1/object/public/public-bucket/${selectedEmployeeObj.biometric_baseline_path}` : null}
+                                                    photoUrl={selectedEmployeeObj.biometric_baseline_path ? selectedEmployeeObj.biometric_baseline_path : null}
                                                     avatarUrl={selectedEmployeeObj.avatar_url}
                                                     name={`${selectedEmployeeObj.first_name} ${selectedEmployeeObj.last_name}`}
                                                     size="h-8 w-8"
@@ -1319,7 +1319,7 @@ export default function DisciplinaryIndex() {
                                                                     employee={emp}
                                                                     companyId={emp.company_id}
                                                                     employeeId={emp.id}
-                                                                    photoUrl={emp.biometric_baseline_path ? `https://lzqshktnrvtlattdiwxf.supabase.co/storage/v1/object/public/public-bucket/${emp.biometric_baseline_path}` : null}
+                                                                    photoUrl={emp.biometric_baseline_path ? emp.biometric_baseline_path : null}
                                                                     avatarUrl={emp.avatar_url}
                                                                     name={`${emp.first_name} ${emp.last_name}`}
                                                                     size="h-8 w-8"
@@ -1380,7 +1380,7 @@ export default function DisciplinaryIndex() {
                                         employeeId={selectedEmployeeObj.id}
                                         name={`${selectedEmployeeObj.first_name} ${selectedEmployeeObj.last_name}`}
                                         avatarUrl={selectedEmployeeObj.avatar_url}
-                                        photoUrl={selectedEmployeeObj.biometric_baseline_path ? `https://lzqshktnrvtlattdiwxf.supabase.co/storage/v1/object/public/public-bucket/${selectedEmployeeObj.biometric_baseline_path}` : null}
+                                        photoUrl={selectedEmployeeObj.biometric_baseline_path ? selectedEmployeeObj.biometric_baseline_path : null}
                                         department={selectedEmployeeObj.department}
                                         size="h-10 w-10"
                                         rounded="rounded-md"

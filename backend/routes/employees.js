@@ -15,6 +15,7 @@ import { isLeaveDate } from '../../shared/leaveCredits.mjs';
 import { getManilaWorkDate } from '../../shared/workPolicy.mjs';
 import { parseListQuery, employeeListRecord, employeeDirectoryPage, readAllRows } from '../utils/listViews.js';
 import { readDocumentPendingCounts } from '../utils/documentPendingCounts.js';
+import { listEmployeePhotoFiles } from '../utils/employeePhotoFiles.js';
 
 import { isVerifiedCreditManager, isMissingCreditSchema, sendCreditError, refreshLeaveCredits } from './leaves.js';
 
@@ -1816,13 +1817,9 @@ router.post('/:id/reset-biometrics', async (req, res) => {
             return res.status(404).json({ success: false, error: 'Employee not found.' });
         }
 
-        // 1. Shred old baseline file from public-bucket
-        if (emp.biometric_baseline_path) {
-            await supabase.storage.from('public-bucket').remove([emp.biometric_baseline_path]).catch(() => {});
-        }
-        if (emp.company_id) {
-            await supabase.storage.from('public-bucket').remove([`face-baselines/${emp.company_id}/${emp.id}.jpg`]).catch(() => {});
-        }
+        // A folder sweep could delete a concurrent enrollment's newly uploaded image.
+        const photoBucket = supabase.storage.from('public-bucket');
+        const oldBaselines = emp.biometric_baseline_path ? [emp.biometric_baseline_path] : [];
 
         // 2. Reset biometric columns
         const { data: updatedEmp, error: updateErr } = await supabase
@@ -1839,17 +1836,28 @@ router.post('/:id/reset-biometrics', async (req, res) => {
             .single();
 
         if (updateErr) throw updateErr;
+        invalidateAuthUser(targetId);
+        let cleanupPending = false;
+        try {
+            if (oldBaselines.length) {
+                const { error: cleanupError } = await photoBucket.remove(oldBaselines);
+                if (cleanupError) throw cleanupError;
+            }
+        } catch (error) {
+            cleanupPending = true;
+            console.warn('[BIOMETRICS RESET] Image cleanup needs review:', { employee_id: targetId, code: error?.code || 'UNKNOWN' });
+        }
 
         // 3. Log to audit trail
         const { createAuditLog } = await import('./auditLogs.js');
         await createAuditLog({
             log_name: 'employees',
-            description: `Reset biometric profile for ${emp.first_name} ${emp.last_name} (${emp.company_id || targetId}). Shredded historical facial baseline vectors.`,
+            description: `Reset biometric profile for ${emp.first_name} ${emp.last_name} (${emp.company_id || targetId}). ${cleanupPending ? 'Previous baseline cleanup requires review.' : 'Previously referenced baseline removed.'}`,
             subject_type: 'App\\Models\\Employee',
             subject_id: targetId,
             event: 'BIOMETRICS_RESET',
             causer_id: req.user?.id,
-            properties: { shredded_path: emp.biometric_baseline_path }
+            properties: { baseline_paths: oldBaselines, cleanup_pending: cleanupPending }
         }).catch(() => {});
 
         // Realtime broadcast to Kiosks, Admin, and Employee channels
@@ -1885,7 +1893,8 @@ router.post('/:id/reset-biometrics', async (req, res) => {
 
         res.json({
             success: true,
-            message: `Biometric profile reset successfully. Personnel can now perform a fresh registration in the Biometric Setup portal.`,
+            message: cleanupPending ? 'Biometric profile reset. Previous baseline cleanup requires administrator review.' : 'Biometric profile reset successfully. Personnel can now perform a fresh registration in the Biometric Setup portal.',
+            cleanup_pending: cleanupPending,
             data: updatedEmp
         });
     } catch (err) {
@@ -1907,7 +1916,7 @@ router.delete('/:id', async (req, res) => {
         // 1. Fetch employee metadata prior to deletion for storage and audit cleanup
         const { data: empData, error: employeeError } = await supabase
             .from('employees')
-            .select('id, company_id, first_name, last_name, auth_user_id')
+            .select('id, company_id, first_name, last_name, auth_user_id, biometric_baseline_path, avatar_url')
             .eq('id', empId)
             .maybeSingle();
         if (employeeError) throw employeeError;
@@ -1929,10 +1938,7 @@ router.delete('/:id', async (req, res) => {
             });
         }
 
-        if (empData?.company_id) {
-            photosToShred.push(`face-baselines/${empData.company_id}/${empId}.jpg`);
-        }
-        photosToShred.push(`face-baselines/${empId}/${empId}.jpg`);
+        photosToShred.push(...await listEmployeePhotoFiles(supabase.storage.from('public-bucket'), empData));
 
         // 3. Fetch uploaded documents from employee_documents and vault
         stage = 'document_lookup';

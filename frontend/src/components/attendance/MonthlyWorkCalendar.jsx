@@ -1,3 +1,4 @@
+import ProtectedImage from '../ProtectedImage';
 import { getManilaWorkDate } from '../../../../shared/workPolicy.mjs';
 import { getAttendanceMonthRange, reconcileMonthlyAttendance } from '../../../../shared/monthlyAttendance.mjs';
 import { useState, useMemo, useEffect, useRef } from 'react';
@@ -1087,8 +1088,8 @@ function EmployeeMonthlyWorkCalendar({ employeeId, className = '', isEmployeeVie
                                         Biometric Kiosk Time-In Proof
                                     </span>
                                     <div className="rounded-md overflow-hidden border border-slate-200 bg-slate-100 max-h-48 flex items-center justify-center">
-                                        <img
-                                            src={`https://lzqshktnrvtlattdiwxf.supabase.co/storage/v1/object/public/public-bucket/${selectedDayDetail.time_in_photo}`}
+                                        <ProtectedImage
+                                            src={selectedDayDetail.time_in_photo}
                                             alt="Biometric punch proof"
                                             className="w-full h-full object-cover max-h-48"
                                             onError={(e) => {

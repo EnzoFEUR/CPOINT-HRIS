@@ -371,41 +371,57 @@ router.patch('/', verifyToken, async (req, res) => {
 router.post('/avatar', verifyToken, async (req, res) => {
     try {
         const { image_base64 } = req.body;
-        if (!image_base64) {
-            return res.status(400).json({ error: 'image_base64 is required' });
+        if (typeof image_base64 !== 'string' || image_base64.length > 7_000_000) {
+            return res.status(400).json({ error: 'A JPEG, PNG or WebP image up to 5 MB is required.' });
         }
+        const image = image_base64.match(/^data:image\/(jpeg|jpg|png|webp);base64,([A-Za-z0-9+/]+={0,2})$/);
+        if (!image) return res.status(400).json({ error: 'Invalid image format.' });
+        const buffer = Buffer.from(image[2], 'base64');
+        const mime = image[1] === 'jpg' ? 'jpeg' : image[1];
+        const validSignature = mime === 'jpeg' ? buffer.subarray(0, 3).equals(Buffer.from([255, 216, 255]))
+            : mime === 'png' ? buffer.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))
+            : buffer.toString('ascii', 0, 4) === 'RIFF' && buffer.toString('ascii', 8, 12) === 'WEBP';
+        if (!validSignature || buffer.length > 5 * 1024 * 1024) return res.status(400).json({ error: 'Invalid or oversized image.' });
 
         // Check if user is terminated or archived
-        const { data: empCheck } = await supabase
+        const { data: empCheck, error: employeeError } = await supabase
             .from('employees')
             .select('id, status, is_active, archived_at')
             .eq('id', req.user.id)
             .single();
+        if (employeeError) throw employeeError;
+        if (!empCheck) return res.status(404).json({ error: 'Employee not found.' });
 
         if (empCheck && (empCheck.status === 'inactive' || empCheck.status === 'terminated' || empCheck.is_active === false || empCheck.archived_at)) {
             return res.status(403).json({ error: 'Profile modifications are disabled for separated/terminated accounts.' });
         }
 
-        const base64Data = image_base64.replace(/^data:image\/\w+;base64,/, '');
-        const buffer = Buffer.from(base64Data, 'base64');
         const companyId = req.user.company_id || 'CP-MAIN';
-        const filePath = `face-baselines/${companyId}/${req.user.id}.jpg`;
+        const filePath = `avatars/${companyId}/${req.user.id}-${crypto.randomUUID()}.${mime === 'jpeg' ? 'jpg' : mime}`;
 
         const { error: uploadError } = await supabase.storage
             .from('public-bucket')
             .upload(filePath, buffer, {
-                contentType: 'image/jpeg',
-                upsert: true,
+                contentType: `image/${mime}`,
+                upsert: false,
             });
 
         if (uploadError) throw uploadError;
 
-        const publicUrl = `https://lzqshktnrvtlattdiwxf.supabase.co/storage/v1/object/public/public-bucket/${filePath}?t=${Date.now()}`;
+        const { data: { publicUrl } } = supabase.storage.from('public-bucket').getPublicUrl(filePath);
 
-        await supabase
+        const { error: updateError } = await supabase
             .from('employees')
-            .update({ avatar_url: publicUrl, has_registered_biometrics: true })
-            .eq('id', req.user.id);
+            .update({ avatar_url: publicUrl })
+            .eq('id', req.user.id)
+            .select('id')
+            .single();
+        if (updateError) {
+            await supabase.storage.from('public-bucket').remove([filePath]).catch(() => {});
+            throw updateError;
+        }
+        invalidateAuthUser(req.user.id);
+        invalidateCache(['/api/profile', '/api/employees', '/api/dashboard']);
 
         res.json({ success: true, avatar_url: publicUrl });
     } catch (err) {

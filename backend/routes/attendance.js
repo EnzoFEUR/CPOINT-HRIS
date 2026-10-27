@@ -1,4 +1,5 @@
 import express from 'express';
+import { randomUUID } from 'node:crypto';
 import { getActiveMedicalGrace, hasRegisteredFace } from '../../shared/medicalGrace.mjs';
 import { postgrestLikeValue } from '../middleware/requestValidation.js';
 import { supabase } from '../supabaseClient.js';
@@ -151,19 +152,13 @@ const getGracePeriodDeadline = () => {
 // Verify face match and liveness
 const performBiometricVerification = async (reqId, base64Data, employee = null, isEnrollment = false, livenessData = null) => {
   // Validate client liveness challenge
-  if (!isEnrollment && livenessData) {
-    const { challenge_passed, challenge_type, client_timestamp, depth_variance, blink_count } = livenessData;
-
-    // Head turn challenge
-    if (!challenge_passed) {
-      logger.security(reqId, 'Biometric spoofing rejected: Active challenge failed', { livenessData });
-      return {
-        passed: false,
-        confidence: 0,
-        reason: 'Active 3D head-pose challenge incomplete or failed. Re-alignment required.',
-        spoof_type: 'FAILED_HEAD_CHALLENGE'
-      };
+  if (!isEnrollment) {
+    if (!livenessData || typeof livenessData !== 'object' ||
+        livenessData.challenge_passed !== true || !['TURN_LEFT', 'TURN_RIGHT'].includes(livenessData.challenge_type) ||
+        !Number.isFinite(livenessData.depth_variance) || !Number.isInteger(livenessData.blink_count)) {
+      return { passed: false, confidence: 0, reason: 'Incomplete or invalid liveness challenge. Please scan again.', spoof_type: 'INVALID_CHALLENGE' };
     }
+    const { client_timestamp, depth_variance, blink_count } = livenessData;
 
     // Payload freshness check (within 60s)
     const clientTime = new Date(client_timestamp).getTime();
@@ -205,28 +200,28 @@ const performBiometricVerification = async (reqId, base64Data, employee = null, 
     const cameraBuffer = Buffer.from(base64Data.replace(/^data:image\/\w+;base64,/, ''), 'base64');
 
     // Dual-image verification against baseline photo
-    if (!isEnrollment && employee?.biometric_baseline_path) {
-      try {
-        const { data: baselineBlob, error: dlErr } = await supabase.storage
-          .from(CONFIG.STORAGE.BUCKET)
-          .download(employee.biometric_baseline_path);
-
-        if (!dlErr && baselineBlob) {
-          const baselineBuffer = Buffer.from(await baselineBlob.arrayBuffer());
-          const dualResult = await Brain.Biometrics.verifyIdentityMatch(cameraBuffer, baselineBuffer);
-          logger.info(reqId, 'Dual-image biometric match evaluated', {
-            employee_id: employee.id,
-            is_same_person: dualResult.is_same_person,
-            match_confidence: dualResult.match_confidence,
-            liveness: dualResult.is_live_person,
-            similarity: dualResult.similarity_score_percent,
-            verdict: dualResult.verdict
-          });
-          return dualResult;
-        }
-      } catch (baselineErr) {
-        logger.warn(reqId, 'Baseline download note, falling back to single-image liveness', { error: baselineErr.message });
+    if (!isEnrollment) {
+      if (!employee?.biometric_baseline_path) {
+        return { passed: false, confidence: 0, reason: 'Registered face baseline is unavailable. Contact HR before scanning again.', error: true };
       }
+      const { data: baselineBlob, error: dlErr } = await supabase.storage
+        .from(CONFIG.STORAGE.BUCKET)
+        .download(employee.biometric_baseline_path);
+
+      if (!dlErr && baselineBlob) {
+        const baselineBuffer = Buffer.from(await baselineBlob.arrayBuffer());
+        const dualResult = await Brain.Biometrics.verifyIdentityMatch(cameraBuffer, baselineBuffer);
+        logger.info(reqId, 'Dual-image biometric match evaluated', {
+          employee_id: employee.id,
+          is_same_person: dualResult.is_same_person,
+          match_confidence: dualResult.match_confidence,
+          liveness: dualResult.is_live_person,
+          similarity: dualResult.similarity_score_percent,
+          verdict: dualResult.verdict
+        });
+        return dualResult;
+      }
+      return { passed: false, confidence: 0, reason: 'Registered face baseline could not be loaded. Please retry.', error: true };
     }
 
     // Single-image liveness verification
@@ -1246,7 +1241,7 @@ router.post(
     // Verify Employee
     const { data: employee, error: empErr } = await supabase
       .from('employees')
-      .select('id, company_id, is_active, role, birth_date, address, phone, emergency_contact_name')
+      .select('id, auth_user_id, company_id, is_active, role, birth_date, address, phone, emergency_contact_name')
       .eq('id', employee_id)
       .single();
 
@@ -1311,13 +1306,14 @@ router.post(
     // Store Baseline
     const safeCompanyFolder = employee.company_id || (company_id !== employee_id ? company_id : 'CP-MAIN');
     const buffer = Buffer.from(base64Data, 'base64');
-    const fileName = `${CONFIG.STORAGE.BASELINE_PREFIX}/${safeCompanyFolder}/${employee_id}.jpg`;
+    // A new path prevents stale cached faces and preserves the old baseline if the DB write fails.
+    const fileName = `${CONFIG.STORAGE.BASELINE_PREFIX}/${safeCompanyFolder}/${employee_id}-${randomUUID()}.jpg`;
 
     const { error: uploadErr } = await supabase.storage
       .from(CONFIG.STORAGE.BUCKET)
       .upload(fileName, buffer, {
         contentType: 'image/jpeg',
-        upsert: true,
+        upsert: false,
         cacheControl: '31536000', // 1 year immutable
       });
 
@@ -1332,17 +1328,22 @@ router.post(
         biometric_registered_at: new Date().toISOString(),
         biometric_liveness_confidence: livenessResult.confidence || 0.95
       })
-      .eq('id', employee_id);
+      .eq('id', employee_id)
+      .select('id')
+      .single();
 
     if (dbErr) {
       logger.error(reqId, 'Failed to update database with biometric status', dbErr);
+      await supabase.storage.from(CONFIG.STORAGE.BUCKET).remove([fileName]).catch(() => {});
+      throw new AppError('Unable to save biometric registration. Please retry.', 503, 'BIOMETRIC_SAVE_FAILED');
     }
 
     // Invalidate caches so UI immediately sees updated biometric registration
-    invalidateCache([`/api/employees/${employee_id}`, '/api/employees', '/api/dashboard']);
+    invalidateAuthUser(employee_id);
+    invalidateCache([`/api/employees/${employee_id}`, '/api/employees', '/api/dashboard', '/api/profile']);
 
     // Update auth user metadata
-    const { error: metaErr } = await supabase.auth.admin.updateUserById(employee_id, {
+    const { error: metaErr } = await supabase.auth.admin.updateUserById(employee.auth_user_id || employee_id, {
       user_metadata: { has_registered_biometrics: true }
     });
     if (metaErr) {

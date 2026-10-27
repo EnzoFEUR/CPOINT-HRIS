@@ -748,7 +748,7 @@ const EmployeeDashboard = () => {
         : user?.biometric_baseline_path
             ? (user.biometric_baseline_path.startsWith('http')
                 ? user.biometric_baseline_path
-                : `https://lzqshktnrvtlattdiwxf.supabase.co/storage/v1/object/public/public-bucket/${user.biometric_baseline_path.replace(/^\/+/, '')}`)
+                : user.biometric_baseline_path.replace(/^\/+/, ''))
             : null;
 
 

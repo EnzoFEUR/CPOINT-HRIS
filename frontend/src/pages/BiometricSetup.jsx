@@ -4,19 +4,13 @@ import { useNavigate, Navigate } from 'react-router-dom';
 import * as faceapi from 'face-api.js';
 import toast from 'react-hot-toast';
 import { fetchWithAuth } from '../utils/api';
-import { compressImage } from '../utils/imageCompress';
 import { requestHardwareCamera, stopHardwareStream } from '../utils/hardwareCamera';
+import { startVideoFrameLoop, copyVideoFrame } from '../utils/cameraFrames.mjs';
+import { loadFaceModels } from '../utils/faceModels';
 import { playBiometricSound as playSound } from '../utils/audio';
 import { isSecurity, isAdmin, isMedicalExempt } from '../routes/guards';
 import { needsProfileCompletion } from '../utils/userAccess.mjs';
 import { performLogout } from '../utils/authSession';
-
-// Primary CDN with high reliability and fallback
-const MODEL_SOURCES = [
-  'https://cdn.jsdelivr.net/gh/justadudewhohacks/face-api.js@master/weights/',
-  'https://raw.githubusercontent.com/justadudewhohacks/face-api.js/master/weights/',
-  '/models'
-];
 
 const ENV = {
   API_BASE: import.meta.env?.VITE_API_BASE || '/api',
@@ -233,6 +227,10 @@ export default function BiometricSetup() {
   const loopRef = useRef(null);
   const abortRef = useRef(null);
   const sessionTimerRef = useRef(null);
+  const cameraRequestRef = useRef(0);
+  const cameraPromiseRef = useRef(null);
+  const cameraStartingRef = useRef(false);
+  const [cameraStarting, setCameraStarting] = useState(false);
 
   const vault = useRef({
     processing: false,
@@ -244,56 +242,71 @@ export default function BiometricSetup() {
     phaseIdx: 0,
   }).current;
 
-  // Load models from CDN with immediate fallback
-  const loadModels = async () => {
-    for (const src of MODEL_SOURCES) {
-      try {
-        console.log('[AI] Loading neural models from:', src);
-        await Promise.all([
-          faceapi.nets.tinyFaceDetector.loadFromUri(src),
-          faceapi.nets.faceLandmark68Net.loadFromUri(src),
-          faceapi.nets.faceRecognitionNet.loadFromUri(src),
-        ]);
-        console.log('[AI] Neural models loaded successfully.');
-        return true;
-      } catch (err) {
-        console.warn('[AI] Failed loading from source:', src, err?.message);
-      }
-    }
-    throw new Error('All model sources failed to load.');
-  };
-
   // Camera boot with hardware ISP & focus controls
-  const startCameraStream = useCallback(async (facing = cameraFacing) => {
+  const startCameraStream = useCallback(async (facing = 'user') => {
+    const request = ++cameraRequestRef.current;
     if (streamRef.current) {
       stopHardwareStream(streamRef.current);
       streamRef.current = null;
     }
-    const stream = await requestHardwareCamera({ facingMode: facing, preferHighFps: true });
-    streamRef.current = stream;
-    if (videoRef.current) {
-      videoRef.current.srcObject = stream;
-      videoRef.current.setAttribute('playsinline', 'true');
-      videoRef.current.setAttribute('webkit-playsinline', 'true');
-      videoRef.current.play().catch(e => console.warn('[Video] Play error:', e));
+    if (cameraPromiseRef.current) await cameraPromiseRef.current.catch(() => {});
+    if (request !== cameraRequestRef.current) return null;
+    const opening = requestHardwareCamera({ facingMode: facing });
+    cameraPromiseRef.current = opening;
+    let stream;
+    try { stream = await opening; }
+    finally { if (cameraPromiseRef.current === opening) cameraPromiseRef.current = null; }
+    if (request !== cameraRequestRef.current || !videoRef.current) {
+      stopHardwareStream(stream);
+      return null;
     }
+    streamRef.current = stream;
+    const video = videoRef.current;
+    video.srcObject = stream;
+    video.setAttribute('playsinline', 'true');
+    video.setAttribute('webkit-playsinline', 'true');
+    try { await video.play(); }
+    catch (error) {
+      stopHardwareStream(stream);
+      if (streamRef.current === stream) { streamRef.current = null; video.srcObject = null; }
+      throw error;
+    }
+    if (request !== cameraRequestRef.current) {
+      stopHardwareStream(stream);
+      return null;
+    }
+    const actualFacing = stream.getVideoTracks?.()[0]?.getSettings?.().facingMode;
+    setCameraFacing(['user', 'environment'].includes(actualFacing) ? actualFacing : facing);
     return stream;
-  }, [cameraFacing]);
+  }, []);
 
   // Lens Switcher (Front Ã¢Å¸Â· Rear)
   const toggleCameraFacing = useCallback(async () => {
+    if (cameraStartingRef.current) return;
+    cameraStartingRef.current = true;
+    setCameraStarting(true);
     const nextFacing = cameraFacing === 'user' ? 'environment' : 'user';
-    setCameraFacing(nextFacing);
-    await startCameraStream(nextFacing);
-    toast.success(nextFacing === 'user' ? 'Front Camera Active' : 'Rear Camera Active', {
-      id: 'bio-flip',
-      duration: 1500,
-    });
+    try {
+      const stream = await startCameraStream(nextFacing);
+      if (!stream) return;
+      const actualFacing = stream.getVideoTracks?.()[0]?.getSettings?.().facingMode || nextFacing;
+      toast.success(actualFacing === 'user' ? 'Front Camera Active' : 'Rear Camera Active', {
+        id: 'bio-flip',
+        duration: 1500,
+      });
+    } catch {
+      toast.error('Camera could not switch. Check camera permissions and retry.');
+      dispatch({ type: 'SET_ERROR', payload: { message: 'Camera could not switch. Retry to reopen it.', code: 'CAMERA_SWITCH_FAILED' } });
+    } finally {
+      cameraStartingRef.current = false;
+      setCameraStarting(false);
+    }
   }, [cameraFacing, startCameraStream]);
 
   useEffect(() => {
     let mounted = true;
     let wakeLock = null;
+    const pendingCamera = cameraRequestRef;
 
     const boot = async () => {
       try {
@@ -313,7 +326,7 @@ export default function BiometricSetup() {
           } catch { /* The enrollment endpoint rechecks profile completion if this refresh fails. */ }
         }
 
-        await loadModels();
+        await loadFaceModels();
         if (!mounted) return;
         dispatch({ type: 'SET_MODELS_LOADED' });
         dispatch({ type: 'SET_STATUS', payload: 'Requesting optical sensor...' });
@@ -326,7 +339,7 @@ export default function BiometricSetup() {
         dispatch({ type: 'SET_STATUS', payload: 'Press Start Registration when ready' });
 
         if ('wakeLock' in navigator) {
-          navigator.wakeLock.request('screen').then(l => { wakeLock = l; }).catch(() => {});
+          navigator.wakeLock.request('screen').then(l => { if (mounted) wakeLock = l; else l.release().catch(() => {}); }).catch(() => {});
         }
       } catch (err) {
         console.error('[BOOT]', err);
@@ -342,23 +355,15 @@ export default function BiometricSetup() {
 
     return () => {
       mounted = false;
-      if (loopRef.current) clearInterval(loopRef.current);
+      pendingCamera.current++;
+      loopRef.current?.stop();
+      loopRef.current = null;
       stopHardwareStream(streamRef.current);
+      streamRef.current = null;
       if (abortRef.current) abortRef.current.abort();
       wakeLock?.release().catch(() => {});
     };
   }, [startCameraStream, user, navigate]);
-
-  const snapFrame = async () => {
-    const video = videoRef.current;
-    if (!video || !video.videoWidth) return null;
-    const c = document.createElement('canvas');
-    c.width = video.videoWidth;
-    c.height = video.videoHeight;
-    c.getContext('2d').drawImage(video, 0, 0);
-    const raw = c.toDataURL('image/jpeg', 0.90);
-    return await compressImage(raw, { maxWidth: 640, maxHeight: 640, quality: 0.75 });
-  };
 
   const validateAndSubmit = useCallback(async () => {
     const captures = state.captured;
@@ -452,33 +457,39 @@ export default function BiometricSetup() {
     const video = videoRef.current;
     const canvas = canvasRef.current;
     if (!video || !canvas) return;
+    const frame = video.ownerDocument.createElement('canvas');
 
     const syncCanvas = () => {
-      const nw = video.videoWidth, nh = video.videoHeight;
+      const nw = frame.width, nh = frame.height;
       if (nw && nh && (canvas.width !== nw || canvas.height !== nh)) {
         canvas.width = nw; canvas.height = nh;
       }
     };
     syncCanvas();
 
-    if (loopRef.current) clearInterval(loopRef.current);
+    loopRef.current?.stop();
 
-    loopRef.current = setInterval(async () => {
+    loopRef.current = startVideoFrameLoop(video, async isActive => {
+      if (!copyVideoFrame(video, frame)) return;
       syncCanvas();
       const ctx = canvas.getContext('2d');
       ctx.clearRect(0, 0, canvas.width, canvas.height);
 
       const det = await faceapi
-        .detectSingleFace(video, new faceapi.TinyFaceDetectorOptions({
+        .detectSingleFace(frame, new faceapi.TinyFaceDetectorOptions({
           inputSize: ENV.DETECTION_INPUT_SIZE,
           scoreThreshold: 0.45,
         }))
         .withFaceLandmarks();
 
+      if (!isActive()) return;
+
       if (!det) {
+        vault.holdCount = 0;
+        vault.blinkFrames = 0;
         dispatch({ type: 'SET_CONFIDENCE', payload: 0 });
         dispatch({ type: 'SET_POSE', payload: { yaw: 0, pitch: 0, roll: 0, symmetry: 0 } });
-        dispatch({ type: 'SET_PROGRESS', payload: { overall: state.overallProgress, phase: Math.max(0, (vault.holdCount / ENV.HOLD_FRAMES) * 100) } });
+        dispatch({ type: 'SET_PROGRESS', payload: { overall: (vault.phaseIdx / PHASE_LIST.length) * 100, phase: 0 } });
         dispatch({ type: 'SET_STATUS', payload: 'Center face in frame' });
         return;
       }
@@ -492,12 +503,18 @@ export default function BiometricSetup() {
       dispatch({ type: 'SET_POSE', payload: pose });
 
       if (score < ENV.FACE_CONFIDENCE_MIN) {
+        vault.holdCount = 0;
+        vault.blinkFrames = 0;
+        dispatch({ type: 'SET_PROGRESS', payload: { overall: (vault.phaseIdx / PHASE_LIST.length) * 100, phase: 0 } });
         dispatch({ type: 'SET_STATUS', payload: 'Hold still and face the light' });
         drawMesh(ctx, lm, box, '#f59e0b', false, pose);
         return;
       }
 
       if (box.width < ENV.FACE_WIDTH_MIN_PX) {
+        vault.holdCount = 0;
+        vault.blinkFrames = 0;
+        dispatch({ type: 'SET_PROGRESS', payload: { overall: (vault.phaseIdx / PHASE_LIST.length) * 100, phase: 0 } });
         dispatch({ type: 'SET_STATUS', payload: 'Move slightly closer' });
         drawMesh(ctx, lm, box, '#f59e0b', false, pose);
         return;
@@ -525,6 +542,7 @@ export default function BiometricSetup() {
           const avgYaw = vault.calibrationSamples.reduce((s, p) => s + p.yaw, 0) / ENV.CALIBRATION_FRAMES;
           const avgPitch = vault.calibrationSamples.reduce((s, p) => s + p.pitch, 0) / ENV.CALIBRATION_FRAMES;
           vault.baseline = { yaw: avgYaw, pitch: avgPitch };
+          dispatch({ type: 'SET_MODE', payload: MODES.ENROLLING });
           dispatch({ type: 'SET_PHASE', payload: 0 });
           dispatch({ type: 'SET_STATUS', payload: POSE.CENTER.instruction });
         }
@@ -557,10 +575,11 @@ export default function BiometricSetup() {
         dispatch({ type: 'SET_STATUS', payload: `${target.instruction}. Hold steady.` });
 
         if (vault.holdCount >= ENV.HOLD_FRAMES) {
-          const img = await snapFrame();
-          if (!img) return;
-
-          const desc = await faceapi.computeFaceDescriptor(video, lm);
+          // Match attendance's dlib-aligned crop and keep image/landmarks on the same frozen frame.
+          const [face] = await faceapi.extractFaces(frame, [lm.align(null, { useDlibAlignment: true })]);
+          const desc = await faceapi.computeFaceDescriptor(face);
+          if (!isActive()) return;
+          const img = frame.toDataURL('image/jpeg', 0.9);
           const capture = {
             phase: target.label,
             image: img,
@@ -575,7 +594,7 @@ export default function BiometricSetup() {
           const nextIdx = phaseIdx + 1;
 
           if (nextIdx >= PHASE_LIST.length) {
-            clearInterval(loopRef.current);
+            loopRef.current?.stop();
             loopRef.current = null;
             dispatch({ type: 'SET_MODE', payload: MODES.VALIDATING });
             dispatch({ type: 'SET_STATUS', payload: 'Finalizing biometric baseline...' });
@@ -588,11 +607,14 @@ export default function BiometricSetup() {
           }
         }
       } else {
-        dispatch({ type: 'SET_PROGRESS', payload: { overall: state.overallProgress, phase: Math.max(0, (vault.holdCount / ENV.HOLD_FRAMES) * 100) } });
+        vault.holdCount = 0;
+        dispatch({ type: 'SET_PROGRESS', payload: { overall: (phaseIdx / PHASE_LIST.length) * 100, phase: 0 } });
         dispatch({ type: 'SET_STATUS', payload: target.instruction });
       }
-    }, ENV.DETECTION_INTERVAL_MS);
-  }, [state.overallProgress, vault]);
+    }, { intervalMs: ENV.DETECTION_INTERVAL_MS, onError: () => {
+      dispatch({ type: 'SET_ERROR', payload: { message: 'Face processing stopped. Restart registration to retry.', code: 'FACE_PROCESSING_FAILED' } });
+    } });
+  }, [vault]);
 
   const startEnrollment = useCallback(() => {
     dispatch({ type: 'SET_MODE', payload: MODES.CALIBRATING });
@@ -611,8 +633,9 @@ export default function BiometricSetup() {
     startLoop();
   }, [vault, startLoop]);
 
-  const handleReset = useCallback(() => {
-    if (loopRef.current) clearInterval(loopRef.current);
+  const handleReset = useCallback(async () => {
+    loopRef.current?.stop();
+    loopRef.current = null;
     vault.processing = false;
     vault.holdCount = 0;
     vault.calibrationSamples = [];
@@ -620,10 +643,20 @@ export default function BiometricSetup() {
     vault.blinkCount = 0;
     vault.blinkFrames = 0;
     vault.phaseIdx = 0;
+    if (!state.modelsLoaded) { window.location.reload(); return; }
     dispatch({ type: 'RESET' });
+    if (!streamRef.current?.active) {
+      dispatch({ type: 'SET_MODE', payload: MODES.BOOT });
+      dispatch({ type: 'SET_STATUS', payload: 'Starting camera...' });
+      try { if (!await startCameraStream(cameraFacing)) return; }
+      catch {
+        dispatch({ type: 'SET_ERROR', payload: { message: 'Camera could not start. Check permissions and retry.', code: 'CAMERA_RESTART_FAILED' } });
+        return;
+      }
+    }
     dispatch({ type: 'SET_MODE', payload: MODES.READY });
     dispatch({ type: 'SET_STATUS', payload: 'Press Start Registration when ready' });
-  }, [vault]);
+  }, [vault, state.modelsLoaded, startCameraStream, cameraFacing]);
 
   // Session timeout handler
   useEffect(() => {
@@ -638,7 +671,8 @@ export default function BiometricSetup() {
   }, [state.mode, handleReset]);
 
   const handleLogout = useCallback(async () => {
-    if (loopRef.current) clearInterval(loopRef.current);
+    cameraRequestRef.current++;
+    loopRef.current?.stop();
     stopHardwareStream(streamRef.current);
     await performLogout('/login');
   }, []);
@@ -715,17 +749,18 @@ export default function BiometricSetup() {
           autoPlay 
           playsInline 
           muted 
-          className={`absolute inset-0 w-full h-full object-cover transition-transform duration-300 ${cameraFacing === 'user' ? 'scale-x-[-1]' : 'scale-x-100'}`} 
+          className={`absolute inset-0 w-full h-full object-contain ${cameraFacing === 'user' ? 'scale-x-[-1]' : 'scale-x-100'}`}
         />
         <canvas 
           ref={canvasRef} 
-          className={`absolute inset-0 w-full h-full object-cover pointer-events-none z-10 transition-transform duration-300 ${cameraFacing === 'user' ? 'scale-x-[-1]' : 'scale-x-100'}`} 
+          className={`absolute inset-0 w-full h-full object-contain pointer-events-none z-10 ${cameraFacing === 'user' ? 'scale-x-[-1]' : 'scale-x-100'}`}
         />
 
         {/* Camera Flip Button */}
         <button
           type="button"
           onClick={toggleCameraFacing}
+          disabled={cameraStarting || ![MODES.READY, MODES.ERROR].includes(state.mode)}
           className="absolute top-3 right-3 z-30 h-8 px-2.5 rounded-md bg-slate-900/90 hover:bg-slate-800 text-slate-200 hover:text-white border border-slate-700/50 shadow-2xs transition-colors duration-100 flex items-center gap-1.5 text-xs font-medium cursor-pointer"
           title="Flip Camera (Front / Rear)"
         >
@@ -753,8 +788,9 @@ export default function BiometricSetup() {
                 <p className="text-slate-400 text-xs mb-5 max-w-[240px] leading-relaxed">
                   Hold your face steady in good lighting to capture 5 quick angles.
                 </p>
-                <button 
+                <button
                   onClick={startEnrollment}
+                  disabled={cameraStarting}
                   className="w-full max-w-[200px] h-10 bg-accent hover:bg-accent text-white rounded-md font-semibold text-xs transition-colors duration-100 shadow-2xs cursor-pointer"
                 >
                   Start Registration

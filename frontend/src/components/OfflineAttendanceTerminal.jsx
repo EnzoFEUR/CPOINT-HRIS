@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { Html5Qrcode } from 'html5-qrcode';
+import { createQrScanner, startQrCamera, stopQrCamera } from '../utils/qrCamera';
 import { supabase } from '../supabaseClient';
 import PageHeader from './ui/PageHeader';
 import { captureOfflineBadge, exportOfflineBackup, getOfflineStorageStatus, importOfflineBackup, listOfflineEvents, MAX_EVENTS, readMeta } from '../utils/offlineAttendanceStore';
@@ -177,39 +177,35 @@ export default function OfflineAttendanceTerminal({ canProvision = false, operat
   useEffect(() => {
     if (!camera || !open) return;
     let disposed = false;
-    const reader = new Html5Qrcode(`offline-qr-${qrId}`);
-    scanner.current = reader;
-
-    reader.start(
-      { facingMode: 'environment' },
-      { fps: 10, qrbox: 240 },
-      text => {
+    if (!scanner.current) scanner.current = createQrScanner(`offline-qr-${qrId}`);
+    const reader = scanner.current;
+    startQrCamera(reader, {
+      facingMode: 'environment',
+      isActive: () => !disposed,
+      onScan: text => {
         if (!disposed) {
+          disposed = true;
           if (text.trim().length > 100) {
             setError('Badge QR payload exceeds 100 characters. Ask HR to verify.');
           } else {
             setBadge(text.trim());
           }
           setCamera(false);
+          stopQrCamera(reader).catch(() => {});
           badgeInputRef.current?.focus();
         }
       },
-      () => {}
-    ).then(() => {
-      if (disposed && reader.isScanning) reader.stop().catch(() => {});
-    }).catch(failure => {
-      if (!disposed) {
-        setError(`QR camera unavailable: ${failure.message || failure}`);
-        setCamera(false);
-      }
+      onError: failure => {
+        if (!disposed) {
+          setError(`QR camera unavailable: ${failure.message || failure}`);
+          setCamera(false);
+        }
+      },
     });
 
     return () => {
       disposed = true;
-      if (reader.isScanning) {
-        reader.stop().then(() => reader.clear()).catch(() => {});
-      }
-      scanner.current = null;
+      stopQrCamera(reader).catch(() => {});
     };
   }, [camera, open, qrId]);
 
@@ -596,7 +592,7 @@ export default function OfflineAttendanceTerminal({ canProvision = false, operat
 
                       {camera && (
                         <div className="rounded-lg overflow-hidden border border-slate-200 bg-slate-900 p-3 space-y-2">
-                          <div id={`offline-qr-${qrId}`} className="min-h-64 rounded-md overflow-hidden bg-black" />
+                          <div id={`offline-qr-${qrId}`} className="h-64 sm:h-80 rounded-md overflow-hidden bg-black" />
                           <p className="text-center text-[11px] text-slate-300 font-medium">
                             Position employee QR badge inside the camera frame
                           </p>

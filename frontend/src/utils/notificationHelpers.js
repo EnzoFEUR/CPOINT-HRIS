@@ -189,9 +189,9 @@ export const getNotificationAvatar = (notif, employeeMap) => {
       if (baselinePath) {
         avatarSrc = baselinePath.startsWith('http')
           ? baselinePath
-          : `https://lzqshktnrvtlattdiwxf.supabase.co/storage/v1/object/public/public-bucket/${baselinePath.replace(/^\/+/, '')}`;
+          : baselinePath.replace(/^\/+/, '');
       } else if (matchedEmp.company_id && matchedEmp.id) {
-        avatarSrc = `https://lzqshktnrvtlattdiwxf.supabase.co/storage/v1/object/public/public-bucket/face-baselines/${matchedEmp.company_id}/${matchedEmp.id}.jpg`;
+        avatarSrc = `face-baselines/${matchedEmp.company_id}/${matchedEmp.id}.jpg`;
       }
     }
 

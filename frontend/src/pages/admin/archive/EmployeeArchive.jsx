@@ -1,3 +1,4 @@
+import ProtectedImage from '../../../components/ProtectedImage';
 import { getArchiveReviewDaysRemaining, getSeparationLabel, isFinalVoluntarySeparation } from '../../../../../shared/employmentExit.mjs';
 import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -23,7 +24,7 @@ function getAvatarUrl(emp) {
     emp.biometric_baseline_path ||
     (emp.company_id && emp.id ? `face-baselines/${emp.company_id}/${emp.id}.jpg` : null);
   if (!photoPath) return null;
-  return `https://lzqshktnrvtlattdiwxf.supabase.co/storage/v1/object/public/public-bucket/${photoPath.replace(/^\/+/, '')}`;
+  return photoPath.replace(/^\/+/, '');
 }
 
 function isTerminatedStatus(emp) {
@@ -237,7 +238,7 @@ async function fetchArchivedEmployees() {
                   <div className="flex items-start justify-between gap-3">
                     <div className="flex items-center gap-3 min-w-0">
                       {avatarUrl ? (
-                        <img
+                        <ProtectedImage
                           src={avatarUrl}
                           alt={`${emp.first_name} ${emp.last_name}`}
                           className={`w-10 h-10 rounded-md object-cover shadow-2xs shrink-0 ${inactive ? 'grayscale opacity-60' : ''}`}
@@ -338,7 +339,7 @@ async function fetchArchivedEmployees() {
                       <td className="py-3 px-4">
                         <div className="flex items-center gap-3">
                           {avatarUrl ? (
-                            <img
+                            <ProtectedImage
                               src={avatarUrl}
                               alt={`${emp.first_name} ${emp.last_name}`}
                               className={`w-8 h-8 rounded-md object-cover shadow-2xs ${inactive ? 'grayscale opacity-60' : ''}`}

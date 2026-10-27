@@ -1,5 +1,7 @@
 import { useState } from 'react';
 import { notifAvatarCache } from '../../utils/notificationHelpers';
+import ProtectedImage from '../ProtectedImage';
+import { privateMediaKey } from '../../utils/privateMedia';
 
 export const NotificationAvatar = ({
   avatarSrc,
@@ -11,16 +13,17 @@ export const NotificationAvatar = ({
   ringClass = 'ring-1 ring-slate-900'
 }) => {
   const [imageResult, setImageResult] = useState(null);
+  const protectedMedia = privateMediaKey(avatarSrc) !== undefined;
   const status = !avatarSrc ? 'failed' : imageResult?.src === avatarSrc
-    ? imageResult.status : notifAvatarCache.get(avatarSrc) || 'loading';
+    ? imageResult.status : (!protectedMedia && notifAvatarCache.get(avatarSrc)) || 'loading';
 
   const handleLoad = () => {
-    if (avatarSrc) notifAvatarCache.set(avatarSrc, 'loaded');
+    if (avatarSrc && !protectedMedia) notifAvatarCache.set(avatarSrc, 'loaded');
     setImageResult({ src: avatarSrc, status: 'loaded' });
   };
 
   const handleError = () => {
-    if (avatarSrc) notifAvatarCache.set(avatarSrc, 'failed');
+    if (avatarSrc && !protectedMedia) notifAvatarCache.set(avatarSrc, 'failed');
     setImageResult({ src: avatarSrc, status: 'failed' });
   };
 
@@ -32,8 +35,8 @@ export const NotificationAvatar = ({
       <div className={`w-full h-full rounded-md flex items-center justify-center font-black ${textClass} shadow-inner select-none ${visuals.bg}`}>
         <bdi dir="auto">{initials}</bdi>
       </div>
-      {avatarSrc && !isFailed && (
-        <img
+      {avatarSrc && (!isFailed || protectedMedia) && (
+        <ProtectedImage
           src={avatarSrc}
           onLoad={handleLoad}
           onError={handleError}

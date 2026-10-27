@@ -1,6 +1,5 @@
 import scannerStylesUrl from './Scanner.css?url&no-inline';
 import { useState, useReducer, useEffect, useRef, useCallback, useMemo } from 'react';
-import { Html5Qrcode, Html5QrcodeSupportedFormats } from 'html5-qrcode';
 import * as faceapi from 'face-api.js';
 import toast from 'react-hot-toast';
 import {
@@ -29,7 +28,12 @@ import {
 } from 'lucide-react';
 import { fetchWithAuth } from '../utils/api';
 import { supabase } from '../supabaseClient';
+import ProtectedImage from '../components/ProtectedImage';
+import { getPrivateMediaSession, resolvePrivateMedia } from '../utils/privateMedia';
 import { requestHardwareCamera, stopHardwareStream } from '../utils/hardwareCamera';
+import { startVideoFrameLoop, captureVideoFrame, copyVideoFrame } from '../utils/cameraFrames.mjs';
+import { createQrScanner, startQrCamera, stopQrCamera } from '../utils/qrCamera';
+import { loadFaceModels, loadBaselineFallbackModel } from '../utils/faceModels';
 import { playScannerSound as playSound } from '../utils/audio';
 import { performLogout } from '../utils/authSession';
 import { isOfflineFeatureActive } from '../routes/OfflineRouteGate.js';
@@ -39,7 +43,6 @@ import { isAdmin, isSecurity } from '../utils/userAccess.mjs';
 
 // Scanner configuration
 const ENV = {
-  MODEL_URL: import.meta.env?.VITE_MODEL_URL || 'https://raw.githubusercontent.com/justadudewhohacks/face-api.js/master/weights/',
   API_BASE: import.meta.env?.VITE_API_BASE || '/api',
   SCAN_TIMEOUT_MS: parseInt(import.meta.env?.VITE_SCAN_TIMEOUT_MS, 10) || 60_000,
   FEEDBACK_DISPLAY_MS: parseInt(import.meta.env?.VITE_FEEDBACK_MS, 10) || 5_000,
@@ -258,6 +261,15 @@ const ScannerTerminal = () => {
   const abortControllerRef = useRef(null);
   const sessionTimerRef = useRef(null);
   const debugHoldTimerRef = useRef(null);
+  const cameraRequestRef = useRef(0);
+  const cameraFacingRef = useRef('user');
+  const captureTimerRef = useRef(null);
+  const feedbackTimerRef = useRef(null);
+  const scanRequestRef = useRef(0);
+  const qrAbortRef = useRef(null);
+  const cameraPromiseRef = useRef(null);
+  const cameraStartingRef = useRef(false);
+  const photoObjectUrlRef = useRef(null);
 
   // Mutable detection state
   const vaultRef = useRef({
@@ -281,6 +293,7 @@ const ScannerTerminal = () => {
     isMedicalExempt: false,
     medicalExemption: null,
     lastStatusText: null,
+    modelsLoaded: false,
   });
 
   // Derived Styles
@@ -323,34 +336,36 @@ const ScannerTerminal = () => {
 
   // Camera Stop Controls
   const stopFaceCamera = useCallback(() => {
+    cameraRequestRef.current++;
+    clearTimeout(captureTimerRef.current);
     if (detectionRef.current) {
-      clearInterval(detectionRef.current);
+      detectionRef.current.stop();
       detectionRef.current = null;
     }
     stopHardwareStream(streamRef.current);
     streamRef.current = null;
-    if (abortControllerRef.current) {
-      abortControllerRef.current.abort();
-      abortControllerRef.current = null;
+    if (videoRef.current) {
+      videoRef.current.onloadedmetadata = null;
+      videoRef.current.pause();
+      videoRef.current.srcObject = null;
     }
   }, []);
 
   const stopQr = useCallback(() => {
-    if (!qrRef.current) return;
-    try {
-      qrRef.current.stop().then(() => {
-        qrRef.current?.clear();
-        qrRef.current = null;
-      }).catch(() => {});
-    } catch {
-      qrRef.current?.clear();
-      qrRef.current = null;
-    }
+    return stopQrCamera(qrRef.current);
   }, []);
 
   // Session Reset
   const handleReset = useCallback(() => {
+    scanRequestRef.current++;
+    clearTimeout(feedbackTimerRef.current);
+    qrAbortRef.current?.abort();
+    qrAbortRef.current = null;
+    if (photoObjectUrlRef.current) URL.revokeObjectURL(photoObjectUrlRef.current);
+    photoObjectUrlRef.current = null;
     stopFaceCamera();
+    abortControllerRef.current?.abort();
+    abortControllerRef.current = null;
     vaultRef.current.processing = false;
     vaultRef.current.submitLock = false;
     vaultRef.current.lockFrames = 0;
@@ -439,33 +454,18 @@ const ScannerTerminal = () => {
   }, [handleReset]);
 
   // Capture frame and submit to backend
-  const captureAndSubmit = useCallback(async (finalScore, blinkCount, earHistory) => {
+  const captureAndSubmit = useCallback(async (finalScore, blinkCount, earHistory, verifiedImage = null) => {
     if (vaultRef.current.submitLock) return;
+    const request = scanRequestRef.current;
     vaultRef.current.submitLock = true;
     dispatch({ type: 'SET_MODE', payload: MODES.PROCESSING });
     dispatch({ type: 'SET_LOADING', payload: 'Submitting verification...' });
 
     // Capture camera snapshot
-    let img64 = null;
+    let img64;
     try {
       const captureVideo = vaultRef.current.isMedicalExempt ? document.querySelector('#qr-reader video') : videoRef.current;
-      if (captureVideo && captureVideo.readyState >= 2 && captureVideo.videoWidth) {
-        const c = document.createElement('canvas');
-        const vw = captureVideo.videoWidth;
-        const vh = captureVideo.videoHeight;
-        const maxDim = 1024;
-        const scale = Math.min(1.0, maxDim / Math.max(vw, vh));
-        c.width = Math.round(vw * scale);
-        c.height = Math.round(vh * scale);
-        const ctx = c.getContext('2d');
-        // Natural orientation capture
-        if (!vaultRef.current.isMedicalExempt && cameraFacing === 'user') {
-          ctx.translate(c.width, 0);
-          ctx.scale(-1, 1);
-        }
-        ctx.drawImage(captureVideo, 0, 0, c.width, c.height);
-        img64 = c.toDataURL('image/jpeg', 0.88);
-      }
+      img64 = verifiedImage || captureVideoFrame(captureVideo);
     } catch {
       // An optional QR-camera audit frame must not start or require face verification.
       img64 = null;
@@ -475,7 +475,7 @@ const ScannerTerminal = () => {
     if (!eid || !isValidUUID(eid)) {
       dispatch({ type: 'SET_FEEDBACK', payload: { type: 'error', title: 'SYSTEM ERROR', message: 'Invalid employee session. Scan again.', code: 'INVALID_SESSION' } });
       playSound('error'); haptic('error');
-      setTimeout(handleReset, ENV.FEEDBACK_DISPLAY_MS);
+      feedbackTimerRef.current = setTimeout(() => { if (request === scanRequestRef.current) handleReset(); }, ENV.FEEDBACK_DISPLAY_MS);
       return;
     }
 
@@ -515,6 +515,7 @@ const ScannerTerminal = () => {
 
       let data;
       try { data = await res.json(); } catch { data = { status: 'error', message: 'Invalid server response' }; }
+      if (request !== scanRequestRef.current) return;
 
       if (!res.ok) {
         // Backend returns structured errors: { status, code, message, requestId }
@@ -545,6 +546,7 @@ const ScannerTerminal = () => {
         playSound('error'); haptic('error');
       }
     } catch (err) {
+      if (request !== scanRequestRef.current) return;
       if (err.name === 'AbortError') {
         dispatch({ type: 'SET_FEEDBACK', payload: { type: 'error', title: 'Cancelled', message: 'Scan was interrupted.', image: img64 } });
       } else {
@@ -553,17 +555,19 @@ const ScannerTerminal = () => {
       playSound('error'); haptic('error');
     }
 
-    setTimeout(handleReset, ENV.FEEDBACK_DISPLAY_MS);
-  }, [cameraFacing, handleReset, dispatch]);
+    feedbackTimerRef.current = setTimeout(() => { if (request === scanRequestRef.current) handleReset(); }, ENV.FEEDBACK_DISPLAY_MS);
+  }, [handleReset, dispatch]);
 
   // Face Detection Loop
   const runDetectionLoop = useCallback(() => {
     const video = videoRef.current;
     const canvas = canvasRef.current;
     if (!video || !canvas) return;
+    const frame = video.ownerDocument.createElement('canvas');
+    detectionRef.current?.stop();
 
     const syncCanvas = () => {
-      const nw = video.videoWidth, nh = video.videoHeight;
+      const nw = frame.width, nh = frame.height;
       if (nw && nh && (canvas.width !== nw || canvas.height !== nh)) {
         canvas.width = nw;
         canvas.height = nh;
@@ -600,19 +604,22 @@ const ScannerTerminal = () => {
       } 
     });
 
-    detectionRef.current = setInterval(async () => {
+    detectionRef.current = startVideoFrameLoop(video, async isActive => {
+      if (!copyVideoFrame(video, frame)) return;
       syncCanvas();
       const ctx = canvas.getContext('2d');
       ctx.clearRect(0, 0, canvas.width, canvas.height);
 
       // Face detection using TinyFaceDetector
       const det = await faceapi
-        .detectSingleFace(video, new faceapi.TinyFaceDetectorOptions({
+        .detectSingleFace(frame, new faceapi.TinyFaceDetectorOptions({
           inputSize: ENV.DETECTION_INPUT_SIZE,
           scoreThreshold: 0.45
         }))
         .withFaceLandmarks()
         .withFaceDescriptor();
+
+      if (!isActive()) return;
 
       if (!det) {
         vaultRef.current.lockFrames = Math.max(0, vaultRef.current.lockFrames - 2);
@@ -786,7 +793,7 @@ const ScannerTerminal = () => {
         // Completed challenge and blink
         vaultRef.current.padStage = 'FLASH_CAPTURE';
         throttledDispatch({ scanProgress: 90, matchScore: currentScore });
-        updateStatus('Face verified. Recording clock-in...');
+        updateStatus('Presence check complete. Verifying attendance...');
         dispatch({
           type: 'SET_LIVENESS',
           payload: {
@@ -801,51 +808,87 @@ const ScannerTerminal = () => {
         drawFaceMesh(ctx, det.landmarks, box, 'locked');
 
         // Flash and capture snapshot
-        clearInterval(detectionRef.current);
+        detectionRef.current?.stop();
         detectionRef.current = null;
 
-        setTimeout(() => {
-          captureAndSubmit(currentScore, vaultRef.current.blinkCount, vaultRef.current.earHistory);
+        const request = cameraRequestRef.current;
+        const verifiedImage = frame.toDataURL('image/jpeg', 0.9);
+        captureTimerRef.current = setTimeout(() => {
+          if (request !== cameraRequestRef.current) return;
+          captureAndSubmit(currentScore, vaultRef.current.blinkCount, vaultRef.current.earHistory, verifiedImage);
         }, 180);
         return;
       }
-    }, ENV.DETECTION_INTERVAL_MS);
+    }, { intervalMs: ENV.DETECTION_INTERVAL_MS, onError: () => {
+      dispatch({ type: 'SET_ERROR', payload: { message: 'Face processing stopped. Restart the scanner to retry.', code: 'FACE_PROCESSING_FAILED' } });
+    } });
   }, [dispatch, throttledDispatch, updateStatus, captureAndSubmit]);
 
   // Start face camera
-  const startFaceCamera = useCallback(async (facing = cameraFacing) => {
+  const startFaceCamera = useCallback(async (facing = cameraFacingRef.current) => {
+    stopFaceCamera();
+    const request = ++cameraRequestRef.current;
+    cameraStartingRef.current = true;
     dispatch({ type: 'SET_LOADING', payload: 'Starting camera...' });
     try {
-      if (streamRef.current) {
-        stopHardwareStream(streamRef.current);
-        streamRef.current = null;
+      await stopQr();
+      if (request !== cameraRequestRef.current) return;
+      if (cameraPromiseRef.current) await cameraPromiseRef.current.catch(() => {});
+      if (request !== cameraRequestRef.current) return;
+      const opening = requestHardwareCamera({ facingMode: facing });
+      cameraPromiseRef.current = opening;
+      let stream;
+      try { stream = await opening; }
+      finally { if (cameraPromiseRef.current === opening) cameraPromiseRef.current = null; }
+      if (request !== cameraRequestRef.current || !videoRef.current) {
+        stopHardwareStream(stream);
+        return;
       }
-      const stream = await requestHardwareCamera({ facingMode: facing, preferHighFps: true });
       streamRef.current = stream;
+      const actualFacing = stream.getVideoTracks?.()[0]?.getSettings?.().facingMode;
+      cameraFacingRef.current = ['user', 'environment'].includes(actualFacing) ? actualFacing : facing;
+      setCameraFacing(cameraFacingRef.current);
       if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        videoRef.current.setAttribute('playsinline', 'true');
-        videoRef.current.setAttribute('webkit-playsinline', 'true');
-        videoRef.current.onloadedmetadata = () => {
-          videoRef.current.play().catch(e => console.warn('[Video] Play error:', e));
-          dispatch({ type: 'SET_LOADING', payload: '' });
-          runDetectionLoop();
+        const video = videoRef.current;
+        video.setAttribute('playsinline', 'true');
+        video.setAttribute('webkit-playsinline', 'true');
+        video.onloadedmetadata = async () => {
+          if (request !== cameraRequestRef.current) return;
+          try {
+            await video.play();
+            if (request !== cameraRequestRef.current) return;
+            dispatch({ type: 'SET_LOADING', payload: '' });
+            runDetectionLoop();
+          } catch {
+            if (request === cameraRequestRef.current) {
+              stopFaceCamera();
+              dispatch({ type: 'SET_ERROR', payload: { message: 'Camera playback could not start. Retry the scanner.', code: 'CAMERA_PLAYBACK_FAILED' } });
+            }
+          }
         };
+        video.srcObject = stream;
       }
-    } catch {
-      toast.error('Camera access denied');
-      dispatch({ type: 'SET_ERROR', payload: { message: 'Camera access denied. Enable permissions.', code: 'CAMERA_DENIED' } });
+    } catch (error) {
+      if (request !== cameraRequestRef.current) return;
+      const denied = ['NotAllowedError', 'PermissionDeniedError', 'SecurityError'].includes(error?.name);
+      const message = denied ? 'Camera access denied. Enable permissions.' : 'Camera is busy or unavailable. Close other camera apps and retry.';
+      toast.error(message);
+      dispatch({ type: 'SET_ERROR', payload: { message, code: denied ? 'CAMERA_DENIED' : 'CAMERA_UNAVAILABLE' } });
+    } finally {
+      if (request === cameraRequestRef.current) cameraStartingRef.current = false;
     }
-  }, [cameraFacing, runDetectionLoop, dispatch]);
+  }, [runDetectionLoop, stopFaceCamera, stopQr, dispatch]);
 
   // Toggle front and rear camera
   const toggleCameraFacing = useCallback(async () => {
+    if (cameraStartingRef.current) return;
     playSound('scan');
     haptic('scan');
     const nextFacing = cameraFacing === 'user' ? 'environment' : 'user';
+    cameraFacingRef.current = nextFacing;
     setCameraFacing(nextFacing);
     if (detectionRef.current) {
-      clearInterval(detectionRef.current);
+      detectionRef.current.stop();
       detectionRef.current = null;
     }
     toast.success(nextFacing === 'user' ? 'Front Camera Active' : 'Rear Camera Active', {
@@ -858,6 +901,11 @@ const ScannerTerminal = () => {
   // QR Success Handler
   const onQrSuccess = useCallback(async (text) => {
     if (vaultRef.current.processing) return;
+    const request = ++scanRequestRef.current;
+    clearTimeout(feedbackTimerRef.current);
+    qrAbortRef.current?.abort();
+    const qrController = new AbortController();
+    qrAbortRef.current = qrController;
     vaultRef.current.processing = true;
     playSound('scan');
     haptic('scan');
@@ -867,8 +915,9 @@ const ScannerTerminal = () => {
 
     try {
       // 1. Fast employee lookup via backend
-      const res = await fetchWithAuth(`/api/attendance/verify-qr/${companyId}`);
+      const res = await fetchWithAuth(`/api/attendance/verify-qr/${encodeURIComponent(companyId)}`, { signal: qrController.signal });
       const data = await res.json();
+      if (request !== scanRequestRef.current) return;
       
       if (!res.ok || data.status !== 'success') {
         throw new Error(data.message?.includes('BIOMETRICS REQUIRED') ? 'BIOMETRICS_NOT_REGISTERED' : 'EMPLOYEE_NOT_FOUND');
@@ -907,45 +956,56 @@ const ScannerTerminal = () => {
         return;
       }
 
-      if (!state.modelsLoaded) throw new Error('FACE_MODELS_NOT_READY');
+      if (!vaultRef.current.modelsLoaded) throw new Error('FACE_MODELS_NOT_READY');
       dispatch({ type: 'SET_MODE', payload: MODES.PREP });
 
       // Load baseline biometrics with timeout
       const storagePath = emp.biometric_baseline_path;
-      const { data: urlData } = supabase.storage
-        .from('public-bucket')
-        .getPublicUrl(storagePath);
+      const mediaSession = getPrivateMediaSession();
 
       try {
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 3500);
 
-        const imgRes = await fetch(urlData.publicUrl, { 
-          signal: controller.signal 
-        });
-        clearTimeout(timeoutId);
+        let imgRes;
+        try {
+          const signal = AbortSignal.any([controller.signal, qrController.signal]);
+          const media = await resolvePrivateMedia(storagePath, { signal });
+          if (request !== scanRequestRef.current || mediaSession !== getPrivateMediaSession()) return;
+          imgRes = await fetch(media.url, { signal, cache: 'no-store' });
+        }
+        finally { clearTimeout(timeoutId); }
+        if (request !== scanRequestRef.current || mediaSession !== getPrivateMediaSession()) return;
 
         if (!imgRes.ok) throw new Error('BASELINE_NOT_FOUND');
 
         const blob = await imgRes.blob();
+        if (request !== scanRequestRef.current || mediaSession !== getPrivateMediaSession()) return;
         const url = URL.createObjectURL(blob);
+        if (photoObjectUrlRef.current) URL.revokeObjectURL(photoObjectUrlRef.current);
+        photoObjectUrlRef.current = url;
         dispatch({ type: 'SET_PHOTO', payload: url });
 
         // Extract face descriptor using TinyFaceDetector
         dispatch({ type: 'SET_LOADING', payload: 'Loading facial profile...' });
         const img = await loadImage(url);
+        if (request !== scanRequestRef.current || mediaSession !== getPrivateMediaSession()) return;
 
         let det = await faceapi
           .detectSingleFace(img, new faceapi.TinyFaceDetectorOptions({ inputSize: 224, scoreThreshold: 0.2 }))
           .withFaceLandmarks()
           .withFaceDescriptor();
+        if (request !== scanRequestRef.current || mediaSession !== getPrivateMediaSession()) return;
 
         if (!det?.descriptor) {
           // Fallback to SsdMobilenetv1 only if tiny detector missed
+          await loadBaselineFallbackModel();
+          if (request !== scanRequestRef.current || mediaSession !== getPrivateMediaSession()) return;
           det = await faceapi
             .detectSingleFace(img, new faceapi.SsdMobilenetv1Options({ minConfidence: 0.1 }))
             .withFaceLandmarks()
             .withFaceDescriptor();
+          if (request !== scanRequestRef.current || mediaSession !== getPrivateMediaSession()) return;
         }
 
         if (det?.descriptor) {
@@ -956,6 +1016,8 @@ const ScannerTerminal = () => {
           dispatch({ type: 'SET_BASELINE', payload: null });
         }
       } catch (baselineErr) {
+        if (request !== scanRequestRef.current || mediaSession !== getPrivateMediaSession()) return;
+        if (['MEDIA_FORBIDDEN', 'MEDIA_INVALID_PATH', 'MEDIA_UNAUTHENTICATED', 'MEDIA_INVALID_RESPONSE'].includes(baselineErr.message)) throw baselineErr;
         console.warn('[QR_FLOW] Baseline image skipped or timed out:', baselineErr);
         vaultRef.current.baseline = null;
         dispatch({ type: 'SET_BASELINE', payload: null });
@@ -964,11 +1026,18 @@ const ScannerTerminal = () => {
 
       dispatch({ type: 'SET_LOADING', payload: '' });
     } catch (err) {
+      if (request !== scanRequestRef.current) return;
       console.error('[QR_FLOW]', err);
+      const mediaDenied = ['MEDIA_FORBIDDEN', 'MEDIA_INVALID_PATH', 'MEDIA_UNAUTHENTICATED', 'MEDIA_INVALID_RESPONSE'].includes(err.message);
+      if (mediaDenied) {
+        vaultRef.current.employeeId = null;
+        dispatch({ type: 'SET_EMPLOYEE', payload: null });
+        dispatch({ type: 'SET_PHOTO', payload: null });
+      }
       vaultRef.current.baseline = null;
       dispatch({ type: 'SET_BASELINE', payload: null });
       dispatch({ type: 'SET_LOADING', payload: '' });
-      dispatch({ type: 'SET_MODE', payload: MODES.PREP });
+      dispatch({ type: 'SET_MODE', payload: mediaDenied ? MODES.QR : MODES.PREP });
       const errFriendly =
         err.message === 'ATTENDANCE_EXEMPT' ? 'Personnel is an attendance-exempt operator (Admin / Guard). Attendance clock-in is not required.' :
         err.message === 'EMPLOYEE_NOT_FOUND' ? 'ID card not recognized. Please scan again.' :
@@ -976,116 +1045,53 @@ const ScannerTerminal = () => {
         err.message === 'EMPLOYEE_TERMINATED' ? 'Account inactive. Please contact HR.' :
         err.message === 'EMPLOYEE_INACTIVE' ? 'Account inactive. Please contact HR.' :
         err.message === 'FACE_MODELS_NOT_READY' ? 'Face verification is still loading or unavailable. Please wait or refresh the kiosk.' :
+        mediaDenied ? 'Facial profile access is unavailable. Please contact HR or sign in again.' :
         err.message === 'BIOMETRICS_NOT_REGISTERED' ? 'Face scan not registered. Please visit HR to set up your profile.' :
         (err.message?.includes('BIOMETRICS REQUIRED') ? 'Face scan not registered. Please visit HR to set up your profile.' : 'Identification error. Please try again.');
       toast.error(errFriendly, { id: 'qr-scan-error', duration: 4500 });
       playSound('error');
       haptic('error');
       updateStatus(errFriendly);
-      setTimeout(() => {
+      feedbackTimerRef.current = setTimeout(() => {
+        if (request !== scanRequestRef.current) return;
         vaultRef.current.processing = false;
         dispatch({ type: 'SET_MODE', payload: MODES.QR });
       }, 2500);
     }
-  }, [dispatch, updateStatus, captureAndSubmit, state.modelsLoaded]);
+  }, [dispatch, updateStatus, captureAndSubmit]);
 
   // QR scanner initialization
-  const startQr = useCallback(async (isUserGesture = false) => {
-    if (qrRef.current) return;
+  const startQr = useCallback(async () => {
+    if (qrRef.current?.wanted) return;
     dispatch({ type: 'SET_LOADING', payload: 'Connecting camera...' });
-
-    const isMobile = /Android|iPhone|iPad|iPod|webOS|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) || ('ontouchstart' in window && window.innerWidth < 1024);
-    const isPortrait = window.innerHeight > window.innerWidth;
-
-    // When explicitly triggered by user tap, trigger explicit getUserMedia to prompt OS permission dialog
-    if (isUserGesture && navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: isMobile ? { facingMode: { ideal: 'environment' } } : { facingMode: 'user' },
-          audio: false
-        });
-        stream.getTracks().forEach(t => t.stop());
-      } catch (permErr) {
-        console.warn('[Scanner] Explicit user camera permission error:', permErr);
-        if (permErr.name === 'NotAllowedError' || permErr.name === 'PermissionDeniedError') {
-          toast.error('Camera permission was denied. Tap help to enable.');
-          setShowPermHelp(true);
-          dispatch({ type: 'SET_MODE', payload: MODES.CAMERA_PROMPT });
-          dispatch({ type: 'SET_LOADING', payload: '' });
-          return;
-        }
-      }
-    }
-
-    try {
-      qrRef.current = new Html5Qrcode('qr-reader');
-      
-      const qrConfig = { 
-        fps: isMobile ? 20 : 30, 
-        disableFlip: !isMobile, // Don't flip back camera, flip front camera on desktop
-        formatsToSupport: [ Html5QrcodeSupportedFormats.QR_CODE ],
-        experimentalFeatures: {
-          useBarCodeDetectorIfSupported: true
-        },
-        videoConstraints: isMobile ? {
-          facingMode: { ideal: 'environment' },
-          width: { ideal: isPortrait ? 1080 : 1920 },
-          height: { ideal: isPortrait ? 1920 : 1080 },
-          aspectRatio: { ideal: isPortrait ? (window.innerWidth / (window.innerHeight || 1)) : 1.7777777778 }
-        } : {
-          facingMode: 'user',
-          width: { ideal: 1920 },
-          height: { ideal: 1080 },
-          aspectRatio: { ideal: 1.7777777778 }
-        }
-      };
-
-      // Try preferred camera first (back on mobile, webcam on desktop)
-      try {
-        await qrRef.current.start(
-          isMobile ? { facingMode: { ideal: 'environment' } } : { facingMode: 'user' },
-          qrConfig,
-          onQrSuccess,
-          () => {} // ignore decode failures
-        );
-        dispatch({ type: 'SET_MODE', payload: MODES.QR });
+    const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || ('ontouchstart' in window && window.innerWidth < 1024);
+    qrRef.current ||= createQrScanner('qr-reader');
+    const started = await startQrCamera(qrRef.current, {
+      facingMode: isMobile ? 'environment' : 'user',
+      onScan: onQrSuccess,
+      onError: error => {
+        if (['NotAllowedError', 'PermissionDeniedError', 'SecurityError'].includes(error?.name)) setShowPermHelp(true);
         dispatch({ type: 'SET_LOADING', payload: '' });
-      } catch (primaryCamErr) {
-        console.warn('[Scanner] Primary camera unavailable, trying fallback camera:', primaryCamErr);
-        await qrRef.current.start(
-          isMobile ? { facingMode: 'user' } : { facingMode: { ideal: 'environment' } },
-          { 
-            fps: 20, 
-            disableFlip: false, 
-            formatsToSupport: [ Html5QrcodeSupportedFormats.QR_CODE ] 
-          },
-          onQrSuccess,
-          () => {}
-        );
-        dispatch({ type: 'SET_MODE', payload: MODES.QR });
-        dispatch({ type: 'SET_LOADING', payload: '' });
-      }
-    } catch (err) {
-      console.warn('[Scanner] Automated camera start paused (permission required on mobile):', err);
-      try { qrRef.current?.clear(); } catch { /* Camera cleanup remains best effort after a failed start. */ }
-      qrRef.current = null;
+        dispatch({ type: 'SET_MODE', payload: MODES.CAMERA_PROMPT });
+      },
+    });
+    if (started) {
+      dispatch({ type: 'SET_MODE', payload: MODES.QR });
       dispatch({ type: 'SET_LOADING', payload: '' });
-      // Show permission prompt screen on mobile
-      dispatch({ type: 'SET_MODE', payload: MODES.CAMERA_PROMPT });
     }
   }, [onQrSuccess, dispatch]);
 
   // Mode Lifecycle
   useEffect(() => {
     if (state.mode === MODES.QR) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- The camera SDK lifecycle reports permission/loading state while starting the device.
-      startQr(false);
-    }
-    if (state.mode !== MODES.QR) {
-      stopQr();
+      stopFaceCamera();
+      startQr();
     }
     if (state.mode === MODES.FACE) {
       startFaceCamera();
+    } else if (state.mode !== MODES.QR) {
+      stopFaceCamera();
+      stopQr();
     }
 
     // Session safety timer
@@ -1096,23 +1102,20 @@ const ScannerTerminal = () => {
         handleReset();
       }, ENV.SCAN_TIMEOUT_MS);
     }
-  }, [state.mode, state.modelsLoaded, startQr, stopQr, startFaceCamera, handleReset]);
+  }, [state.mode, startQr, stopQr, startFaceCamera, stopFaceCamera, handleReset]);
 
   // Initialize models, clock, and viewport
   useEffect(() => {
     let mounted = true;
     let wakeLock = null;
+    const pendingScan = scanRequestRef;
 
     // Load models
     (async () => {
       try {
-        await Promise.all([
-          faceapi.nets.ssdMobilenetv1.loadFromUri(ENV.MODEL_URL),
-          faceapi.nets.tinyFaceDetector.loadFromUri(ENV.MODEL_URL),
-          faceapi.nets.faceLandmark68Net.loadFromUri(ENV.MODEL_URL),
-          faceapi.nets.faceRecognitionNet.loadFromUri(ENV.MODEL_URL),
-        ]);
+        await loadFaceModels();
         if (mounted) {
+          vaultRef.current.modelsLoaded = true;
           dispatch({ type: 'SET_MODELS_LOADED' });
         }
       } catch (err) {
@@ -1161,11 +1164,18 @@ const ScannerTerminal = () => {
 
     // Wake lock (keep screen on)
     if ('wakeLock' in navigator) {
-      navigator.wakeLock.request('screen').then(lock => { wakeLock = lock; }).catch(() => {});
+      navigator.wakeLock.request('screen').then(lock => { if (mounted) wakeLock = lock; else lock.release().catch(() => {}); }).catch(() => {});
     }
 
     return () => {
       mounted = false;
+      pendingScan.current++;
+      clearTimeout(feedbackTimerRef.current);
+      qrAbortRef.current?.abort();
+      if (photoObjectUrlRef.current) URL.revokeObjectURL(photoObjectUrlRef.current);
+      stopFaceCamera();
+      stopQr();
+      abortControllerRef.current?.abort();
       clearInterval(tick);
       window.removeEventListener('resize', handleViewportChange);
       window.removeEventListener('orientationchange', handleViewportChange);
@@ -1174,7 +1184,7 @@ const ScannerTerminal = () => {
       document.getElementById('scanner-css')?.remove();
       wakeLock?.release().catch(() => {});
     };
-  }, []);
+  }, [stopFaceCamera, stopQr]);
 
   // Debug Mode Trigger (hold top-left 3s)
   const handleDebugTouchStart = () => {
@@ -1385,7 +1395,7 @@ const ScannerTerminal = () => {
             >
               {state.employeePhotoUrl ? (
                 <div className="w-24 h-24 sm:w-28 sm:h-28 rounded-md overflow-hidden border-2 border-slate-700 mb-3 bg-slate-800">
-                  <img src={state.employeePhotoUrl} alt="Baseline" className="w-full h-full object-cover" />
+                  <ProtectedImage src={state.employeePhotoUrl} alt="Baseline" className="w-full h-full object-cover" />
                 </div>
               ) : (
                 <div className="w-24 h-24 sm:w-28 sm:h-28 rounded-md bg-slate-800 border-2 border-slate-700 flex items-center justify-center mb-3 text-slate-400">
@@ -1444,14 +1454,14 @@ const ScannerTerminal = () => {
           <div className="absolute inset-0 z-20 bg-black overflow-hidden">
             <video 
               ref={videoRef} 
-              className={`absolute inset-0 w-full h-full object-cover transition-transform duration-300 ${cameraFacing === 'user' ? '-scale-x-100' : 'scale-x-100'}`} 
+              className={`absolute inset-0 w-full h-full object-contain ${cameraFacing === 'user' ? '-scale-x-100' : 'scale-x-100'}`}
               playsInline 
               muted 
               autoPlay 
             />
             <canvas 
               ref={canvasRef} 
-              className={`absolute inset-0 w-full h-full object-cover pointer-events-none transition-transform duration-300 ${cameraFacing === 'user' ? '-scale-x-100' : 'scale-x-100'}`} 
+              className={`absolute inset-0 w-full h-full object-contain pointer-events-none ${cameraFacing === 'user' ? '-scale-x-100' : 'scale-x-100'}`}
             />
 
             {/* Screen flash pulse */}
@@ -1540,6 +1550,7 @@ const ScannerTerminal = () => {
               <div className="flex items-center gap-2">
                 <button
                   onClick={toggleCameraFacing}
+                  disabled={state.loadingMsg === 'Starting camera...'}
                   className="h-8 px-2.5 rounded-md bg-slate-900/80 hover:bg-slate-800 text-slate-200 hover:text-white border border-white/10 transition-colors duration-100 flex items-center gap-1.5 text-xs font-medium cursor-pointer shadow-2xs"
                   title="Flip Camera (Front / Rear)"
                 >
@@ -1603,7 +1614,7 @@ const ScannerTerminal = () => {
             >
               {state.feedback.image && (
                 <div className={`w-24 h-24 sm:w-28 sm:h-28 rounded-md overflow-hidden border-2 shrink-0 ${state.feedback.type === 'success' ? 'border-line' : 'border-danger'}`}>
-                  <img src={state.feedback.image} alt="" className="w-full h-full object-cover -scale-x-100" />
+                  <img src={state.feedback.image} alt="" className={`w-full h-full object-contain ${cameraFacing === 'user' ? '-scale-x-100' : ''}`} />
                 </div>
               )}
               <div className="text-center sm:text-left flex-1 w-full">

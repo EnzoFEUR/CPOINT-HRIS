@@ -79,6 +79,9 @@ supabase/tests/*
 /scripts/test-resolve-error.mjs
 /scripts/test_dom_cues.mjs
 /scripts/test_ws_probe.mjs
+/tests/qrCamera.geometry.mjs
+/tests/cameraPreview.geometry.mjs
+/tests/cameraPreview.geometry.report.json
 
 # Local Python QA, workbook, repair, and capstone export helpers
 /scripts/*.py

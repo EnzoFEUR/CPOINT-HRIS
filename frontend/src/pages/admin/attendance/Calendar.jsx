@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../../../supabaseClient';
 import { fetchWithAuth } from '../../../utils/api';
 import PageHeader from '../../../components/ui/PageHeader';
+import ProtectedImage from '../../../components/ProtectedImage';
 
 
 const formatDateKey = (dateObj) => {
@@ -12,30 +13,24 @@ const formatDateKey = (dateObj) => {
     return `${year}-${month}-${day}`;
 };
 
-const timelinePhotoCache = new Map();
-
 const TimelinePhoto = ({ photoPath, employeeName }) => {
-    const photoUrl = photoPath ? `https://lzqshktnrvtlattdiwxf.supabase.co/storage/v1/object/public/public-bucket/${photoPath}` : null;
-    const initialStatus = photoUrl ? timelinePhotoCache.get(photoUrl) : null;
-    const [status, setStatus] = useState(() => initialStatus || (photoUrl ? 'loading' : 'failed'));
+    const photoUrl = photoPath || null;
+    const [status, setStatus] = useState(() => photoUrl ? 'loading' : 'failed');
     const [previousPhotoUrl, setPreviousPhotoUrl] = useState(photoUrl);
     if (previousPhotoUrl !== photoUrl) {
         setPreviousPhotoUrl(photoUrl);
-        setStatus(photoUrl ? timelinePhotoCache.get(photoUrl) || 'loading' : 'failed');
+        setStatus(photoUrl ? 'loading' : 'failed');
     }
 
     const handleLoad = () => {
-        if (photoUrl) timelinePhotoCache.set(photoUrl, 'loaded');
         setStatus('loaded');
     };
 
     const handleError = () => {
-        if (photoUrl) timelinePhotoCache.set(photoUrl, 'failed');
         setStatus('failed');
     };
 
     const isLoaded = status === 'loaded';
-    const isFailed = status === 'failed';
 
     return (
         <div 
@@ -51,8 +46,8 @@ const TimelinePhoto = ({ photoPath, employeeName }) => {
                 <circle cx="50" cy="38" r="18" />
                 <path d="M 0 100 L 0 92 C 12 72, 30 64, 50 64 C 70 64, 88 72, 100 92 L 100 100 Z" />
             </svg>
-            {photoUrl && !isFailed && (
-                <img
+            {photoUrl && (
+                <ProtectedImage
                     src={photoUrl}
                     onLoad={handleLoad}
                     onError={handleError}
