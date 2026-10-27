@@ -581,8 +581,13 @@ const normalizeJobTitle = (title, isAdmin) => {
             toast.error('New passwords do not match.');
             return;
         }
-        if (!passwordOtp.trim()) {
+        const cleanOtp = passwordOtp.trim();
+        if (!cleanOtp) {
             toast.error('Please enter the 6-digit verification code from your email or Google Authenticator.');
+            return;
+        }
+        if (!cleanOtp.startsWith('CP') && (cleanOtp.length !== 6 || !/^\d{6}$/.test(cleanOtp))) {
+            toast.error('Verification code must be exactly 6 digits.');
             return;
         }
 
@@ -594,7 +599,7 @@ const normalizeJobTitle = (title, isAdmin) => {
                 body: JSON.stringify({
                     current_password: currentPassword.trim(),
                     new_password: newPassword.trim(),
-                    otp: passwordOtp.trim()
+                    otp: cleanOtp
                 })
             });
             const data = await res.json();
@@ -2061,11 +2066,21 @@ const normalizeJobTitle = (title, isAdmin) => {
                                     <input
                                         type="text"
                                         required
-                                        maxLength={14}
+                                        inputMode={passwordOtp.startsWith('CP') ? 'text' : 'numeric'}
+                                        pattern={passwordOtp.startsWith('CP') ? undefined : '[0-9]*'}
+                                        autoComplete="one-time-code"
+                                        maxLength={passwordOtp.startsWith('CP') ? 14 : 6}
                                         value={passwordOtp}
-                                        onChange={(e) => setPasswordOtp(e.target.value.toUpperCase())}
-                                        placeholder="e.g. 123456 or CP-XXXX"
-                                        className="flex-1 h-9 px-3 bg-white border border-slate-200 rounded-md focus:outline-none focus:border-accent text-xs text-slate-800 font-mono transition-colors shadow-2xs"
+                                        onChange={(e) => {
+                                            const raw = e.target.value.trim().toUpperCase();
+                                            if (raw.startsWith('CP')) {
+                                                setPasswordOtp(raw.slice(0, 14));
+                                            } else {
+                                                setPasswordOtp(raw.replace(/\D/g, '').slice(0, 6));
+                                            }
+                                        }}
+                                        placeholder={passwordOtp.startsWith('CP') ? 'CP-XXXX-XXXX' : '123456'}
+                                        className="flex-1 h-9 px-3 bg-white border border-slate-200 rounded-md focus:outline-none focus:border-accent text-xs text-slate-800 font-mono tracking-widest transition-colors shadow-2xs"
                                     />
                                     <button
                                         type="button"

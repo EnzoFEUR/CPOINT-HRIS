@@ -525,6 +525,14 @@ router.post('/change-password', verifyToken, async (req, res) => {
             });
         }
 
+        const cleanOtp = String(otp).trim();
+        if (cleanOtp.length > 14 || (!cleanOtp.startsWith('CP') && (cleanOtp.length !== 6 || !/^\d{6}$/.test(cleanOtp)))) {
+            return res.status(400).json({
+                success: false,
+                message: 'Verification code must be exactly 6 digits.'
+            });
+        }
+
         if (typeof new_password !== 'string' || new_password.length < 8) {
             return res.status(400).json({ success: false, message: 'New password must be at least 8 characters long.' });
         }
@@ -597,7 +605,6 @@ router.post('/change-password', verifyToken, async (req, res) => {
         }
 
         // Step 2: Multi-Factor Verification (Email OTP OR Google Authenticator TOTP OR Backup Code)
-        const cleanOtp = String(otp).trim();
         const emailOtpIdentifier = `change_password_${userEmail}`;
         let isCodeValid = false;
         let verifiedVia = 'EMAIL_OTP';

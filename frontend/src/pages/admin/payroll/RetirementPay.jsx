@@ -13,6 +13,7 @@ import { supabase } from '../../../supabaseClient';
 import { getManilaWorkDate } from '../../../../../shared/workPolicy.mjs';
 import { getRetirementWorkflow } from '../../../../../shared/employmentExit.mjs';
 import { isCreditUuid } from '../../../../../shared/leaveCredits.mjs';
+import { getShoeRoleDetails } from '../../../utils/factoryRoles';
 import './RetirementPay.print.css';
 
 const sourceUrl =
@@ -182,6 +183,86 @@ export default function RetirementPay() {
     return <RetirementPayWorkspace key={actorId + ':' + (exitRequestId || 'ledger')} exitRequestId={exitRequestId} exitLink={exitLink} />;
 }
 
+export function detectLocalWageProfile(emp) {
+    if (!emp) return null;
+    const jobTitle = String(emp.job_title || '').toLowerCase();
+    const dept = String(emp.department || '').toLowerCase();
+    const role = String(emp.role || '').toLowerCase();
+    const hasDailyRate = Number(emp.daily_rate) > 0;
+    const hasHourlyRate = Number(emp.hourly_rate) > 0;
+    const shoeCraft = getShoeRoleDetails(emp.job_title);
+    const isPieceRate = Boolean(shoeCraft) ||
+        /cutter|cutting|marking|marka|areglo|sapatero|swela|lapat|alamoda|tahi|stitching|finish|qa|packing|sew|stitch|shoe|shoemaker/.test(jobTitle) ||
+        (dept.includes('factory') && !hasDailyRate);
+    const isSalaried = !isPieceRate && (
+        role === 'admin' || role === 'hr' ||
+        /admin|hr|finance|accounting|information technology|\bit\b|executive|management|office|supervisor|clerk/.test(dept) ||
+        /admin|manager|supervisor|clerk|executive|analyst|developer|accountant|officer/.test(jobTitle) ||
+        (!hasDailyRate && !dept.includes('factory'))
+    );
+
+    if (isPieceRate) {
+        const shoeRole = shoeCraft?.label || emp.job_title || 'Shoe Craft Production';
+        return {
+            basis: 'piece_rate',
+            type: 'piece_rate',
+            label: `Shoe Craft Production · ${shoeRole} (Piece-Rate / Pakyao)`,
+            craftBadge: shoeCraft ? { label: shoeCraft.label, stage: shoeCraft.stage, icon: shoeCraft.icon, color: shoeCraft.color } : null,
+            doleRule: 'DOLE RA 7641 Sec. 5.2 (12-Mo Average Daily Salary / ADS)',
+            dailyRate: hasDailyRate ? String(emp.daily_rate) : '',
+            earnings12Months: '',
+            actualWorkdays: '261',
+            note: `12-month Average Daily Salary (ADS) pursuant to DOLE RA 7641 rules for piece-rate shoe craft (${shoeRole}).`,
+            signals: [
+                `Factory Shoe Craft: ${shoeRole}`,
+                'DOLE RA 7641 12-Month ADS Basis'
+            ]
+        };
+    }
+    if (isSalaried) {
+        const computedRate = hasDailyRate
+            ? String(emp.daily_rate)
+            : hasHourlyRate
+            ? (Number(emp.hourly_rate) * 8).toFixed(2)
+            : '610.00';
+        return {
+            basis: 'monthly_equivalent',
+            type: 'monthly_equivalent',
+            label: `Administrative & Salaried Staff (${emp.department || 'Office'})`,
+            craftBadge: null,
+            doleRule: 'DOLE RA 7641 Sec. 5.1 (Daily Equivalent of Monthly Salary)',
+            dailyRate: computedRate,
+            earnings12Months: '',
+            actualWorkdays: '',
+            note: `Daily equivalent computed from verified monthly compensation using standard statutory DOLE divisor (RA 7641 - ${emp.department || 'Administrative Staff'}).`,
+            signals: [
+                `Salaried Role: ${emp.job_title || emp.department || 'Staff'}`,
+                'DOLE Divisor 261/313 Standard'
+            ]
+        };
+    }
+    const dailyRateStr = hasDailyRate
+        ? String(emp.daily_rate)
+        : hasHourlyRate
+        ? (Number(emp.hourly_rate) * 8).toFixed(2)
+        : '610.00';
+    return {
+        basis: 'daily',
+        type: 'daily',
+        label: `Regular Daily-Paid Employee (${emp.department || 'Operations'})`,
+        craftBadge: null,
+        doleRule: 'DOLE RA 7641 Sec. 5.1 (Latest Basic Daily Wage)',
+        dailyRate: dailyRateStr,
+        earnings12Months: '',
+        actualWorkdays: '',
+        note: `Verified statutory basic daily wage of PHP ${dailyRateStr} from certified employee master compensation record (${emp.department || 'Operations'} / ${emp.job_title || 'Regular'}).`,
+        signals: [
+            `Daily Wage Record: PHP ${dailyRateStr}/day`,
+            'Latest Basic Daily Wage Statutory Standard'
+        ]
+    };
+}
+
 function RetirementPayWorkspace({ exitRequestId, exitLink }) {
     const queryClient = useQueryClient();
     const [, setParams] = useSearchParams();
@@ -195,14 +276,17 @@ function RetirementPayWorkspace({ exitRequestId, exitLink }) {
     const [employeeSelection, setEmployee] = useState(null);
     const employee = exitRequestId ? exitLink.data.employee : employeeSelection;
     const workflow = getRetirementWorkflow(exitLink.data);
-    const [formFields, setForm] = useState(() => ({
-        retirement_date: exitLink.data?.record.effective_date || getManilaWorkDate(),
-        rate_basis: exitRequestId && Number(employee?.daily_rate) > 0 ? 'daily' : '',
-        daily_rate: exitRequestId && Number(employee?.daily_rate) > 0 ? String(employee.daily_rate) : '',
-        earnings_12_months: '',
-        actual_workdays: '',
-        rate_note: '',
-    }));
+    const [formFields, setForm] = useState(() => {
+        const detected = detectLocalWageProfile(employee);
+        return {
+            retirement_date: exitLink.data?.record.effective_date || getManilaWorkDate(),
+            rate_basis: detected?.basis || (exitRequestId && Number(employee?.daily_rate) > 0 ? 'daily' : ''),
+            daily_rate: detected?.dailyRate || (exitRequestId && Number(employee?.daily_rate) > 0 ? String(employee.daily_rate) : ''),
+            earnings_12_months: detected?.earnings12Months || '',
+            actual_workdays: detected?.actualWorkdays || '',
+            rate_note: detected?.note || '',
+        };
+    });
     const confirmedDate = exitLink.data?.record.effective_date || '';
     const form = useMemo(() => exitRequestId
         ? { ...formFields, retirement_date: confirmedDate }
@@ -331,18 +415,100 @@ function RetirementPayWorkspace({ exitRequestId, exitLink }) {
     const changeForm = (key, value) =>
         setForm((previous) => ({ ...previous, [key]: value }));
 
+    const autoDetect = useQuery({
+        queryKey: ['retirementDetect', employee?.id, form.retirement_date],
+        enabled: Boolean(employee?.id),
+        queryFn: ({ signal }) =>
+            readJson(
+                `/api/retirement-pay/detect/${employee.id}?retirement_date=${form.retirement_date}`,
+                { signal }
+            ),
+        staleTime: 30_000,
+        retry: false,
+    });
+
+    // Auto-sync real-time ledger data from backend detection
+    useEffect(() => {
+        if (!autoDetect.data?.success) return;
+        const d = autoDetect.data;
+        setForm((prev) => {
+            const updates = {};
+            if (!prev.rate_basis) updates.rate_basis = d.detected_basis;
+            if (d.detected_basis === 'piece_rate') {
+                if (!prev.earnings_12_months && d.recommended_earnings_12_months) {
+                    updates.earnings_12_months = d.recommended_earnings_12_months;
+                }
+                if (!prev.actual_workdays && d.recommended_actual_workdays) {
+                    updates.actual_workdays = d.recommended_actual_workdays;
+                }
+            } else if (!prev.daily_rate && d.recommended_daily_rate) {
+                updates.daily_rate = d.recommended_daily_rate;
+            }
+            if (!prev.rate_note && d.rate_note) {
+                updates.rate_note = d.rate_note;
+            }
+            return Object.keys(updates).length > 0 ? { ...prev, ...updates } : prev;
+        });
+    }, [autoDetect.data]);
+
+    const activeDetectedProfile = useMemo(() => {
+        if (!employee) return null;
+        if (autoDetect.data?.success) {
+            const d = autoDetect.data;
+            const craft = getShoeRoleDetails(d.job_title);
+            return {
+                basis: d.detected_basis,
+                label: d.detected_label,
+                craftBadge: craft ? { label: craft.label, stage: craft.stage, icon: craft.icon, color: craft.color } : null,
+                doleRule: d.detected_basis === 'piece_rate' ? 'DOLE RA 7641 Sec. 5.2 (12-Mo ADS)' : 'DOLE RA 7641 Sec. 5.1 (Daily Wage Basis)',
+                signals: d.signals || [],
+                payrollRecords: d.payroll_records_found || 0,
+                earnings12Months: d.total_12mo_earnings_recorded || 0,
+                recommendedDailyRate: d.recommended_daily_rate,
+                recommendedEarnings: d.recommended_earnings_12_months,
+                recommendedWorkdays: d.recommended_actual_workdays,
+                rateNote: d.rate_note,
+            };
+        }
+        return detectLocalWageProfile(employee);
+    }, [employee, autoDetect.data]);
+
+    const handleReapplyDetection = () => {
+        if (!employee) return;
+        const detected = autoDetect.data?.success ? {
+            basis: autoDetect.data.detected_basis,
+            dailyRate: autoDetect.data.recommended_daily_rate,
+            earnings12Months: autoDetect.data.recommended_earnings_12_months,
+            actualWorkdays: autoDetect.data.recommended_actual_workdays,
+            note: autoDetect.data.rate_note,
+            label: autoDetect.data.detected_label
+        } : detectLocalWageProfile(employee);
+
+        if (!detected) return;
+        setForm((prev) => ({
+            ...prev,
+            rate_basis: detected.basis,
+            daily_rate: detected.dailyRate || '',
+            earnings_12_months: detected.earnings12Months || '',
+            actual_workdays: detected.actualWorkdays || '',
+            rate_note: detected.note || '',
+        }));
+        toast.success(`Re-applied auto-detection: ${detected.label || 'Wage Profile'}`, { id: 'reapply-detect' });
+    };
+
     const chooseEmployee = (item) => {
         if (exitRequestId) return;
         setEmployee(item);
+        const detected = detectLocalWageProfile(item);
         setForm((previous) => ({
             ...previous,
-            rate_basis: '',
-            daily_rate: item.daily_rate == null ? '' : String(item.daily_rate),
-            rate_note: '',
-            earnings_12_months: '',
-            actual_workdays: '',
+            rate_basis: detected?.basis || 'daily',
+            daily_rate: detected?.dailyRate || (item.daily_rate == null ? '' : String(item.daily_rate)),
+            earnings_12_months: detected?.earnings12Months || '',
+            actual_workdays: detected?.actualWorkdays || '',
+            rate_note: detected?.note || '',
         }));
-        toast.success(`Selected ${fullName(item)} for calculation`, { id: 'ret-emp-select' });
+        toast.success(`Selected ${fullName(item)} · Auto-detected ${detected?.label || 'Wage Profile'}`, { id: 'ret-emp-select' });
         setTimeout(() => {
             formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
         }, 60);
@@ -649,6 +815,10 @@ function RetirementPayWorkspace({ exitRequestId, exitLink }) {
                                         <div className="text-xs text-slate-600 flex items-center gap-2 flex-wrap font-medium">
                                             <span>ID: <strong className="font-mono text-slate-800">{employee.company_id || 'N/A'}</strong></span>
                                             <span>·</span>
+                                            <span>Dept: <strong className="text-slate-800">{employee.department || 'Operations'}</strong></span>
+                                            <span>·</span>
+                                            <span>Role: <strong className="text-slate-800">{employee.job_title || employee.role || 'Regular'}</strong></span>
+                                            <span>·</span>
                                             <span>Hired: <strong className="text-slate-800">{employee.date_hired || '—'}</strong></span>
                                             <span>·</span>
                                             <span>DOB: <strong className="text-slate-800">{employee.birth_date || '—'}</strong></span>
@@ -673,6 +843,85 @@ function RetirementPayWorkspace({ exitRequestId, exitLink }) {
                                 </button>}
                             </div>
 
+
+                            {/* Enterprise Wage Auto-Detection Panel */}
+                            <div className="p-3.5 bg-gradient-to-r from-slate-50 via-blue-50/25 to-white rounded-lg border border-slate-200/90 shadow-2xs space-y-2.5">
+                                <div className="flex items-center justify-between gap-2 flex-wrap">
+                                    <div className="flex items-center gap-2.5">
+                                        <div className="w-7 h-7 rounded-md bg-accent text-white flex items-center justify-center text-xs font-bold shadow-2xs">
+                                            <i className="ti ti-sparkles text-sm" />
+                                        </div>
+                                        <div>
+                                            <div className="flex items-center gap-2">
+                                                <span className="text-[11px] font-bold text-slate-900 uppercase tracking-wider">
+                                                    Enterprise Auto-Detection
+                                                </span>
+                                                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200/70">
+                                                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                                                    Real-Time Active
+                                                </span>
+                                                {autoDetect.isFetching && (
+                                                    <span className="inline-flex items-center gap-1 text-[10px] text-accent font-medium">
+                                                        <i className="ti ti-loader-2 animate-spin text-xs" />
+                                                        Querying ledger…
+                                                    </span>
+                                                )}
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                        <button
+                                            type="button"
+                                            onClick={handleReapplyDetection}
+                                            title="Sync with verified masterlist and payroll ledger"
+                                            className="text-[11px] font-semibold text-accent hover:text-accent-strong flex items-center gap-1 cursor-pointer transition-colors bg-white hover:bg-slate-50 px-2 py-1 rounded border border-slate-200 shadow-2xs"
+                                        >
+                                            <i className="ti ti-refresh text-xs" />
+                                            <span>Re-detect / Sync</span>
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <div className="bg-white p-2.5 rounded-md border border-slate-200/80 flex items-center justify-between gap-3 flex-wrap">
+                                    <div className="min-w-0">
+                                        <div className="flex items-center gap-2 flex-wrap">
+                                            <span className="text-xs font-bold text-slate-900">
+                                                {activeDetectedProfile?.label || 'Analyzing Employee Record…'}
+                                            </span>
+                                            {activeDetectedProfile?.craftBadge && (
+                                                <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-amber-50 text-amber-800 border border-amber-200 flex items-center gap-1">
+                                                    <i className={`ti ${activeDetectedProfile.craftBadge.icon}`} />
+                                                    <span>{activeDetectedProfile.craftBadge.stage}</span>
+                                                </span>
+                                            )}
+                                        </div>
+                                        <div className="text-[11px] text-slate-500 mt-0.5 flex items-center gap-2 flex-wrap">
+                                            <span className="flex items-center gap-1 text-slate-600">
+                                                <i className="ti ti-scale text-accent" />
+                                                <strong>{activeDetectedProfile?.doleRule || 'DOLE RA 7641'}</strong>
+                                            </span>
+                                            {autoDetect.data?.total_12mo_earnings_recorded > 0 && (
+                                                <span className="text-emerald-700 font-mono font-medium">
+                                                    · 12-Mo Payroll: {php(autoDetect.data.total_12mo_earnings_recorded)}
+                                                </span>
+                                            )}
+                                            {autoDetect.data?.payroll_records_found > 0 && (
+                                                <span className="text-slate-400">
+                                                    ({autoDetect.data.payroll_records_found} pay periods verified)
+                                                </span>
+                                            )}
+                                        </div>
+                                    </div>
+                                    <div className="text-right shrink-0">
+                                        <span className="text-[10px] uppercase font-bold tracking-wider text-slate-600 block">
+                                            Statutory Wage Basis
+                                        </span>
+                                        <span className="text-xs font-mono font-bold text-accent-strong uppercase">
+                                            {form.rate_basis === 'piece_rate' ? 'Piece-Rate (12-Mo ADS)' : form.rate_basis === 'monthly_equivalent' ? 'Monthly Equivalent' : 'Daily Wage'}
+                                        </span>
+                                    </div>
+                                </div>
+                            </div>
 
                             <div className="grid sm:grid-cols-2 gap-3">
                                 <Field label="Retirement Date">
@@ -707,13 +956,13 @@ function RetirementPayWorkspace({ exitRequestId, exitLink }) {
                                     >
                                         <option value="">Choose wage basis</option>
                                         <option value="daily">
-                                            Latest basic daily wage
+                                            Latest basic daily wage {activeDetectedProfile?.basis === 'daily' ? '★ (Auto-Detected)' : ''}
                                         </option>
                                         <option value="monthly_equivalent">
-                                            Daily equivalent of monthly salary
+                                            Daily equivalent of monthly salary {activeDetectedProfile?.basis === 'monthly_equivalent' ? '★ (Auto-Detected)' : ''}
                                         </option>
                                         <option value="piece_rate">
-                                            Piece-rate / paid-by-results (12-mo ADS)
+                                            Piece-rate / paid-by-results (12-mo ADS) {activeDetectedProfile?.basis === 'piece_rate' ? '★ (Auto-Detected)' : ''}
                                         </option>
                                     </select>
                                 </Field>

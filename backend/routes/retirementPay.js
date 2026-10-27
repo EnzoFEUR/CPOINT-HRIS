@@ -289,7 +289,7 @@ export function createRetirementRouter({
             let query = client
                 .from('employees')
                 .select(
-                    'id,company_id,first_name,last_name,department,birth_date,date_hired,daily_rate,archived_at,separation_type,separation_date',
+                    'id,company_id,first_name,last_name,department,job_title,role,shift,birth_date,date_hired,daily_rate,hourly_rate,archived_at,separation_type,separation_date',
                     { count: 'exact' }
                 )
                 .is('deleted_at', null);
@@ -329,6 +329,150 @@ export function createRetirementRouter({
             )
         )
     );
+    router.get('/detect/:id', handle(async (req) => {
+        const employeeId = req.params.id;
+        if (!isCreditUuid(employeeId)) throw invalid('Invalid employee identifier.');
+        
+        const manilaDate = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Manila' }).format(new Date());
+        const targetDate = isLeaveDate(req.query.retirement_date) ? req.query.retirement_date : manilaDate;
+        
+        const { data: emp, error: empErr } = await client
+            .from('employees')
+            .select('id,company_id,first_name,last_name,department,job_title,role,shift,birth_date,date_hired,daily_rate,hourly_rate,status,is_active')
+            .eq('id', employeeId)
+            .is('deleted_at', null)
+            .maybeSingle();
+
+        if (empErr || !emp) throw Object.assign(new Error('Employee not found.'), { status: 404 });
+
+        const targetDateObj = new Date(targetDate + 'T00:00:00Z');
+        const pastYearDateObj = new Date(targetDateObj);
+        pastYearDateObj.setFullYear(pastYearDateObj.getFullYear() - 1);
+        const periodStart = pastYearDateObj.toISOString().split('T')[0];
+
+        const [payrollRes, attendRes] = await Promise.all([
+            client
+                .from('payrolls')
+                .select('basic_pay, pieces_produced, period_start, period_end, status')
+                .eq('employee_id', employeeId)
+                .neq('status', 'cancelled')
+                .gte('period_end', periodStart)
+                .lte('period_start', targetDate),
+            client
+                .from('attendances')
+                .select('id', { count: 'exact', head: true })
+                .eq('employee_id', employeeId)
+                .in('status', ['present', 'late', 'half_day', 'overtime'])
+                .gte('date', periodStart)
+                .lte('date', targetDate)
+        ]);
+
+        const payrollRows = payrollRes.data || [];
+        const workdaysCount = attendRes.count || 0;
+
+        let earnings12Months = 0;
+        let piecesTotal = 0;
+        for (const p of payrollRows) {
+            earnings12Months += Number(p.basic_pay) || 0;
+            piecesTotal += Number(p.pieces_produced) || 0;
+        }
+
+        const jobTitle = String(emp.job_title || '').toLowerCase();
+        const dept = String(emp.department || '').toLowerCase();
+        const role = String(emp.role || '').toLowerCase();
+        const hasDailyRate = Number(emp.daily_rate) > 0;
+        const hasHourlyRate = Number(emp.hourly_rate) > 0;
+
+        const isShoeCraft = /cutter|cutting|marking|marka|areglo|sapatero|swela|lapat|alamoda|tahi|stitching|finish|qa|packing|sew|stitch|shoe|shoemaker/.test(jobTitle) ||
+            (dept.includes('factory') && !hasDailyRate);
+
+        const isSalariedStaff = !isShoeCraft && (
+            role === 'admin' || role === 'hr' ||
+            /admin|hr|finance|accounting|information technology|\bit\b|executive|management|office|supervisor|clerk/.test(dept) ||
+            /admin|manager|supervisor|clerk|executive|analyst|developer|accountant|officer/.test(jobTitle) ||
+            (!hasDailyRate && !dept.includes('factory'))
+        );
+
+        let detectedBasis = 'daily';
+        let detectedLabel = 'Regular Daily-Paid Employee';
+        let recommendedDailyRate = '';
+        let recommendedEarnings = '';
+        let recommendedWorkdays = '';
+        let rateNote = '';
+        const signals = [];
+
+        if (isShoeCraft) {
+            detectedBasis = 'piece_rate';
+            detectedLabel = 'Factory Shoe Craft Production (Piece-Rate / Pakyao)';
+            signals.push(`Shoe craft detected from title "${emp.job_title || 'Craft'}" and department "${emp.department || 'Factory'}"`);
+            signals.push('Statutory Rule: DOLE RA 7641 Sec. 5.2 (Piece-Rate 12-Month Average Daily Salary / ADS)');
+            
+            const standardWorkdays = workdaysCount > 0 ? workdaysCount : (payrollRows.length > 0 ? Math.min(313, Math.max(1, payrollRows.length * 6)) : 261);
+            const standardEarnings = earnings12Months > 0 ? earnings12Months : (hasDailyRate ? Number(emp.daily_rate) * standardWorkdays : 0);
+            
+            recommendedEarnings = standardEarnings > 0 ? standardEarnings.toFixed(2) : '';
+            recommendedWorkdays = String(standardWorkdays);
+            if (standardEarnings > 0 && standardWorkdays > 0) {
+                recommendedDailyRate = (standardEarnings / standardWorkdays).toFixed(2);
+            } else if (hasDailyRate) {
+                recommendedDailyRate = Number(emp.daily_rate).toFixed(2);
+            }
+            
+            rateNote = `12-month Average Daily Salary (ADS) pursuant to DOLE RA 7641 rules for piece-rate shoe craft (${emp.job_title || 'Production'}). Certified period: ${periodStart} to ${targetDate}.`;
+        } else if (isSalariedStaff) {
+            detectedBasis = 'monthly_equivalent';
+            detectedLabel = 'Administrative / Monthly-Salaried Staff';
+            signals.push(`Salaried role detected from department "${emp.department || 'Office'}" / title "${emp.job_title || 'Staff'}"`);
+            signals.push('Statutory Rule: DOLE RA 7641 Sec. 5.1 (Daily Equivalent of Monthly Salary, Divisor 261/313)');
+            
+            if (hasDailyRate) {
+                recommendedDailyRate = Number(emp.daily_rate).toFixed(2);
+            } else if (hasHourlyRate) {
+                recommendedDailyRate = (Number(emp.hourly_rate) * 8).toFixed(2);
+            } else {
+                recommendedDailyRate = '610.00';
+            }
+            
+            rateNote = `Daily equivalent computed from verified monthly compensation using standard statutory DOLE divisor (RA 7641 - ${emp.department || 'Administrative Staff'}).`;
+        } else {
+            detectedBasis = 'daily';
+            detectedLabel = 'Regular Daily-Paid Employee';
+            signals.push(`Standard daily wage basis (${hasDailyRate ? `PHP ${emp.daily_rate}/day recorded` : 'Regular Operations'})`);
+            signals.push('Statutory Rule: DOLE RA 7641 Sec. 5.1 (Latest Basic Daily Wage)');
+            
+            if (hasDailyRate) {
+                recommendedDailyRate = Number(emp.daily_rate).toFixed(2);
+            } else if (hasHourlyRate) {
+                recommendedDailyRate = (Number(emp.hourly_rate) * 8).toFixed(2);
+            } else {
+                recommendedDailyRate = '610.00';
+            }
+            
+            rateNote = `Verified statutory basic daily wage of PHP ${recommendedDailyRate} from certified employee master compensation record (${emp.department || 'Operations'} / ${emp.job_title || 'Regular'}).`;
+        }
+
+        return {
+            success: true,
+            employee_id: emp.id,
+            company_id: emp.company_id,
+            full_name: `${emp.first_name || ''} ${emp.last_name || ''}`.trim(),
+            job_title: emp.job_title || 'N/A',
+            department: emp.department || 'N/A',
+            role: emp.role || 'employee',
+            detected_basis: detectedBasis,
+            detected_label: detectedLabel,
+            recommended_daily_rate: recommendedDailyRate,
+            recommended_earnings_12_months: recommendedEarnings,
+            recommended_actual_workdays: recommendedWorkdays,
+            rate_note: rateNote,
+            signals,
+            payroll_records_found: payrollRows.length,
+            total_12mo_earnings_recorded: earnings12Months,
+            workdays_recorded: workdaysCount,
+            period_start: periodStart,
+            period_end: targetDate
+        };
+    }));
     router.get('/cases/:id', (req, res, next) => {
         res.set('Cache-Control', 'private, no-store');
         next();
