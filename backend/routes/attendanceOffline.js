@@ -9,12 +9,30 @@ import { OfflineError, offlineConfig, isOfflineManager, requireOfflineManager, p
 export function createOfflineAttendanceRouter(client = supabase, env = process.env, loadWorkPolicy = async () => (await import('./payroll.js')).getActiveWorkPolicy()) {
     const router = express.Router();
     const syncWindows = new Map();
+    let reviewChannel;
+    const publishChange = () => {
+        if (!client.channel) return;
+        try {
+            reviewChannel ||= client.channel('offline-attendance-review', { config: { private: true } });
+            // Refresh signals contain no attendance evidence or employee identities.
+            Promise.resolve(reviewChannel.httpSend('OFFLINE_ATTENDANCE_CHANGED', { changed: true }, { timeout: 2000 }))
+                .catch(() => console.warn('[OFFLINE_REALTIME] Refresh signal unavailable; clients will poll.'));
+        } catch { console.warn('[OFFLINE_REALTIME] Refresh signal unavailable; clients will poll.'); }
+    };
     router.use((req, res, next) => { try {
         if (!req.user?.id || req.user.employee_identity_verified !== true) throw new OfflineError(401, 'Verified employee authentication is required.');
         if (/^\/(devices|sites|sync)(\/|$)/.test(req.path) && (req.user.role_verified !== true || !canUseAttendanceTerminal(req.user))) throw new OfflineError(403, 'Attendance terminals are restricted to Security Guard and Admin.');
         req.offlineConfig = offlineConfig(env); next();
     } catch (error) { next(error); } });
-    const wrap = action => (req, res, next) => Promise.resolve(action(req, res)).catch(next);
+    const wrap = action => (req, res, next) => Promise.resolve(action(req, res)).then(() => {
+        if (req.method === 'POST') publishChange();
+    }).catch(next);
+    const countsFor = async req => {
+        const { data, error } = await client.rpc('offline_attendance_counts', { p_actor_id: req.user.id, p_company_scope: req.offlineConfig.companyScope, p_site_ids: req.offlineConfig.sites });
+        databaseError(error);
+        if (!data || ['needs_review', 'needs_verification', 'synced', 'rejected', 'all'].some(key => !Number.isSafeInteger(data[key]) || data[key] < 0)) throw new OfflineError(503, 'Offline attendance counts are unavailable.');
+        return data;
+    };
     const approvalReady = async actor => {
         const { data, error } = await client.rpc('offline_attendance_approval_ready', { p_actor_id: actor });
         if (error?.code === 'PGRST202') return { available: false };
@@ -173,14 +191,7 @@ export function createOfflineAttendanceRouter(client = supabase, env = process.e
     }));
     router.get('/stats', wrap(async (req, res) => {
         requireOfflineManager(req.user);
-        const { data, error } = await client.from('offline_attendance_events').select('status').eq('company_scope', req.offlineConfig.companyScope).in('site_id', req.offlineConfig.sites);
-        databaseError(error);
-        const counts = { needs_review: 0, needs_verification: 0, synced: 0, rejected: 0, all: 0 };
-        (data || []).forEach(row => {
-            if (counts[row.status] !== undefined) counts[row.status]++;
-            counts.all++;
-        });
-        res.json({ counts });
+        res.json({ counts: await countsFor(req) });
     }));
     router.get('/events', wrap(async (req, res) => {
         requireOfflineManager(req.user);
@@ -194,18 +205,7 @@ export function createOfflineAttendanceRouter(client = supabase, env = process.e
         const { data, error } = await query.order('received_at', { ascending: false }).limit(250);
         databaseError(error);
 
-        // Fetch counts across all statuses for this scope and sites
-        const { data: countRows, error: countError } = await client
-            .from('offline_attendance_events')
-            .select('status')
-            .eq('company_scope', req.offlineConfig.companyScope)
-            .in('site_id', req.offlineConfig.sites);
-        databaseError(countError);
-        const counts = { needs_review: 0, needs_verification: 0, synced: 0, rejected: 0, all: 0 };
-        (countRows || []).forEach(row => {
-            if (counts[row.status] !== undefined) counts[row.status]++;
-            counts.all++;
-        });
+        const counts = await countsFor(req);
 
         const employeeIds = [...new Set((data || []).map(event => event.employee_id))];
         const { data: employees, error: employeeError } = employeeIds.length ? await client.from('employees').select('id,first_name,last_name,company_id,department,job_title,status,is_active,archived_at').in('id', employeeIds) : { data: [] };

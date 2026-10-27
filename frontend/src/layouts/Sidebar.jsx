@@ -5,12 +5,14 @@ import { supabase } from '../supabaseClient';
 import { isAdmin, isSecurity, isMedicalExempt } from '../routes/guards';
 import { isOfflineFeatureActive } from '../routes/OfflineRouteGate.js';
 import { offlineApi } from '../utils/offlineAttendanceSync';
+import { useOfflineAvailability } from '../utils/useOfflineAvailability';
 import sidebarCover from '../assets/sidebar-cover.jpg';
 import EmployeeAvatar from '../components/EmployeeAvatar';
 
 export const Sidebar = ({ user, handleLogout }) => {
   const location = useLocation();
   const queryClient = useQueryClient();
+  const offlineAvailability = useOfflineAvailability(Boolean(isAdmin(user)));
 
   const isAttendanceActive = location.pathname.includes('/admin/attendance');
   const [attendanceDropdownOpen, setAttendanceDropdownOpen] = useState(isAttendanceActive);
@@ -71,21 +73,28 @@ export const Sidebar = ({ user, handleLogout }) => {
 
   // Offline provisional captures pending count (zero overhead, real-time sync)
   const { data: offlineStats } = useQuery({
-    queryKey: ['sidebarOfflinePendingCount'],
+    queryKey: ['offlineAttendanceCounts', user?.id],
     queryFn: async () => {
-      try {
-        const res = await offlineApi('/stats');
-        return res?.counts || null;
-      } catch {
-        return null;
-      }
+      const res = await offlineApi('/stats');
+      return res.counts;
     },
-    enabled: Boolean(isAdmin(user) && isOfflineFeatureActive),
+    enabled: Boolean(isAdmin(user) && isOfflineFeatureActive && offlineAvailability.data?.ready),
     staleTime: 15000,
     refetchInterval: 30000,
-    refetchOnWindowFocus: true
+    refetchOnWindowFocus: true,
+    retry: false,
   });
   const offlinePendingCount = offlineStats?.needs_review || 0;
+
+  useEffect(() => {
+    if (!isAdmin(user) || !offlineAvailability.data?.ready) return;
+    const channel = supabase.channel('offline-attendance-review', { config: { private: true } })
+      .on('broadcast', { event: 'OFFLINE_ATTENDANCE_CHANGED' }, () => {
+        queryClient.invalidateQueries({ queryKey: ['offlineAttendanceCounts'] });
+        queryClient.invalidateQueries({ queryKey: ['offlineAttendanceEvents'] });
+      }).subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [queryClient, user, offlineAvailability.data?.ready]);
 
   // Real-time listener for offline attendance mutations across tabs
   useEffect(() => {
@@ -93,7 +102,7 @@ export const Sidebar = ({ user, handleLogout }) => {
     if (typeof BroadcastChannel !== 'undefined') {
       const channel = new BroadcastChannel('cpoint_offline_attendance_channel');
       channel.onmessage = () => {
-        queryClient.invalidateQueries({ queryKey: ['sidebarOfflinePendingCount'] });
+        queryClient.invalidateQueries({ queryKey: ['offlineAttendanceCounts'] });
       };
       return () => channel.close();
     }

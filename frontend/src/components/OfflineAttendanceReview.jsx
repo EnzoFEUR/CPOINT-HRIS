@@ -1,8 +1,9 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
-import { supabase } from '../supabaseClient';
 import { offlineApi } from '../utils/offlineAttendanceSync';
+import { useOfflineAvailability } from '../utils/useOfflineAvailability';
+import { offlineAvailabilityMessage } from '../utils/offlineAvailability.mjs';
 import PageHeader from './ui/PageHeader';
 import EmployeeAvatar from './EmployeeAvatar';
 import Badge from './ui/Badge';
@@ -34,6 +35,8 @@ const EMPTY_EVENTS = [];
 
 export default function OfflineAttendanceReview() {
   const queryClient = useQueryClient();
+  const availability = useOfflineAvailability();
+  const backendReady = availability.data?.ready === true;
 
   // Primary navigation & view states
   const [activeTab, setActiveTab] = useState('needs_review'); // 'needs_review' | 'needs_verification' | 'synced' | 'rejected' | 'all'
@@ -81,44 +84,28 @@ export default function OfflineAttendanceReview() {
     }
   }, [queryClient]);
 
-  // Supabase Real-Time subscription for instant cross-kiosk synchronization
-  useEffect(() => {
-    const channel = supabase
-      .channel('realtime_offline_review_feed')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'offline_attendance_events' }, () => {
-        queryClient.invalidateQueries({ queryKey: ['offlineAttendanceCounts'] });
-        queryClient.invalidateQueries({ queryKey: ['offlineAttendanceEvents'] });
-      })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'attendances' }, () => {
-        queryClient.invalidateQueries({ queryKey: ['offlineAttendanceCounts'] });
-        queryClient.invalidateQueries({ queryKey: ['offlineAttendanceEvents'] });
-      })
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [queryClient]);
-
   // Check Database Approval RPC Migration Status
   const approvalQuery = useQuery({
-    queryKey: ['offlineAttendanceApprovalReady'],
+    queryKey: ['offlineAttendanceApprovalReady', availability.actorId],
     queryFn: () => offlineApi('/approval-status'),
     staleTime: 60000,
-    retry: false
+    retry: false,
+    enabled: backendReady,
   });
   const isApprovalReady = approvalQuery.data?.available === true;
   const isResolutionReady = approvalQuery.data?.missing_time_out === true;
 
   // Dedicated global counts query - independent of activeTab so counts NEVER flash to 0 on tab switch
   const statsQuery = useQuery({
-    queryKey: ['offlineAttendanceCounts'],
+    queryKey: ['offlineAttendanceCounts', availability.actorId],
     queryFn: async () => {
       const res = await offlineApi('/stats');
       return res?.counts || { needs_review: 0, needs_verification: 0, synced: 0, rejected: 0, all: 0 };
     },
     staleTime: 5000,
-    refetchInterval: () => (typeof document !== 'undefined' && document.visibilityState === 'visible' ? 5000 : false),
+    enabled: backendReady,
+    retry: false,
+    refetchInterval: () => (backendReady && typeof document !== 'undefined' && document.visibilityState === 'visible' ? 30000 : false),
     refetchOnWindowFocus: true
   });
 
@@ -132,14 +119,16 @@ export default function OfflineAttendanceReview() {
 
   // Low-latency events query with keepPreviousData for zero-flicker transitions
   const eventsQuery = useQuery({
-    queryKey: ['offlineAttendanceEvents', activeTab],
+    queryKey: ['offlineAttendanceEvents', availability.actorId, activeTab],
     queryFn: async () => {
       const res = await offlineApi(`/events?status=${activeTab}&limit=250`);
       return Array.isArray(res?.events) ? res.events : [];
     },
     placeholderData: keepPreviousData,
     staleTime: 5000,
-    refetchInterval: () => (typeof document !== 'undefined' && document.visibilityState === 'visible' ? 6000 : false),
+    enabled: backendReady,
+    retry: false,
+    refetchInterval: () => (backendReady && typeof document !== 'undefined' && document.visibilityState === 'visible' ? 30000 : false),
     refetchOnWindowFocus: true
   });
 
@@ -434,6 +423,7 @@ export default function OfflineAttendanceReview() {
   };
 
   const handleRefresh = async () => {
+    if (!backendReady) { await availability.refetch(); return; }
     await Promise.all([
       statsQuery.refetch(),
       eventsQuery.refetch(),
@@ -444,7 +434,15 @@ export default function OfflineAttendanceReview() {
   const isDataLoading = eventsQuery.isLoading && !eventsQuery.data;
 
   // Keep hooks in the same order when the backend enables/disables the module.
-  if (eventsQuery.error?.message === 'Offline attendance is disabled.') return null;
+  if (!backendReady) return (
+    <div className="space-y-4">
+      <PageHeader breadcrumbs={['Admin', 'Attendance', 'Offline Captures']} />
+      <div className="rounded-md border border-line bg-surface p-4">
+        <p role="status" className="text-sm text-ink">{offlineAvailabilityMessage(availability.data, availability.error)}</p>
+        <button type="button" onClick={() => availability.refetch()} disabled={availability.isFetching} className="mt-3 rounded-md border border-line px-3 py-2 text-sm font-semibold disabled:opacity-50">Check again</button>
+      </div>
+    </div>
+  );
 
   return (
     <div className="space-y-6">

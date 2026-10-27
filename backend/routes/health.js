@@ -1,10 +1,12 @@
 import express from 'express';
 import { createCachedRead } from '../utils/cachedRead.js';
 import { API_RATE_POLICY } from '../../shared/securityPolicy.mjs';
+import { createOfflineReadiness } from '../services/offlineReadiness.js';
 
 export function createHealthRouter(database, env = process.env) {
     const router = express.Router();
     const revision = /^[a-f0-9]{7,40}$/i.test(env.RENDER_GIT_COMMIT || '') ? env.RENDER_GIT_COMMIT.slice(0, 12) : undefined;
+    const checkOffline = createOfflineReadiness(database, env);
     const checkDatabase = createCachedRead(async () => {
         const signal = AbortSignal.timeout(3000);
         const results = await Promise.all([
@@ -19,6 +21,7 @@ export function createHealthRouter(database, env = process.env) {
     router.get('/ready', async (req, res) => {
         try {
             await checkDatabase();
+            if (env.OFFLINE_ATTENDANCE_ENABLED === 'true' && !(await checkOffline()).ready) throw new Error('Offline attendance is not ready.');
             res.json({ status: 'ok', service: 'C-Point HRIS API', timestamp: new Date().toISOString() });
         } catch {
             res.setHeader('Retry-After', '2');

@@ -72,8 +72,14 @@ export default function OfflineAttendanceTerminal({ canProvision = false, operat
     if (currentEnrollment) {
       setSite(currentEnrollment.device.site_id);
     }
-    if (import.meta.env.PROD && navigator.serviceWorker?.controller && globalThis.caches) {
-      setOfflineReady(Boolean(await caches.match('/offline-assets.json')));
+    if (import.meta.env.PROD && navigator.serviceWorker?.controller && globalThis.MessageChannel) {
+      setOfflineReady(await new Promise(resolve => {
+        const channel = new MessageChannel();
+        const finish = ready => { clearTimeout(timer); channel.port1.close(); resolve(ready); };
+        const timer = setTimeout(() => finish(false), 1500);
+        channel.port1.onmessage = event => finish(event.data?.ready === true);
+        navigator.serviceWorker.controller.postMessage({ type: 'OFFLINE_STATUS' }, [channel.port2]);
+      }));
     }
   }, []);
 

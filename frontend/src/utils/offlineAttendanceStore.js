@@ -1,4 +1,5 @@
-import { canonicalEvent, validateEvent } from '../../../shared/offlineAttendance.mjs';
+import { canonicalEvent, canUseAttendanceTerminal, validateEvent } from '../../../shared/offlineAttendance.mjs';
+import { getStoredUser } from './storedUser.mjs';
 
 const DB_NAME = 'cpoint_offline_attendance_v1';
 export const MAX_EVENTS = 2000;
@@ -93,6 +94,12 @@ export function checkEnrollment(enrollment, now = Date.now()) {
   return enrollment;
 }
 
+export function assertOfflineOperator(enrollment, user = getStoredUser()) {
+  if (!canUseAttendanceTerminal(user) || (String(user.role).trim().toLowerCase() !== 'admin' && user.id !== enrollment.device.operator_id)) {
+    throw new Error('Only the assigned operator or Admin may capture attendance on this terminal.');
+  }
+}
+
 const workDateFormatter = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Manila', year: 'numeric', month: '2-digit', day: '2-digit' });
 const workDate = value => workDateFormatter.format(new Date(value));
 
@@ -160,6 +167,7 @@ export async function captureOfflineBadge({ badge, action, eventId = crypto.rand
   if (hold) throw new Error(hold);
   if (typeof badge !== 'string' || !badge.trim() || badge.length > 100) throw new Error('Enter a valid badge ID.');
   const enrollment = checkEnrollment(await readMeta('enrollment'));
+  assertOfflineOperator(enrollment);
   const employee = enrollment.roster.employees.find(item => item.company_id === badge.trim());
   if (!employee) throw new Error('Badge is not in this approved terminal roster. Ask HR to verify it.');
   if (!['TIME_IN', 'TIME_OUT'].includes(action)) throw new Error('Choose Time in or Time out.');
@@ -194,6 +202,7 @@ export async function captureOfflineBadge({ badge, action, eventId = crypto.rand
       store.getAll().onsuccess = event => {
         try {
           if (event.target.result.length >= MAX_EVENTS) throw new Error('Storage is full. Sync pending captures, ask HR to complete reviews, then remove accepted copies.');
+          assertOfflineOperator(checkEnrollment(approved.target.result));
           assertOfflinePunchAllowed(event.target.result, approved.target.result?.roster.attendance || [], employee.id, action, payload.captured_at);
           store.add(record);
         } catch (error) { fail(error); }
