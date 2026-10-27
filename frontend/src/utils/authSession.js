@@ -1,6 +1,8 @@
 import { supabase } from '../supabaseClient';
 import { getUser } from '../routes/guards';
 import { USER_CHANGED } from './storedUser.mjs';
+import { unsubscribeDevicePush } from './pushNotifications';
+import { revokeBrowserPush } from './devicePush.mjs';
 
 const AUTH_SYNC_KEY = 'cpoint_auth_sync_event';
 
@@ -11,6 +13,8 @@ const AUTH_SYNC_KEY = 'cpoint_auth_sync_event';
  */
 export const performLogout = async (redirectUrl = '/login') => {
   try {
+    try { await unsubscribeDevicePush(); }
+    catch { console.warn('[AUTH] Device push revocation could not be completed.'); }
     // 1. Notify other open tabs immediately via broadcast storage event
     try {
       localStorage.setItem(
@@ -120,10 +124,11 @@ export const subscribeToAuthSync = ({ onUserChange, onLogout }) => {
   // Supabase real-time auth state subscription
   const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
     if (event === 'SIGNED_OUT') {
-      const currentUser = getUser();
-      if (!currentUser && onLogout) {
-        onLogout();
-      }
+      // Native provider cleanup makes no Supabase calls inside the auth event callback.
+      revokeBrowserPush().catch(() => {}).then(() => {
+        localStorage.removeItem('user');
+        if (onLogout) onLogout();
+      });
     } else if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED' || event === 'USER_UPDATED') {
       const freshUser = getUser();
       if (freshUser && onUserChange) {

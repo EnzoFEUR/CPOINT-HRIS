@@ -1,32 +1,19 @@
 import express from 'express';
-import { postgrestLikeValue } from '../middleware/requestValidation.js';
 import { supabase, createIsolatedAuthClient } from '../supabaseClient.js';
 import { closePasswordSession } from '../services/passwordService.js';
 import { authenticatorService } from '../services/authenticatorService.js';
 import { verifyOtpCode } from '../services/otpService.js';
-import { verifyToken, invalidateAuthUser } from '../middleware/authMiddleware.js';
+import { verifyToken, verifyIdentityToken, invalidateAuthUser } from '../middleware/authMiddleware.js';
+import { bindOwnLoginChallenge } from '../middleware/loginChallengeMiddleware.js';
+import { loginSessionService } from '../services/loginSessionService.js';
 import { createAuditLog } from './auditLogs.js';
 
 const router = express.Router();
 const failure = (message, status = 400) => Object.assign(new Error(message), { status });
 const respondError = (res, error) => res.status(error.status || 503).json({ success: false, code: error.code, error: error.status ? error.message : 'Authenticator service is temporarily unavailable. Use email verification.' });
 
-async function resolveAuthUser(identifier) {
-    if (typeof identifier !== 'string' || !identifier.trim()) return null;
-    const clean = identifier.trim().toLowerCase();
-    const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(clean);
-    const query = supabase.from('employees').select('id,auth_user_id,email,company_id');
-    const { data: employee, error } = await (uuid ? query.or('id.eq.' + clean + ',auth_user_id.eq.' + clean)
-        : query.or('email.ilike.' + postgrestLikeValue(clean) + ',company_id.ilike.' + postgrestLikeValue(clean))).maybeSingle();
-    if (error) throw error;
-    if (!employee) return null;
-    const { data, error: authError } = await supabase.auth.admin.getUserById(employee.auth_user_id || employee.id);
-    if (authError) throw authError;
-    return data?.user || null;
-}
-
 async function sessionUser(req) {
-    const authId = req.user?.auth_user_id || req.user?.id;
+    const authId = req.user?._auth_user_id || req.user?.auth_user_id || req.user?.id;
     const { data, error } = await supabase.auth.admin.getUserById(authId);
     if (error || !data?.user) throw failure('Account could not be verified.', 401);
     return data.user;
@@ -57,18 +44,9 @@ function audit(req, userId, event) {
         .catch(() => console.error('[AUTHENTICATOR_AUDIT] Audit delivery failed.'));
 }
 
-router.get('/status', async (req, res) => {
+router.get('/status', verifyIdentityToken, async (req, res) => {
     try {
-        let user;
-        const token = req.headers.authorization?.startsWith('Bearer ') ? req.headers.authorization.slice(7) : null;
-        if (token) {
-            const { data, error } = await supabase.auth.getUser(token);
-            if (error) throw failure('Account could not be verified.', 401);
-            user = data?.user;
-        }
-        const identifier = req.query.identifier || req.query.email;
-        if (!user && identifier) user = await resolveAuthUser(identifier);
-        if (!user) throw failure('Account could not be verified.', 401);
+        const user = { id: req.user._auth_user_id, user_metadata: req.user.user_metadata };
         const status = await authenticatorService.status(user.id);
         res.json({ success: true, ...status, requiresReenrollment: !status.enabled && Boolean(user.user_metadata?.totp_enabled) });
     } catch (error) { respondError(res, error); }
@@ -94,20 +72,23 @@ router.post('/enable', verifyToken, async (req, res) => {
     } catch (error) { respondError(res, error); }
 });
 
-router.post('/verify', async (req, res) => {
+router.post('/verify', bindOwnLoginChallenge, async (req, res) => {
     try {
-        const user = await resolveAuthUser(req.body?.identifier || req.body?.email);
-        if (!user) throw failure('Account or verification code could not be verified.');
+        const user = { id: req.user._auth_user_id, email: req.user.email };
         const code = req.body?.code;
         const purpose = typeof req.body?.purpose === 'string' ? req.body.purpose : 'login_2fa';
         const fallback = verifyOtpCode([purpose + '_' + user.email.toLowerCase(), purpose + '_' + user.id], code);
-        if (fallback.valid) return res.json({ success: true, verifiedVia: 'EMAIL_OTP_FALLBACK' });
+        if (fallback.valid) {
+            const verifiedUntil = purpose === 'login_2fa' ? await loginSessionService.markVerified(req, 'EMAIL_OTP') : undefined;
+            return res.json({ success: true, verifiedVia: 'EMAIL_OTP_FALLBACK', verifiedUntil });
+        }
         const result = await authenticatorService.verify(user.id, code);
         if (!result.valid) {
             if (result.retryAfterSeconds) res.setHeader('Retry-After', String(result.retryAfterSeconds));
             return res.status(result.retryAfterSeconds ? 429 : 400).json({ success: false, error: result.error, retryAfterSeconds: result.retryAfterSeconds || 0 });
         }
-        res.json({ success: true, message: 'Authenticator code verified successfully.', verifiedVia: result.verifiedVia, remainingCodes: result.remainingCodes });
+        const verifiedUntil = purpose === 'login_2fa' ? await loginSessionService.markVerified(req, String(result.verifiedVia).toUpperCase().includes('BACKUP') ? 'BACKUP_CODE' : 'TOTP') : undefined;
+        res.json({ success: true, message: 'Authenticator code verified successfully.', verifiedVia: result.verifiedVia, remainingCodes: result.remainingCodes, verifiedUntil });
     } catch (error) { respondError(res, error); }
 });
 

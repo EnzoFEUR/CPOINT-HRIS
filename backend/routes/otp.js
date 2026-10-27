@@ -6,8 +6,11 @@ import { authenticatorService } from '../services/authenticatorService.js';
 import { disciplinaryService } from '../services/disciplinaryService.js';
 import { publishCommittedDisciplinary } from '../services/disciplinaryEvents.js';
 import { supabase } from '../supabaseClient.js';
+import { bindOwnLoginChallenge } from '../middleware/loginChallengeMiddleware.js';
+import { loginSessionService } from '../services/loginSessionService.js';
 
 const router = express.Router();
+router.use(bindOwnLoginChallenge);
 
 // GET /api/auth/otp/status - Legacy clients; POST keeps account identifiers out of URLs.
 const getOtpStatus = async (req, res) => {
@@ -306,7 +309,8 @@ router.post('/verify', async (req, res) => {
 
         // 2. High-speed in-memory lookup across all candidate keys
         let candidateList = Array.from(candidateKeys);
-        const hadActiveOtp = Boolean(getActiveOtp(candidateList));
+        let activeChallenge = getActiveOtp(candidateList);
+        const hadActiveOtp = Boolean(activeChallenge);
         let result = verifyOtpCode(candidateList, otp);
 
         let targetAuthUserId = null;
@@ -339,7 +343,10 @@ router.post('/verify', async (req, res) => {
                     }
 
                     candidateList = Array.from(candidateKeys);
-                    if (!hadActiveOtp) result = verifyOtpCode(candidateList, otp);
+                    if (!hadActiveOtp) {
+                        activeChallenge = getActiveOtp(candidateList);
+                        result = verifyOtpCode(candidateList, otp);
+                    }
                 }
             } catch (dbErr) {
                 console.error('[OTP_VERIFY_DB_LOOKUP_ERR]', dbErr.message);
@@ -364,16 +371,24 @@ router.post('/verify', async (req, res) => {
         // Email challenges are server-only; client-readable Auth metadata is not a trusted OTP store.
         deleteOtp(candidateList);
 
+        let verifiedUntil;
+        if (purpose === 'login_2fa') {
+            const via = String(result.via || '').toUpperCase();
+            const method = via.includes('BACKUP') ? 'BACKUP_CODE' : via.includes('TOTP') || via.includes('AUTHENTICATOR') ? 'TOTP' : activeChallenge?.method === 'sms' ? 'SMS_OTP' : 'EMAIL_OTP';
+            verifiedUntil = await loginSessionService.markVerified(req, method);
+        }
+
         res.json({
             success: true,
             purpose,
             verifiedVia: result.via || 'OTP',
+            verifiedUntil,
             message: 'Code verified successfully'
         });
 
     } catch (err) {
         console.error('[OTP_VERIFY_ERROR]', err.message);
-        res.status(500).json({ success: false, error: err.message });
+        res.status(err.status || 500).json({ success: false, code: err.code, error: err.status ? err.message : 'Verification could not be completed. Please retry.' });
     }
 });
 

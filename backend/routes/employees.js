@@ -5,7 +5,7 @@ import { randomUUID } from 'node:crypto';
 import { getEmployeePayError } from '../../shared/personnelInput.mjs';
 import { postgrestValue, postgrestLikeValue, validateUuidParam } from '../middleware/requestValidation.js';
 import { supabase } from '../supabaseClient.js';
-import { cacheResponse, invalidateCache } from '../middleware/cacheMiddleware.js';
+import { cacheResponse, invalidateCache, readCachedSource } from '../middleware/cacheMiddleware.js';
 import { invalidateAuthUser, hasVerifiedManagerRole } from '../middleware/authMiddleware.js';
 import { createNotification } from './notifications.js';
 import { DOCUMENT_URL_TTL } from '../services/documentService.js';
@@ -137,9 +137,10 @@ router.get('/', cacheResponse(15), async (req, res) => {
             }
             return view ? query.order('id', { ascending: true }) : query;
         };
+        const readWorkforce = () => readAllRows(makeQuery);
         const [employeeResult, pendingCounts] = await Promise.all([
-            view ? readAllRows(makeQuery).then(data => ({ data })) : makeQuery(),
-            view === 'directory' ? readDocumentPendingCounts(supabase) : null,
+            view ? (req.query.employee_id ? readWorkforce() : readCachedSource('/api/employees/workforce', readWorkforce)).then(data => ({ data })) : makeQuery(),
+            view === 'directory' ? readCachedSource('/api/employees/pending-documents', () => readDocumentPendingCounts(supabase)) : null,
         ]);
         const { data, error } = employeeResult;
         if (error) throw error;
@@ -177,8 +178,11 @@ router.get('/', cacheResponse(15), async (req, res) => {
         }
         if (view !== 'roster' && result.data.some(emp => !emp.phone)) {
             try {
-                const { data: authUsers } = await supabase.auth.admin.listUsers({ perPage: 1000 });
-                const phones = new Map((authUsers?.users || []).map(u => [u.id, u.user_metadata?.phone || u.phone || null]));
+                const phones = await readCachedSource('/api/employees/auth-phones', async () => {
+                    const { data, error } = await supabase.auth.admin.listUsers({ perPage: 1000 });
+                    if (error || !Array.isArray(data?.users)) throw error || new Error('Optional employee phone metadata unavailable.');
+                    return new Map(data.users.map(u => [u.id, u.user_metadata?.phone || u.phone || null]));
+                });
                 result.data = result.data.map(emp => ({ ...emp, phone: emp.phone || phones.get(emp.id) || null }));
             } catch {}
         }

@@ -1,7 +1,9 @@
 import { supabase } from '../supabaseClient';
 import toast from 'react-hot-toast';
+import { API_BASE_URL } from './apiBaseUrl.mjs';
+import { revokeBrowserPush } from './devicePush.mjs';
 
-export const API_BASE_URL = import.meta.env.VITE_API_URL || (import.meta.env.PROD ? 'https://cpoint-hris.onrender.com' : 'http://localhost:5000');
+export { API_BASE_URL };
 
 /**
  * Fetch wrapper that attaches Supabase auth token
@@ -38,6 +40,7 @@ export const fetchWithAuth = async (endpoint, options = {}) => {
         // 5. Global Error Handling for Unauthorized access
         if (response.status === 401) {
             console.error('[API_INTERCEPTOR] 401 Unauthorized. Session expired or missing token.');
+            try { await revokeBrowserPush(); } catch { /* Session cleanup must still finish if device APIs fail. */ }
             try { await supabase.auth.signOut({ scope: 'local' }); } catch { /* Continue local cleanup if sign-out fails. */ }
             localStorage.removeItem('user');
             try {
@@ -61,6 +64,15 @@ export const fetchWithAuth = async (endpoint, options = {}) => {
             try {
                 const cloned = response.clone();
                 const errData = await cloned.json();
+                if (errData?.code === 'SECOND_FACTOR_REQUIRED') {
+                    try { await revokeBrowserPush(); } catch { /* Keep the sign-in redirect available. */ }
+                    localStorage.removeItem('user');
+                    sessionStorage.removeItem('cpoint_login_2fa_session');
+                    if (window.location.pathname !== '/login') {
+                        toast.error('Please complete sign-in verification.');
+                        window.location.replace('/login');
+                    }
+                }
                 if (errData?.code === 'PASSWORD_CHANGE_REQUIRED') {
                     const stored = localStorage.getItem('user');
                     if (stored) {

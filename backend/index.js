@@ -31,7 +31,7 @@ import { mountOfflineAttendance } from './routes/mountOfflineAttendance.js';
 
 // Middleware & Utilities
 import { register, telemetryMiddleware, getTelemetrySummary, getPrometheusMetrics } from './utils/telemetry.js';
-import { securityHeaders, removeExposedHeaders, apiRateLimiter, authRateLimiter, createCorsOptions, createAdmissionControl } from './middleware/securityMiddleware.js';
+import { securityHeaders, removeExposedHeaders, apiRateLimiter, authRateLimiter, createCorsOptions, createAdmissionControl, createHeavyWorkAdmissionControl, createClassificationAdmissionControl } from './middleware/securityMiddleware.js';
 import { createHealthRouter } from './routes/health.js';
 import { validateApiInput } from './middleware/requestValidation.js';
 import { protectApiResponses, apiNotFound, apiErrorHandler } from './middleware/errorMiddleware.js';
@@ -61,6 +61,7 @@ app.use(compression({
 }));
 
 // Core Middleware
+app.use('/api', createHeavyWorkAdmissionControl(), createClassificationAdmissionControl());
 app.use('/api', createAdmissionControl({ maxInFlight: Number(process.env.MAX_API_IN_FLIGHT || 64) }));
 app.use('/api', apiRateLimiter({ windowMs: API_RATE_POLICY.windowMs, max: API_RATE_POLICY.anonymousRequestsPerIp, releaseVerified: true }));
 app.use('/api/auth', authRateLimiter());

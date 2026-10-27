@@ -565,11 +565,12 @@ router.get('/overview', checkRole('admin', 'hr'), cacheResponse(15), async (req,
         const todayStr = toDateStr(new Date());
         const thirtyFiveDaysAgo = toDateStr(new Date(Date.now() - 35 * DAY_MS));
 
-        // 1. Fetch core metrics in 3 parallel ultra-light queries (no nested joins)
+        // Fetch the optional calendar alongside the core metrics, without a later network round trip.
         const [
             { data: rawEmployees, error: empErr },
             { data: rawAttendances, error: attErr },
-            { data: rawLeaves, error: leaveErr }
+            { data: rawLeaves, error: leaveErr },
+            { data: rawHolidays }
         ] = await Promise.all([
             applyWorkforceFilter(
                 supabase
@@ -584,18 +585,16 @@ router.get('/overview', checkRole('admin', 'hr'), cacheResponse(15), async (req,
             supabase
                 .from('leave_requests')
                 .select('employee_id, status, start_date, end_date')
+                .or(`status.eq.New,end_date.gte.${thirtyFiveDaysAgo}`),
+            Promise.resolve(supabase.from('holidays').select('date').gte('date', thirtyFiveDaysAgo))
+                .catch(() => ({ data: [] }))
         ]);
 
         if (empErr) throw empErr;
         if (attErr) throw attErr;
         if (leaveErr) throw leaveErr;
 
-        // Company holidays (non-fatal: dashboard still loads if the table is unavailable)
-        let holidayDates = new Set();
-        try {
-            const { data: rawHolidays } = await supabase.from('holidays').select('date').gte('date', thirtyFiveDaysAgo);
-            holidayDates = new Set((rawHolidays || []).map(h => h.date));
-        } catch { /* ignore */ }
+        const holidayDates = new Set((rawHolidays || []).map(h => h.date));
 
         // Strictly workforce employees: excludes Admins, HR, and Security Guards
         const employees = (rawEmployees || []).filter(isWorkforceEmployee);

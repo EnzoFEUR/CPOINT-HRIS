@@ -75,6 +75,7 @@ supabase/tests/*
 /scripts/qa-original-*.mjs
 /scripts/retest-*.mjs
 /scripts/test-offline-sync-flow.mjs
+/scripts/test-verified-login-sql.mjs
 /scripts/test-resolve-error.mjs
 /scripts/test_dom_cues.mjs
 /scripts/test_ws_probe.mjs

@@ -5,9 +5,35 @@ import { PRIVATE_API_CACHE_CONTROL } from '../../shared/securityPolicy.mjs';
 export const memoryCache = new NodeCache({ 
     stdTTL: 30, 
     checkperiod: 60,
+    maxKeys: 1024,
     useClones: false 
 });
 const pendingReads = new Map();
+const pendingSources = new Map();
+function remember(key, value, ttl) {
+    try { memoryCache.set(key, value, ttl); }
+    catch (error) { if (error.errorcode !== 'ECACHEFULL') throw error; }
+}
+
+// Fixed, server-owned source keys share work across authorized views, never whole user responses.
+export async function readCachedSource(key, load, ttlSeconds = 15) {
+    const cacheKey = `source:${key}`;
+    const cached = memoryCache.get(cacheKey);
+    if (cached !== undefined) return cached;
+    let flight = pendingSources.get(cacheKey);
+    if (!flight) {
+        flight = {};
+        flight.promise = Promise.resolve().then(load).then(value => {
+            if (pendingSources.get(cacheKey) !== flight) return readCachedSource(key, load, ttlSeconds);
+            remember(cacheKey, value, ttlSeconds);
+            return value;
+        }).finally(() => {
+            if (pendingSources.get(cacheKey) === flight) pendingSources.delete(cacheKey);
+        });
+        pendingSources.set(cacheKey, flight);
+    }
+    return flight.promise;
+}
 
 // Cache GET responses in memory based on URL and user context
 export const cacheResponse = (ttlSeconds = 30) => {
@@ -68,7 +94,7 @@ export const cacheResponse = (ttlSeconds = 30) => {
                 const response = originalJson(body);
                 // A concurrent write must not let an older read repopulate the cache.
                 if (pendingReads.get(cacheKey) === flight && res.statusCode === 200 && body && !body.error && body.success !== false && body.status !== 'error') {
-                    memoryCache.set(cacheKey, body, ttlSeconds);
+                    remember(cacheKey, body, ttlSeconds);
                 }
                 complete(result);
                 return response;
@@ -86,6 +112,7 @@ export const cacheResponse = (ttlSeconds = 30) => {
 export const invalidateCache = (prefixes = []) => {
     if (!prefixes || (Array.isArray(prefixes) && prefixes.length === 0)) {
         memoryCache.flushAll();
+        pendingSources.clear();
         for (const flight of pendingReads.values()) flight.invalidate();
         return;
     }
@@ -99,5 +126,6 @@ export const invalidateCache = (prefixes = []) => {
             memoryCache.del(matchingKeys);
         }
         for (const [key, flight] of pendingReads) if (key.includes(prefix)) flight.invalidate();
+        for (const key of pendingSources.keys()) if (key.includes(prefix)) pendingSources.delete(key);
     });
 };

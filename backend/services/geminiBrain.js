@@ -53,6 +53,20 @@ const getGenAI = () => {
   return new GoogleGenerativeAI(apiKey);
 };
 
+const generateContentWithDeadline = async (model, contents, timeoutMs, timeoutMessage) => {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(new Error(timeoutMessage)), timeoutMs);
+  try {
+    const result = await model.generateContent(contents, { signal: controller.signal });
+    controller.signal.throwIfAborted();
+    return result.response.text();
+  } catch (err) {
+    throw controller.signal.aborted ? controller.signal.reason : err;
+  } finally {
+    clearTimeout(timer);
+  }
+};
+
 // Execute prompt with timeout and fallback
 const executeGemini = async (prompt, systemInstruction = '', options = {}) => {
   const genAI = getGenAI();
@@ -70,16 +84,9 @@ const executeGemini = async (prompt, systemInstruction = '', options = {}) => {
       }
     });
 
-    const timeoutPromise = new Promise((_, reject) =>
-      setTimeout(() => reject(new Error(`Gemini timeout after ${timeoutMs}ms`)), timeoutMs)
+    return generateContentWithDeadline(
+      model, options.contents || prompt, timeoutMs, `Gemini timeout after ${timeoutMs}ms`
     );
-
-    const contentPromise = options.contents
-      ? model.generateContent(options.contents)
-      : model.generateContent(prompt);
-
-    const result = await Promise.race([contentPromise, timeoutPromise]);
-    return result.response.text();
   };
 
   const primaryModel = getPrimaryModel();
@@ -152,15 +159,10 @@ Respond with strictly valid JSON:
           generationConfig: { responseMimeType: 'application/json' }
         });
         const livenessTimeoutMs = parseInt(process.env.GEMINI_TIMEOUT_MS, 10) || 15000;
-        const timeoutPromise = new Promise((_, reject) =>
-          setTimeout(() => reject(new Error(`Liveness timeout (${modelName})`)), livenessTimeoutMs)
-        );
-        const contentPromise = model.generateContent([
+        return generateContentWithDeadline(model, [
           prompt,
           { inlineData: { data: base64Data, mimeType: 'image/jpeg' } }
-        ]);
-        const result = await Promise.race([contentPromise, timeoutPromise]);
-        return result.response.text();
+        ], livenessTimeoutMs, `Liveness timeout (${modelName})`);
       };
 
       try {
@@ -247,16 +249,11 @@ Respond with strictly valid JSON:
           generationConfig: { responseMimeType: 'application/json' }
         });
         const matchTimeoutMs = parseInt(process.env.GEMINI_TIMEOUT_MS, 10) || 15000;
-        const timeoutPromise = new Promise((_, reject) =>
-          setTimeout(() => reject(new Error(`Dual biometric timeout (${modelName})`)), matchTimeoutMs)
-        );
-        const contentPromise = model.generateContent([
+        return generateContentWithDeadline(model, [
           prompt,
           { inlineData: { data: liveBase64, mimeType: 'image/jpeg' } },
           { inlineData: { data: baselineBase64, mimeType: 'image/jpeg' } }
-        ]);
-        const result = await Promise.race([contentPromise, timeoutPromise]);
-        return result.response.text();
+        ], matchTimeoutMs, `Dual biometric timeout (${modelName})`);
       };
 
       try {

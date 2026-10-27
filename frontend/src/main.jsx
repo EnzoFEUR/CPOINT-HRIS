@@ -5,6 +5,8 @@ import './index.css'
 import './assets/fonts/fonts.css'
 import App from './App.jsx'
 import { supabase } from './supabaseClient.js'
+import { API_BASE_URL as API_URL } from './utils/apiBaseUrl.mjs'
+import { revokeBrowserPush } from './utils/devicePush.mjs'
 import logoIcon from './assets/logo-icon.png'
 
 // Resilient embedded SVG monogram for offline & crash recovery
@@ -44,6 +46,7 @@ class RootErrorBoundary extends Component {
   };
 
   handleHardReset = async () => {
+    try { await revokeBrowserPush(); } catch { /* Cache recovery must remain available. */ }
     try {
       if ('serviceWorker' in navigator) {
         const registrations = await navigator.serviceWorker.getRegistrations();
@@ -198,7 +201,6 @@ const queryClient = new QueryClient({
 });
 
 // Intercept all fetch requests to automatically reroute to the Cloud API and inject JWT
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 const originalFetch = window.fetch;
 
 window.fetch = async (...args) => {

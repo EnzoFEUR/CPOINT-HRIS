@@ -4,6 +4,7 @@ import { supabase } from '../supabaseClient';
 import { useNavigate, Link } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { fetchWithAuth } from '../utils/api';
+import { revokeBrowserPush } from '../utils/devicePush.mjs';
 import { setDisciplinaryCache, clearDisciplinaryCache } from '../utils/disciplinaryCache';
 import { useOtpCooldown } from '../utils/useOtpCooldown';
 import { isSecurity, isAdmin, isMedicalExempt } from '../routes/guards';
@@ -321,24 +322,13 @@ export default function Login() {
             setPassword('');
 
             if (authData?.user) {
-                let { data: employee, error: empError } = await supabase
-                    .from('employees')
-                    .select('*')
-                    .eq('id', authData.user.id)
-                    .single();
-                    
-                if (empError) {
+                try { await revokeBrowserPush(); } catch { /* Keep account verification available if device APIs fail. */ }
+                const contextResponse = await fetchWithAuth('/api/auth/security/login-context');
+                const context = await contextResponse.json();
+                const employee = context.data;
+                if (!contextResponse.ok || !employee?.id) {
                     setLoading(false);
                     return setError("Unable to retrieve employee account details.");
-                }
-
-                if (String(employee.status).toLowerCase() === 'suspended') {
-                    const response = await fetchWithAuth('/api/auth/security/refresh-employment-status', {
-                        method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${authData.session.access_token}` }, body: '{}',
-                    });
-                    const refreshed = await response.json();
-                    if (!response.ok || !refreshed.success) throw new Error(refreshed.error || 'Unable to refresh employment status.');
-                    employee = refreshed.data;
                 }
 
                 const existingExpiresAt = savedSession?.expiresAt;
@@ -527,7 +517,7 @@ export default function Login() {
                 return setError(verifyData.error || "Invalid verification code. Please try again.");
             }
 
-            const { data: dbData, error: dbError } = await supabase
+            let { data: dbData, error: dbError } = await supabase
                 .from('employees')
                 .select('*')
                 .eq('id', employeeData.id)
@@ -536,6 +526,12 @@ export default function Login() {
             if (dbError) {
                 setLoading(false);
                 return setError("Failed to verify user profile.");
+            }
+            if (String(dbData.status).toLowerCase() === 'suspended') {
+                const response = await fetchWithAuth('/api/auth/security/refresh-employment-status', { method: 'POST', body: '{}' });
+                const refreshed = await response.json();
+                if (!response.ok || !refreshed.success) throw new Error(refreshed.error || 'Unable to refresh employment status.');
+                dbData = refreshed.data;
             }
 
             const isTotpActive = Boolean(

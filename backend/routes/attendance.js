@@ -3,7 +3,7 @@ import { getActiveMedicalGrace, hasRegisteredFace } from '../../shared/medicalGr
 import { postgrestLikeValue } from '../middleware/requestValidation.js';
 import { supabase } from '../supabaseClient.js';
 import { Brain } from '../services/geminiBrain.js';
-import { checkVerifiedManagerOrOwnership, hasVerifiedManagerRole, invalidateAuthUser } from '../middleware/authMiddleware.js';
+import { checkRole, checkVerifiedManagerOrOwnership, hasVerifiedManagerRole, invalidateAuthUser } from '../middleware/authMiddleware.js';
 import { cacheResponse, invalidateCache } from '../middleware/cacheMiddleware.js';
 import { isAttendanceExempt, isWorkforceEmployee, applyAttendanceWorkforceFilters } from '../utils/workforce.js';
 import { getEmployeeMonthlyAttendance } from '../utils/attendanceReconciliation.js';
@@ -631,6 +631,7 @@ router.get(
 // 1.5 GET /api/attendance/verify-qr/:company_id
 router.get(
   '/verify-qr/:company_id',
+  checkRole('security', 'guard', 'security_guard', 'admin', 'hr', 'hr_manager'),
   asyncHandler(async (req, res) => {
     const { reqId } = req;
     let { company_id } = req.params;
@@ -711,13 +712,23 @@ router.get(
       }
     }
 
+    const scannerEmployee = {
+      id: employee.id,
+      first_name: employee.first_name,
+      last_name: employee.last_name,
+      company_id: employee.company_id,
+      is_active: employee.is_active,
+      status: employee.status,
+      has_registered_biometrics: hasRegisteredFace(employee),
+    };
+
     // System operators (Admins, HR, Security Guards) do not log attendance
     if (isAttendanceExempt(employee)) {
       logger.info(reqId, 'QR scan flagged exempt: Personnel is an attendance-exempt operator', { employee_id: employee.id, role: employee.role });
       return res.json({
         status: 'success',
         data: {
-          ...employee,
+          ...scannerEmployee,
           is_attendance_exempt: true,
           name: `${employee.first_name || ''} ${employee.last_name || ''}`.trim() || 'Staff'
         }
@@ -737,9 +748,10 @@ router.get(
     res.json({
       status: 'success',
       data: {
-        ...employee,
+        ...scannerEmployee,
+        ...(isMedicalGrace ? {} : { biometric_baseline_path: employee.biometric_baseline_path }),
         is_medical_exempt: isMedicalGrace,
-        medical_exemption: medicalExemption,
+        medical_exemption: medicalExemption ? { valid_until: medicalExemption.valid_until } : null,
         name: `${employee.first_name || ''} ${employee.last_name || ''}`.trim() || 'Employee'
       }
     });
@@ -749,6 +761,7 @@ router.get(
 // 2. POST /api/attendance/scan
 router.post(
   '/scan',
+  checkRole('security', 'guard', 'security_guard', 'admin', 'hr', 'hr_manager'),
   rateLimiter({
     windowMs: CONFIG.RATE_LIMITS.SCAN_WINDOW_MS,
     maxRequests: CONFIG.RATE_LIMITS.SCAN_MAX_REQUESTS,

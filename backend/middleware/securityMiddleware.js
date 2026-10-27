@@ -9,7 +9,7 @@ export const securityHeaders = (req, res, next) => {
     res.setHeader('Cross-Origin-Opener-Policy', 'same-origin');
     res.setHeader('Cross-Origin-Resource-Policy', 'same-site');
     res.setHeader('Content-Security-Policy', API_CONTENT_SECURITY_POLICY);
-    if (req.secure) res.setHeader('Strict-Transport-Security', 'max-age=31536000');
+    if (req.secure || process.env.NODE_ENV === 'production') res.setHeader('Strict-Transport-Security', 'max-age=31536000');
     res.setHeader('Access-Control-Max-Age', '86400');
     res.removeHeader('Server');
     res.removeHeader('X-Powered-By');
@@ -92,11 +92,12 @@ function createRateLimiter({ windowMs, max, maxKeys = 10000, byVerifiedEmployee 
     };
 }
 
-export function createAdmissionControl({ maxInFlight = 64 } = {}) {
+export function createAdmissionControl({ maxInFlight = 64, shouldLimit = () => true } = {}) {
     if (!Number.isInteger(maxInFlight) || maxInFlight < 1 || maxInFlight > 4096) throw new Error('MAX_API_IN_FLIGHT must be an integer between 1 and 4096.');
+    if (typeof shouldLimit !== 'function') throw new Error('Admission shouldLimit must be a function.');
     let active = 0;
     return (req, res, next) => {
-        if (isLivenessProbe(req)) return next();
+        if (isLivenessProbe(req) || !shouldLimit(req)) return next();
         if (active >= maxInFlight) {
             recordRateLimitBlock('overload');
             res.setHeader('Retry-After', '2');
@@ -115,6 +116,27 @@ export function createAdmissionControl({ maxInFlight = 64 } = {}) {
         res.once('close', release);
         next();
     };
+}
+
+const isClassificationRequest = req => req.method === 'POST' &&
+    /^\/api\/employee-documents\/classify\/?$/i.test(`${req.baseUrl || ''}${req.path || ''}`);
+
+export function createClassificationAdmissionControl(env = process.env) {
+    const maxInFlight = Number(env.MAX_CLASSIFICATION_IN_FLIGHT ?? 4);
+    if (!Number.isInteger(maxInFlight) || maxInFlight < 1 || maxInFlight > 8) throw new Error('MAX_CLASSIFICATION_IN_FLIGHT must be an integer between 1 and 8.');
+    return createAdmissionControl({ maxInFlight, shouldLimit: isClassificationRequest });
+}
+
+export function createHeavyWorkAdmissionControl(env = process.env) {
+    const maxInFlight = Number(env.MAX_HEAVY_IN_FLIGHT ?? 1);
+    if (!Number.isInteger(maxInFlight) || maxInFlight < 1 || maxInFlight > 16) throw new Error('MAX_HEAVY_IN_FLIGHT must be an integer between 1 and 16.');
+    return createAdmissionControl({ maxInFlight, shouldLimit: req => {
+        if (req.method !== 'POST' || isClassificationRequest(req)) return false;
+        const pathname = `${req.baseUrl || ''}${req.path || ''}`;
+        // One hot-folder request can already buffer 25 x 10 MB before storage upload.
+        return /^\/api\/(?:attendance\/(?:scan|register-baseline)|profile\/avatar)\/?$/i.test(pathname) ||
+            /^\/api\/(?:employee-documents|ai)(?:\/|$)/i.test(pathname);
+    } });
 }
 
 /**

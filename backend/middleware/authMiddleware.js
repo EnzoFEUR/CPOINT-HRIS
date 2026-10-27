@@ -1,5 +1,6 @@
-import { supabase } from '../supabaseClient.js';
+import { supabase, createIsolatedAuthClient } from '../supabaseClient.js';
 import NodeCache from 'node-cache';
+import { loginSessionService } from '../services/loginSessionService.js';
 
 // Fast in-memory cache to eliminate 250ms-550ms sequential Supabase auth/DB network hops on every request
 export const authUserCache = new NodeCache({ stdTTL: 60, checkperiod: 120, useClones: false });
@@ -42,22 +43,25 @@ export const hasVerifiedEmployeeIdentity = (user, employee) => Boolean(user?.id 
 ));
 export const hasVerifiedEmployeeRole = (user, employee) => Boolean(employee?.role && hasVerifiedEmployeeIdentity(user, employee));
 
-const loadAuthUser = async token => {
-    const { data: { user }, error } = await supabase.auth.getUser(token);
+const resolveAuthUser = async (token, signal) => {
+    const { data: { user }, error } = await createIsolatedAuthClient(signal).auth.getUser(token);
+    signal.throwIfAborted();
     
     if (error && error.status !== 400 && error.status !== 401 && error.status !== 403 && error.status !== 422) throw error;
     if (error || !user) {
         return null;
     }
 
-    const EMP_FIELDS = 'id, auth_user_id, company_id, first_name, last_name, email, role, status, is_active, archived_at, separation_type, separation_date, department, job_title, shift, requires_password_change, production_group_id, hourly_rate, daily_rate, birth_date, address, gender, phone, emergency_contact_name, emergency_contact_phone, emergency_contact_relationship, has_registered_biometrics, biometric_baseline_path';
+    const EMP_FIELDS = 'id, auth_user_id, company_id, first_name, last_name, email, role, status, is_active, archived_at, deleted_at, separation_type, separation_date, department, job_title, shift, requires_password_change, production_group_id, hourly_rate, daily_rate, birth_date, address, gender, phone, emergency_contact_name, emergency_contact_phone, emergency_contact_relationship, has_registered_biometrics, biometric_baseline_path';
 
     // Fetch custom user details omitting heavy biometric vector blobs
     let { data: employee, error: employeeError } = await supabase
         .from('employees')
         .select(EMP_FIELDS)
         .eq('id', user.id)
+        .abortSignal(signal)
         .maybeSingle();
+    signal.throwIfAborted();
     if (employeeError) throw employeeError;
 
     if (!employee) {
@@ -65,7 +69,9 @@ const loadAuthUser = async token => {
             .from('employees')
             .select(EMP_FIELDS)
             .eq('auth_user_id', user.id)
+            .abortSignal(signal)
             .maybeSingle();
+        signal.throwIfAborted();
         if (authLookupError) throw authLookupError;
         employee = empByAuth;
     }
@@ -75,7 +81,9 @@ const loadAuthUser = async token => {
             .from('employees')
             .select(EMP_FIELDS)
             .ilike('email', user.email.replace(/[\\%_]/g, '\\$&'))
+            .abortSignal(signal)
             .maybeSingle();
+        signal.throwIfAborted();
         if (emailLookupError) throw emailLookupError;
         employee = empByEmail;
     }
@@ -95,15 +103,24 @@ const loadAuthUser = async token => {
         emergency_contact_relationship: employee?.emergency_contact_relationship || user.user_metadata?.emergency_contact_relationship || null,
         role: resolvedRole,
         employee_identity_verified: hasVerifiedEmployeeIdentity(user, employee),
-        role_verified: hasVerifiedEmployeeRole(user, employee)
+        role_verified: hasVerifiedEmployeeRole(user, employee),
+        _auth_user_id: user.id
     };
     return resolvedUser;
 };
 
-export const verifyToken = async (req, res, next) => {
-    // Whitelist public scanner routes (Tablet doesn't have a user session)
-    const publicRoutes = ['/verify-qr', '/scan'];
-    if (publicRoutes.some(route => req.path.includes(route))) return next();
+const loadAuthUser = async token => {
+    const controller = new AbortController();
+    // PostgREST recognizes TimeoutError and skips retries after this overall deadline.
+    const timer = setTimeout(() => controller.abort(new DOMException('Authentication dependency timeout', 'TimeoutError')), 5000);
+    try {
+        return await resolveAuthUser(token, controller.signal);
+    } finally {
+        clearTimeout(timer);
+    }
+};
+
+export const verifyIdentityToken = async (req, res, next) => {
     const authHeader = req.headers.authorization;
     if (!authHeader) return res.status(401).json({ error: 'No token provided' });
     const token = authHeader.split(' ')[1];
@@ -116,8 +133,9 @@ export const verifyToken = async (req, res, next) => {
         if (!pending) {
             const generation = authCacheGeneration;
             pending = loadAuthUser(token).then(user => {
-                // An invalidated lookup must not repopulate stale permissions.
-                if (user && generation === authCacheGeneration) authUserCache.set(token, user);
+                // A permission change must invalidate the pending authorization as well as its cache.
+                if (generation !== authCacheGeneration) throw new Error('Employment permissions changed during verification.');
+                if (user) authUserCache.set(token, user);
                 return user;
             });
             pendingAuthUsers.set(token, pending);
@@ -134,18 +152,23 @@ export const verifyToken = async (req, res, next) => {
         return res.status(403).json({ error: 'A verified employee account is required.' });
     }
     const resolvedRole = resolvedUser.role;
+    const path = (req.originalUrl || req.url || '').split('?')[0].toLowerCase().replace(/\/$/, '');
+    const isLoginBootstrap = (req.method === 'GET' && ['/api/auth/security/login-context', '/api/auth/totp/status', '/api/auth/otp/status'].includes(path)) ||
+        (req.method === 'POST' && ['/api/auth/otp/status', '/api/auth/otp/send', '/api/auth/otp/verify', '/api/auth/totp/verify'].includes(path));
+    const isOwnStatusRefresh = req.method === 'POST' && path === '/api/auth/security/refresh-employment-status';
+    if (resolvedUser.deleted_at || (!isLoginBootstrap && !isOwnStatusRefresh && ['admin', 'hr', 'hr_manager', 'security', 'guard', 'security_guard'].includes(resolvedRole) &&
+        (resolvedUser.is_active === false || resolvedUser.archived_at || ['suspended', 'terminated', 'inactive', 'retired', 'resigned'].includes(String(resolvedUser.status).toLowerCase())))) {
+        return res.status(403).json({ code: 'ACCOUNT_UNAVAILABLE', error: 'This account is not authorized for operational access.' });
+    }
 
     // Enterprise Mandatory Password Change Enforcement:
     // When a user requires a password change, strictly deny access to all workforce/payroll/attendance APIs
     // except the acknowledgement endpoint (/api/attendance/password-changed), password-rotation endpoints,
     // and non-sensitive session metadata.
     if (resolvedUser.requires_password_change) {
-        const urlPath = req.originalUrl || req.url || '';
-        const isPasswordChangeAllowed = (
-            urlPath.includes('/api/attendance/password-changed') ||
-            urlPath.includes('/api/profile/change-password') ||
-            urlPath.includes('/api/profile/request-password-otp') ||
-            (req.method === 'GET' && (urlPath.includes('/api/profile') || urlPath.includes('/api/notifications')))
+        const isPasswordChangeAllowed = isLoginBootstrap || (
+            (req.method === 'POST' && ['/api/attendance/password-changed', '/api/profile/change-password', '/api/profile/request-password-otp'].includes(path)) ||
+            (req.method === 'GET' && /^\/api\/(profile|notifications)(?:\/|$)/.test(path))
         );
         if (!isPasswordChangeAllowed) {
             return res.status(403).json({
@@ -172,25 +195,17 @@ export const verifyToken = async (req, res, next) => {
 
     if (isSeparated) {
         req.isSeparated = true;
-        const urlPath = req.originalUrl || req.url || '';
         const isAllowedArchiveRead = req.method === 'GET' && (
-            urlPath.includes('/api/dashboard') ||
-            urlPath.includes('/api/disciplinary') ||
-            urlPath.includes('/api/payroll') ||
-            urlPath.includes('/api/profile') ||
-            urlPath.includes('/api/notifications') ||
-            urlPath.includes('/api/documents') ||
-            urlPath.includes('/api/leave-credits') ||
-            urlPath.startsWith('/api/employment-exit') ||
-            /^\/api\/retirement-pay\/my-statements(?:\?|$)/.test(urlPath)
+            /^\/api\/(dashboard|disciplinary|payroll|profile|notifications|documents|leave-credits|employment-exit)(?:\/|$)/.test(path) ||
+            /^\/api\/retirement-pay\/my-statements(?:\/|$)/.test(path)
         );
         const isAllowedNoticeAcknowledge = req.method === 'PUT' && (
-            urlPath.includes('/api/disciplinary') && urlPath.includes('/acknowledge')
+            /^\/api\/disciplinary\/[a-f0-9-]{36}\/acknowledge$/.test(path)
         );
 
-        const isAllowedExitReview = req.method === 'POST' && /^\/api\/employment-exit\/[a-f0-9-]{36}\/review-request(?:\?|$)/i.test(urlPath);
-        const isAllowedNotificationReadState = req.method === 'PUT' && /^\/api\/notifications\/read-all(?:\?|$)/i.test(urlPath);
-        if (!isAllowedArchiveRead && !isAllowedNoticeAcknowledge && !isAllowedExitReview && !isAllowedNotificationReadState) {
+        const isAllowedExitReview = req.method === 'POST' && /^\/api\/employment-exit\/[a-f0-9-]{36}\/review-request$/.test(path);
+        const isAllowedNotificationReadState = req.method === 'PUT' && path === '/api/notifications/read-all';
+        if (!isLoginBootstrap && !isAllowedArchiveRead && !isAllowedNoticeAcknowledge && !isAllowedExitReview && !isAllowedNotificationReadState) {
             return res.status(403).json({ 
                 error: 'ACCESS REVOKED: Personnel account has been separated. Operational write actions are disabled under DOLE retention policy.' 
             });
@@ -198,8 +213,20 @@ export const verifyToken = async (req, res, next) => {
     }
 
     req.user = resolvedUser;
-    next();
+    return next();
 };
+
+export const verifyToken = (req, res, next) => verifyIdentityToken(req, res, async () => {
+    try {
+        if (!await loginSessionService.isVerified(req)) {
+            return res.status(403).json({ code: 'SECOND_FACTOR_REQUIRED', error: 'Complete your sign-in verification to continue.', redirectUrl: '/login' });
+        }
+        return next();
+    } catch (error) {
+        if (error.status !== 401) res.setHeader('Retry-After', '2');
+        return res.status(error.status === 401 ? 401 : 503).json({ code: error.status === 401 ? 'AUTH_SESSION_INVALID' : 'LOGIN_VERIFICATION_UNAVAILABLE', error: error.status === 401 ? error.message : 'Sign-in verification is temporarily unavailable. Please retry.' });
+    }
+});
 
 export const checkRole = (...allowedRoles) => {
     const roles = allowedRoles.flat();

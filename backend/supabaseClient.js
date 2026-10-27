@@ -23,6 +23,12 @@ try {
 export const supabase = createClient(supabaseUrl, supabaseKey);
 
 // User verification must never replace the shared service client's authorization.
-export const createIsolatedAuthClient = () => createClient(supabaseUrl, supabaseKey, {
-  auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false }
+export const createIsolatedAuthClient = signal => createClient(supabaseUrl, supabaseKey, {
+  auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
+  global: signal ? {
+    fetch: (input, init) => fetch(input, {
+      ...init,
+      signal: init?.signal ? AbortSignal.any([signal, init.signal]) : signal
+    })
+  } : undefined
 });

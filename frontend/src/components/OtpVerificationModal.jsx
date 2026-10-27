@@ -1,8 +1,8 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import toast from 'react-hot-toast';
 import { useOtpCooldown } from '../utils/useOtpCooldown';
-
-const API_BASE_URL = import.meta.env.VITE_API_URL || (import.meta.env.PROD ? 'https://cpoint-hris.onrender.com' : 'http://localhost:5000');
+import { API_BASE_URL } from '../utils/apiBaseUrl.mjs';
+import { fetchWithAuth } from '../utils/api';
 
 export default function OtpVerificationModal(props) {
     return props.isOpen ? <OtpVerificationContent key={`${props.purpose || 'modal_stepup'}:${props.email || ''}`} {...props} /> : null;
@@ -81,7 +81,7 @@ function OtpVerificationContent({
                 const targetId = email || sessionUser?.email || sessionUser?.id || sessionUser?.company_id;
                 if (!targetId) return;
                 const targetEmail = email || sessionUser?.email || '';
-                const res = await fetch(`${API_BASE_URL}/api/auth/otp/status`, {
+                const res = await fetchWithAuth(`${API_BASE_URL}/api/auth/otp/status`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ identifier: targetId, email: targetEmail, purpose }),
@@ -180,7 +180,7 @@ function OtpVerificationContent({
         setBackupMode(false);
 
         try {
-            const response = await fetch(`${API_BASE_URL}/api/auth/otp/send`, {
+            const response = await fetchWithAuth(`${API_BASE_URL}/api/auth/otp/send`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -262,7 +262,7 @@ function OtpVerificationContent({
         try {
             if (isTotpMethod) {
                 // Route to TOTP verification endpoint (<15ms response)
-                const response = await fetch(`${API_BASE_URL}/api/auth/totp/verify`, {
+                const response = await fetchWithAuth(`${API_BASE_URL}/api/auth/totp/verify`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
@@ -290,7 +290,7 @@ function OtpVerificationContent({
                 }
             } else {
                 // Route to standard Email OTP verification
-                const response = await fetch(`${API_BASE_URL}/api/auth/otp/verify`, {
+                const response = await fetchWithAuth(`${API_BASE_URL}/api/auth/otp/verify`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({

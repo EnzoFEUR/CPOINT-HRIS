@@ -1,6 +1,6 @@
 {
   "framework": "vite",
-  "buildCommand": "VITE_ENABLE_OFFLINE_ATTENDANCE=true npm run build",
+  "buildCommand": "npm run build",
   "headers": [
     {
       "source": "/(.*)",
