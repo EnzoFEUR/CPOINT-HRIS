@@ -1058,12 +1058,53 @@ export default function EmploymentExit({ manager = false }) {
                                     <p className="font-semibold text-slate-800">{lifecycle.label}</p>
                                 </div>
                                 {retirementLetterId && (
-                                    <div className="text-xs bg-slate-50 border border-slate-200/80 rounded-md p-2.5">
-                                        <button type="button" className="font-semibold text-accent underline" disabled={letterPreview.isFetching} onClick={() => { setPreviewReceiptId(receipt.id); if (previewReceiptId === receipt.id) letterPreview.refetch(); }}>
-                                            Open retirement letter
-                                        </button>
-                                        {letterPreview.isFetching && <p role="status" className="mt-1 text-slate-500">Loading letter preview...</p>}
-                                        {previewReceiptId === receipt.id && letterPreview.isError && <p role="alert" className="mt-1 text-danger">{letterPreview.error.message}</p>}
+                                    <div className="rounded-lg border border-slate-200 bg-white p-3 shadow-2xs space-y-2">
+                                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+                                            <div className="flex items-center gap-2.5 min-w-0">
+                                                <div className="w-8 h-8 rounded-md bg-accent-subtle/80 text-accent flex items-center justify-center shrink-0 border border-accent/15">
+                                                    <i className="ti ti-file-certificate text-base" />
+                                                </div>
+                                                <div className="min-w-0">
+                                                    <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 block">
+                                                        Attached Document
+                                                    </span>
+                                                    <p className="text-xs font-semibold text-slate-800 truncate">
+                                                        Formal Retirement Letter
+                                                    </p>
+                                                </div>
+                                            </div>
+
+                                            <button
+                                                type="button"
+                                                disabled={letterPreview.isFetching}
+                                                onClick={() => {
+                                                    setPreviewReceiptId(receipt.id);
+                                                    if (previewReceiptId === receipt.id) letterPreview.refetch();
+                                                }}
+                                                className="w-full sm:w-auto h-8 px-3 inline-flex items-center justify-center gap-1.5 text-xs font-semibold rounded-md border border-slate-200 bg-white text-slate-700 hover:text-accent hover:border-accent/40 hover:bg-accent-subtle/40 active:scale-[0.98] shadow-2xs transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed disabled:active:scale-100 shrink-0"
+                                                aria-label="Open retirement letter preview"
+                                            >
+                                                {letterPreview.isFetching && previewReceiptId === receipt.id ? (
+                                                    <>
+                                                        <i className="ti ti-loader-2 animate-spin text-accent text-sm" />
+                                                        <span>Opening letter...</span>
+                                                    </>
+                                                ) : (
+                                                    <>
+                                                        <i className="ti ti-file-text text-accent text-sm" />
+                                                        <span>Open retirement letter</span>
+                                                        <i className="ti ti-external-link text-slate-400 text-xs ml-0.5" />
+                                                    </>
+                                                )}
+                                            </button>
+                                        </div>
+
+                                        {previewReceiptId === receipt.id && letterPreview.isError && (
+                                            <p role="alert" className="text-xs text-danger font-medium flex items-center gap-1 pt-1.5 border-t border-slate-100">
+                                                <i className="ti ti-alert-circle text-xs shrink-0" />
+                                                <span>{letterPreview.error.message}</span>
+                                            </p>
+                                        )}
                                     </div>
                                 )}
                                 {receipt.evidence_reference && !retirementLetterId && (

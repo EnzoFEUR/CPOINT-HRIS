@@ -49,6 +49,11 @@ export function isPdfDocument(fileName = '') {
     return ext === 'pdf';
 }
 
+export function isDocxDocument(fileName = '') {
+    const ext = String(fileName || '').split('.').pop().toLowerCase();
+    return ['docx', 'doc'].includes(ext);
+}
+
 export function formatCleanDocumentFileName(title = '', originalName = '') {
     const rawExt = String(originalName || '').split('.').pop() || '';
     const ext = rawExt.toLowerCase().replace(/[^a-z0-9]/g, '');
