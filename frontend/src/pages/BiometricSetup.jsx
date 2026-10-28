@@ -526,10 +526,11 @@ export default function BiometricSetup() {
       // Neutral Calibration Phase
       const now = performance.now();
       if (!vault.baseline) {
-        const eyesReady = calibrateBlink(vault.blinkState, eyes, now);
         drawMesh(ctx, lm, box, '#3b82f6', false, pose);
         vault.calibrationSamples.push(pose);
         if (vault.calibrationSamples.length > ENV.CALIBRATION_FRAMES) vault.calibrationSamples.shift();
+        // Let positioning settle before freezing the open-eye baseline for this challenge.
+        const eyesReady = vault.calibrationSamples.length >= ENV.CALIBRATION_FRAMES && calibrateBlink(vault.blinkState, eyes, now);
         dispatch({ type: 'SET_STATUS', payload: eyesReady ? `Calibrating position (${vault.calibrationSamples.length}/${ENV.CALIBRATION_FRAMES})` : BLINK_PROMPTS.CALIBRATING });
 
         if (vault.calibrationSamples.length >= ENV.CALIBRATION_FRAMES && eyesReady) {
@@ -911,7 +912,7 @@ export default function BiometricSetup() {
               <i className="ti ti-alert-triangle" />
             </div>
             <h3 className="text-sm font-bold text-white">Registration incomplete</h3>
-            <p className="text-slate-400 text-xs mt-0.5 max-w-[240px] leading-snug">{state.error?.message || 'Could not complete face scan. Please try again.'}</p>
+            <p role="alert" className="text-slate-400 text-xs mt-0.5 max-w-[240px] leading-snug">{state.error?.message || 'Could not complete face scan. Please try again.'}</p>
             <button 
               onClick={handleReset}
               className="mt-4 h-9 px-4 bg-slate-800 hover:bg-slate-700 text-white rounded-md font-medium text-xs transition-colors duration-100 cursor-pointer"

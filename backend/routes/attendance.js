@@ -62,7 +62,7 @@ const logger = {
 
 const auditLog = async (reqId, { employee_id, action, details, severity = 'info', ip_address }) => {
   try {
-    await supabase.from('audit_logs').insert({
+    const { error } = await supabase.from('audit_logs').insert({
       employee_id,
       action,
       details: typeof details === 'string' ? details : JSON.stringify(details),
@@ -70,6 +70,7 @@ const auditLog = async (reqId, { employee_id, action, details, severity = 'info'
       ip_address,
       created_at: new Date().toISOString(),
     });
+    if (error) throw error;
   } catch (err) {
     logger.error(reqId, 'Failed to write audit log', { error: err.message, action });
   }
@@ -1288,20 +1289,39 @@ router.post(
       livenessResult = await performBiometricVerification(reqId, base64Data, employee, true);
     } catch (err) {
       if (err.code === 'AI_SERVICE_UNAVAILABLE' || err.code === 'AI_CIRCUIT_OPEN') {
-        throw new AuthorizationError('Biometric enrollment requires AI verification. Service temporarily unavailable.');
+        throw new AppError('Biometric verification is temporarily unavailable. Please try again.', 503, 'AI_SERVICE_UNAVAILABLE');
       }
       throw err;
     }
 
-    if (livenessResult.error) {
-      logger.warn(reqId, 'Biometric AI verification service issue during enrollment', { reason: livenessResult.reason });
-      throw new AppError(`Biometric verification service temporarily unavailable: ${livenessResult.reason || 'Network timeout'}. Please try again.`, 503, 'AI_SERVICE_UNAVAILABLE');
+    if (!livenessResult || livenessResult.error) {
+      logger.warn(reqId, 'Biometric AI verification service issue during enrollment', { reason: livenessResult?.reason });
+      throw new AppError('Biometric verification is temporarily unavailable. Please try again.', 503, 'AI_SERVICE_UNAVAILABLE');
     }
 
-    if (!livenessResult.passed) {
-      const desc = `Enrollment spoofing. Confidence: ${Math.round(livenessResult.confidence * 100)}%. ${livenessResult.reason}`;
-      await logSecurityViolation(reqId, employee_id, 'Enrollment Spoofing', desc, req.ip);
-      throw new AuthorizationError(`BIOMETRIC SPOOFING DETECTED: ${livenessResult.reason} [Confidence: ${Math.round(livenessResult.confidence * 100)}%]`);
+    if (livenessResult.passed !== true) {
+      const reviewRequired = livenessResult.decision === 'SUSPECTED_SPOOF';
+      // A model assessment blocks enrollment but cannot establish employee misconduct.
+      await auditLog(reqId, {
+        employee_id,
+        action: reviewRequired ? 'BIOMETRIC_ENROLLMENT_REVIEW_REQUIRED' : 'BIOMETRIC_ENROLLMENT_RECAPTURE',
+        severity: reviewRequired ? 'warning' : 'info',
+        details: {
+          confirmed_violation: false,
+          model_assessment: livenessResult.decision || 'RECAPTURE',
+          model_score: livenessResult.confidence,
+          reason: sanitizeString(livenessResult.reason),
+          presentation_cues: livenessResult.details?.presentation_cues || [],
+          quality_issues: livenessResult.details?.quality_issues || []
+        },
+        ip_address: req.ip
+      });
+      throw new AppError(
+        reviewRequired ? 'This capture contains possible screen or photo presentation indicators. Enrollment was not saved. Use the direct camera and contact HR if this repeats.' :
+          'This capture could not be verified. Enrollment was not saved. Face the light, keep your face clear, and retry without camera effects.',
+        reviewRequired ? 403 : 422,
+        reviewRequired ? 'BIOMETRIC_REVIEW_REQUIRED' : 'BIOMETRIC_RECAPTURE_REQUIRED'
+      );
     }
 
     // Store Baseline
