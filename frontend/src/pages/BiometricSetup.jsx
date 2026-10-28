@@ -7,22 +7,22 @@ import { fetchWithAuth } from '../utils/api';
 import { requestHardwareCamera, stopHardwareStream } from '../utils/hardwareCamera';
 import { startVideoFrameLoop, copyVideoFrame } from '../utils/cameraFrames.mjs';
 import { loadFaceModels } from '../utils/faceModels';
+import { BLINK_PROMPTS, createBlinkState, getEyeOpenness, calibrateBlink, updateBlink, resetBlinkCycle } from '../utils/blinkDetection.mjs';
 import { playBiometricSound as playSound } from '../utils/audio';
 import { isSecurity, isAdmin, isMedicalExempt } from '../routes/guards';
 import { needsProfileCompletion } from '../utils/userAccess.mjs';
 import { performLogout } from '../utils/authSession';
+import BackButton from '../components/ui/BackButton';
 
 const ENV = {
   API_BASE: import.meta.env?.VITE_API_BASE || '/api',
   ENROLL_TIMEOUT_MS: parseInt(import.meta.env?.VITE_ENROLL_TIMEOUT_MS, 10) || 120_000,
   HOLD_FRAMES: 8,
   CALIBRATION_FRAMES: 12,
-  DETECTION_INTERVAL_MS: 120,
+  DETECTION_INTERVAL_MS: 80,
   DETECTION_INPUT_SIZE: 320,
   FACE_CONFIDENCE_MIN: 0.55,
   FACE_WIDTH_MIN_PX: 45,
-  BLINK_EAR_THRESHOLD: 0.26,
-  BLINK_CONSEC_FRAMES: 1,
   REQUIRED_BLINKS: 1,
   DESC_CONSISTENCY_THRESHOLD: 0.52,
 };
@@ -62,18 +62,6 @@ const estimateHeadPose = (landmarks) => {
   const symmetry = Math.abs(1 - (mouthW / (iod * 0.85)));
 
   return { yaw, pitch, roll, iod, scale: iod, symmetry };
-};
-
-const getEAR = (landmarks) => {
-  const p = landmarks?.positions;
-  if (!p || p.length < 68) return 1.0;
-  const calc = (i0, i1, i2, i3, i4, i5) => {
-    const v1 = Math.hypot(p[i1].x - p[i5].x, p[i1].y - p[i5].y);
-    const v2 = Math.hypot(p[i2].x - p[i4].x, p[i2].y - p[i4].y);
-    const h  = Math.hypot(p[i0].x - p[i3].x, p[i0].y - p[i3].y);
-    return h === 0 ? 1.0 : (v1 + v2) / (2.0 * h);
-  };
-  return (calc(36, 37, 38, 39, 40, 41) + calc(42, 43, 44, 45, 46, 47)) / 2.0;
 };
 
 
@@ -238,7 +226,7 @@ export default function BiometricSetup() {
     calibrationSamples: [],
     baseline: null,
     blinkCount: 0,
-    blinkFrames: 0,
+    blinkState: null,
     phaseIdx: 0,
   }).current;
 
@@ -458,6 +446,14 @@ export default function BiometricSetup() {
     const canvas = canvasRef.current;
     if (!video || !canvas) return;
     const frame = video.ownerDocument.createElement('canvas');
+    vault.blinkState = createBlinkState();
+    const interruptEvidence = () => {
+      vault.holdCount = 0;
+      vault.blinkCount = 0;
+      resetBlinkCycle(vault.blinkState);
+      if (!vault.baseline) vault.calibrationSamples = [];
+      dispatch({ type: 'SET_LIVENESS', blinkCount: 0, livenessOk: false });
+    };
 
     const syncCanvas = () => {
       const nw = frame.width, nh = frame.height;
@@ -485,8 +481,7 @@ export default function BiometricSetup() {
       if (!isActive()) return;
 
       if (!det) {
-        vault.holdCount = 0;
-        vault.blinkFrames = 0;
+        interruptEvidence();
         dispatch({ type: 'SET_CONFIDENCE', payload: 0 });
         dispatch({ type: 'SET_POSE', payload: { yaw: 0, pitch: 0, roll: 0, symmetry: 0 } });
         dispatch({ type: 'SET_PROGRESS', payload: { overall: (vault.phaseIdx / PHASE_LIST.length) * 100, phase: 0 } });
@@ -497,14 +492,23 @@ export default function BiometricSetup() {
       const box = det.detection.box;
       const lm = det.landmarks;
       const score = det.detection.score;
+      const eyes = getEyeOpenness(lm);
+      if (!eyes) {
+        interruptEvidence();
+        dispatch({ type: 'SET_STATUS', payload: 'Move closer so both eyes are clear' });
+        return;
+      }
       const pose = estimateHeadPose(lm);
+      if (!Number.isFinite(pose.yaw) || !Number.isFinite(pose.pitch) || !Number.isFinite(pose.roll)) {
+        interruptEvidence();
+        return;
+      }
 
       dispatch({ type: 'SET_CONFIDENCE', payload: Math.round(score * 100) });
       dispatch({ type: 'SET_POSE', payload: pose });
 
       if (score < ENV.FACE_CONFIDENCE_MIN) {
-        vault.holdCount = 0;
-        vault.blinkFrames = 0;
+        interruptEvidence();
         dispatch({ type: 'SET_PROGRESS', payload: { overall: (vault.phaseIdx / PHASE_LIST.length) * 100, phase: 0 } });
         dispatch({ type: 'SET_STATUS', payload: 'Hold still and face the light' });
         drawMesh(ctx, lm, box, '#f59e0b', false, pose);
@@ -512,36 +516,28 @@ export default function BiometricSetup() {
       }
 
       if (box.width < ENV.FACE_WIDTH_MIN_PX) {
-        vault.holdCount = 0;
-        vault.blinkFrames = 0;
+        interruptEvidence();
         dispatch({ type: 'SET_PROGRESS', payload: { overall: (vault.phaseIdx / PHASE_LIST.length) * 100, phase: 0 } });
         dispatch({ type: 'SET_STATUS', payload: 'Move slightly closer' });
         drawMesh(ctx, lm, box, '#f59e0b', false, pose);
         return;
       }
 
-      const ear = getEAR(lm);
-      if (ear < ENV.BLINK_EAR_THRESHOLD) {
-        vault.blinkFrames += 1;
-      } else {
-        if (vault.blinkFrames >= ENV.BLINK_CONSEC_FRAMES) {
-          vault.blinkCount += 1;
-        }
-        vault.blinkFrames = 0;
-      }
-      const livenessOk = vault.blinkCount >= ENV.REQUIRED_BLINKS;
-      dispatch({ type: 'SET_LIVENESS', blinkCount: vault.blinkCount, livenessOk });
-
       // Neutral Calibration Phase
+      const now = performance.now();
       if (!vault.baseline) {
+        const eyesReady = calibrateBlink(vault.blinkState, eyes, now);
         drawMesh(ctx, lm, box, '#3b82f6', false, pose);
         vault.calibrationSamples.push(pose);
-        dispatch({ type: 'SET_STATUS', payload: `Calibrating position (${vault.calibrationSamples.length}/${ENV.CALIBRATION_FRAMES})` });
+        if (vault.calibrationSamples.length > ENV.CALIBRATION_FRAMES) vault.calibrationSamples.shift();
+        dispatch({ type: 'SET_STATUS', payload: eyesReady ? `Calibrating position (${vault.calibrationSamples.length}/${ENV.CALIBRATION_FRAMES})` : BLINK_PROMPTS.CALIBRATING });
 
-        if (vault.calibrationSamples.length >= ENV.CALIBRATION_FRAMES) {
+        if (vault.calibrationSamples.length >= ENV.CALIBRATION_FRAMES && eyesReady) {
           const avgYaw = vault.calibrationSamples.reduce((s, p) => s + p.yaw, 0) / ENV.CALIBRATION_FRAMES;
           const avgPitch = vault.calibrationSamples.reduce((s, p) => s + p.pitch, 0) / ENV.CALIBRATION_FRAMES;
           vault.baseline = { yaw: avgYaw, pitch: avgPitch };
+          resetBlinkCycle(vault.blinkState);
+          vault.blinkCount = 0;
           dispatch({ type: 'SET_MODE', payload: MODES.ENROLLING });
           dispatch({ type: 'SET_PHASE', payload: 0 });
           dispatch({ type: 'SET_STATUS', payload: POSE.CENTER.instruction });
@@ -561,8 +557,16 @@ export default function BiometricSetup() {
       const color = match ? '#22c55e' : target.color;
       drawMesh(ctx, lm, box, color, match, pose);
 
+      if (phaseIdx === 0) {
+        if (match) updateBlink(vault.blinkState, eyes, now);
+        else resetBlinkCycle(vault.blinkState);
+        vault.blinkCount = vault.blinkState.count;
+      }
+      const livenessOk = vault.blinkCount >= ENV.REQUIRED_BLINKS;
+      dispatch({ type: 'SET_LIVENESS', blinkCount: vault.blinkCount, livenessOk });
       if (!livenessOk && phaseIdx === 0) {
-        dispatch({ type: 'SET_STATUS', payload: 'Blink eyes once to verify liveness' });
+        vault.holdCount = 0;
+        dispatch({ type: 'SET_STATUS', payload: match ? BLINK_PROMPTS[vault.blinkState.phase] : target.instruction });
         return;
       }
 
@@ -611,8 +615,16 @@ export default function BiometricSetup() {
         dispatch({ type: 'SET_PROGRESS', payload: { overall: (phaseIdx / PHASE_LIST.length) * 100, phase: 0 } });
         dispatch({ type: 'SET_STATUS', payload: target.instruction });
       }
-    }, { intervalMs: ENV.DETECTION_INTERVAL_MS, onError: () => {
-      dispatch({ type: 'SET_ERROR', payload: { message: 'Face processing stopped. Restart registration to retry.', code: 'FACE_PROCESSING_FAILED' } });
+    }, { intervalMs: ENV.DETECTION_INTERVAL_MS, onError: error => {
+      canvas.getContext('2d')?.clearRect(0, 0, canvas.width, canvas.height);
+      stopHardwareStream(streamRef.current);
+      streamRef.current = null;
+      vault.holdCount = 0;
+      resetBlinkCycle(vault.blinkState);
+      dispatch({ type: 'SET_ERROR', payload: {
+        message: error?.code === 'FACE_PROCESSING_TIMEOUT' ? 'Face processing timed out. Reload this page to retry.' : 'Face tracking interrupted. Restart registration to retry.',
+        code: error?.code || 'FACE_PROCESSING_FAILED',
+      } });
     } });
   }, [vault]);
 
@@ -627,7 +639,7 @@ export default function BiometricSetup() {
     vault.calibrationSamples = [];
     vault.baseline = null;
     vault.blinkCount = 0;
-    vault.blinkFrames = 0;
+    vault.blinkState = null;
     vault.phaseIdx = 0;
 
     startLoop();
@@ -641,11 +653,11 @@ export default function BiometricSetup() {
     vault.calibrationSamples = [];
     vault.baseline = null;
     vault.blinkCount = 0;
-    vault.blinkFrames = 0;
+    vault.blinkState = null;
     vault.phaseIdx = 0;
-    if (!state.modelsLoaded) { window.location.reload(); return; }
+    if (!state.modelsLoaded || state.error?.code === 'FACE_PROCESSING_TIMEOUT') { window.location.reload(); return; }
     dispatch({ type: 'RESET' });
-    if (!streamRef.current?.active) {
+    if (!streamRef.current?.active || state.mode === MODES.ERROR || videoRef.current?.paused) {
       dispatch({ type: 'SET_MODE', payload: MODES.BOOT });
       dispatch({ type: 'SET_STATUS', payload: 'Starting camera...' });
       try { if (!await startCameraStream(cameraFacing)) return; }
@@ -656,7 +668,7 @@ export default function BiometricSetup() {
     }
     dispatch({ type: 'SET_MODE', payload: MODES.READY });
     dispatch({ type: 'SET_STATUS', payload: 'Press Start Registration when ready' });
-  }, [vault, state.modelsLoaded, startCameraStream, cameraFacing]);
+  }, [vault, state.modelsLoaded, state.mode, state.error?.code, startCameraStream, cameraFacing]);
 
   // Session timeout handler
   useEffect(() => {
@@ -706,7 +718,10 @@ export default function BiometricSetup() {
     <div className="h-[100dvh] w-screen bg-slate-950 text-white flex flex-col justify-between items-center p-3 sm:p-5 relative overflow-hidden font-sans select-none">
       
       {/* Header bar */}
-      <div className="w-full max-w-[420px] z-10 pt-1 sm:pt-2 text-center">
+      <div className="w-full max-w-[420px] z-10 pt-1 sm:pt-2 text-center relative">
+        <div className="absolute left-0 top-1 sm:top-2">
+          <BackButton fallback="/employee/dashboard" variant="dark" compact label="Exit Setup" />
+        </div>
         <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 bg-slate-900 border border-slate-800 rounded-sm text-[10px] font-medium text-slate-300 tracking-wide uppercase mb-1">
           <i className={`ti ${state.isOnline ? 'ti-wifi' : 'ti-wifi-off'} text-xs ${state.isOnline ? 'text-ink' : 'text-danger'}`} />
           {deviceInfo.isMobile ? 'Mobile Station' : 'Workstation'}
@@ -893,7 +908,7 @@ export default function BiometricSetup() {
               onClick={handleReset}
               className="mt-4 h-9 px-4 bg-slate-800 hover:bg-slate-700 text-white rounded-md font-medium text-xs transition-colors duration-100 cursor-pointer"
             >
-              Try Again
+              {state.error?.code === 'FACE_PROCESSING_TIMEOUT' ? 'Reload Registration' : 'Try Again'}
             </button>
           </div>
         )}

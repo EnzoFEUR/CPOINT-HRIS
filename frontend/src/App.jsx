@@ -1,6 +1,7 @@
 import { lazy, Suspense } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate, useSearchParams, useLocation } from 'react-router-dom';
 import Toaster from './components/CspToaster';
+import { ConfirmProvider } from './components/ui/ConfirmDialog';
 import { SpeedInsights } from '@vercel/speed-insights/react';
 
 // Route Guards & Layouts
@@ -93,8 +94,9 @@ function App() {
 
   return (
     <Router>
-      <Toaster
-        position="top-center"
+      <ConfirmProvider>
+        <Toaster
+          position="top-center"
         toastOptions={{
           style: {
             borderRadius: '9999px',
@@ -223,6 +225,7 @@ function App() {
         <Route path="*" element={<Navigate to="/" replace />} />
         </Route>
       </Routes>
+      </ConfirmProvider>
       {import.meta.env.PROD && import.meta.env.VERCEL_DEPLOYMENT && <SpeedInsights />}
     </Router>
   );

@@ -54,6 +54,7 @@ supabase/tests/*
 
 # Local regression tests
 /backend/tests/
+/tests/
 *.test.mjs
 
 # Local performance and browser QA artifacts
@@ -79,6 +80,10 @@ supabase/tests/*
 /scripts/test-resolve-error.mjs
 /scripts/test_dom_cues.mjs
 /scripts/test_ws_probe.mjs
+
+# One-time local storage maintenance helpers
+/scripts/migrate-storage-organization.mjs
+/scripts/soft-reset-documents.mjs
 /tests/qrCamera.geometry.mjs
 /tests/cameraPreview.geometry.mjs
 /tests/cameraPreview.geometry.report.json

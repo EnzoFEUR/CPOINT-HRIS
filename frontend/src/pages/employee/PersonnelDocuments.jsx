@@ -384,6 +384,8 @@ export default function PersonnelDocuments() {
                 <PageHeader
                     title="Personnel Documents"
                     breadcrumbs={['Employee', 'Personnel Documents']}
+                    showBack
+                    backFallback="/"
                 />
                 <p className="rounded-lg border border-slate-200 bg-white p-5 text-sm">
                     Personnel documents are not applicable to administrator
@@ -404,6 +406,8 @@ export default function PersonnelDocuments() {
                 title="Personnel Documents"
                 breadcrumbs={['Employee', 'Personnel Documents']}
                 description="Manage your personnel files and respond to HR document requests."
+                showBack
+                backFallback="/employee/dashboard"
                 actions={
                     <>
                         <button

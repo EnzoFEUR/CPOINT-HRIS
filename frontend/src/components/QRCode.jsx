@@ -51,8 +51,8 @@ export default function QRCode({
 
   return (
     <div 
-      style={{ width: `${size}px`, height: `${size}px` }} 
-      className={`inline-flex items-center justify-center relative select-none ${className}`}
+      style={{ width: `${size}px`, height: `${size}px`, maxWidth: '100%', maxHeight: '100%' }} 
+      className={`inline-flex items-center justify-center relative select-none max-w-full aspect-square ${className}`}
     >
       {dataUrl ? (
         <>
@@ -61,8 +61,8 @@ export default function QRCode({
             alt={`QR Code for ${value}`} 
             width={size} 
             height={size} 
-            className="w-full h-full object-contain select-none" 
-            style={{ width: `${size}px`, height: `${size}px` }}
+            className="w-full h-full object-contain select-none max-w-full" 
+            style={{ width: `${size}px`, height: `${size}px`, maxWidth: '100%', maxHeight: '100%' }}
           />
           {showLogo && (
             <div 

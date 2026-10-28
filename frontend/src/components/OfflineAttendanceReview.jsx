@@ -436,7 +436,12 @@ export default function OfflineAttendanceReview() {
   // Keep hooks in the same order when the backend enables/disables the module.
   if (!backendReady) return (
     <div className="space-y-4">
-      <PageHeader breadcrumbs={['Admin', 'Attendance', 'Offline Captures']} />
+      <PageHeader
+        breadcrumbs={['Admin', 'Attendance', 'Offline Captures']}
+        showBack
+        backFallback="/admin/attendance"
+        backLabel="Back to Logs"
+      />
       <div className="rounded-md border border-line bg-surface p-4">
         <p role="status" className="text-sm text-ink">{offlineAvailabilityMessage(availability.data, availability.error)}</p>
         <button type="button" onClick={() => availability.refetch()} disabled={availability.isFetching} className="mt-3 rounded-md border border-line px-3 py-2 text-sm font-semibold disabled:opacity-50">Check again</button>
@@ -449,6 +454,9 @@ export default function OfflineAttendanceReview() {
       {/* Enterprise PageHeader */}
       <PageHeader
         breadcrumbs={['Admin', 'Attendance', 'Offline Captures']}
+        showBack
+        backFallback="/admin/attendance"
+        backLabel="Back to Logs"
         actions={
           <div className="flex flex-wrap items-center gap-2">
             {!isApprovalReady && (
@@ -608,7 +616,7 @@ export default function OfflineAttendanceReview() {
         )}
 
         {/* Main Data Table */}
-        <div className="overflow-x-auto no-scrollbar">
+        <div className="overflow-x-auto touch-scroll">
           {isDataLoading ? (
             <div className="py-16 text-center text-slate-400">
               <i className="ti ti-loader-2 text-2xl animate-spin text-slate-500 mb-2 inline-block" />
@@ -636,7 +644,7 @@ export default function OfflineAttendanceReview() {
               {(searchQuery || actionFilter !== 'ALL' || siteFilter !== 'ALL') && <button type="button" className="mt-3 rounded border border-line bg-surface px-3 py-2 text-sm text-ink" onClick={() => { setSearchQuery(''); setActionFilter('ALL'); setSiteFilter('ALL'); }}>Clear filters</button>}
             </div>
           ) : (
-            <table className="w-full text-left border-collapse text-xs">
+            <table className="w-full text-left border-collapse text-xs min-w-[850px]">
               <thead className="bg-slate-50 text-slate-500 text-xs uppercase tracking-wider font-semibold border-b border-slate-200">
                 <tr>
                   <th className="py-3 px-4 w-10 text-center">

@@ -578,47 +578,58 @@ export default function EmployeesIndex() {
                             )}
                         </div>
 
-                        {/* Status filter tabs & View switcher: rigid h-9 */}
-                        <div className="flex items-center gap-2 justify-between lg:justify-end overflow-x-auto">
-                            <div className="h-9 flex items-center gap-1 bg-slate-100 p-1 rounded-md border border-slate-200/60 shrink-0">
-                                {[
-                                    { id: 'Active', label: 'Active', count: counts.active },
-                                    { id: 'All', label: 'All', count: counts.all },
-                                    ...(counts.pendingDocs > 0 ? [
-                                        { id: 'Docs Awaiting Review', label: 'Docs Submitted', count: counts.pendingDocs, alert: true }
-                                    ] : []),
-                                    { id: 'Suspended', label: 'Suspended', count: counts.suspended, alert: counts.suspended > 0 },
-                                    ...(counts.pendingTermination > 0 ? [
-                                        { id: 'Pending Termination', label: 'Separated', count: counts.pendingTermination, alert: true }
-                                    ] : []),
-                                    { id: 'Salaried', label: 'Salaried', count: counts.salaried },
-                                    { id: 'Piece-Rate', label: 'Piece-Rate', count: counts.pieceRate }
-                                ].map(tab => (
-                                    <button
-                                        key={tab.id}
-                                        type="button"
-                                        onClick={() => { setFilterStatus(tab.id); setCurrentPage(1); }}
-                                        className={`h-7 px-2.5 rounded text-xs font-medium transition-colors duration-100 flex items-center gap-1.5 whitespace-nowrap cursor-pointer focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-slate-950 ${
-                                            filterStatus === tab.id
-                                                ? 'bg-white text-slate-950 shadow-2xs font-semibold'
-                                                : 'text-slate-600 hover:text-slate-950 hover:bg-slate-200/60'
-                                        }`}
-                                    >
-                                        <span>{tab.label}</span>
-                                        <span className={`text-[10px] font-mono px-1 py-0.2 rounded-xs border ${
-                                            filterStatus === tab.id 
-                                                ? 'bg-slate-100 text-slate-900 border-slate-200' 
-                                                : tab.alert 
-                                                    ? 'bg-warning-subtle text-warning-ink border-warning/20 font-semibold'
-                                                    : 'bg-slate-200/60 text-slate-500 border-transparent'
-                                        }`}>
-                                            {tab.count}
-                                        </span>
-                                    </button>
-                                ))}
+                        {/* Status filter tabs & View switcher: dynamic responsive bar */}
+                        <div className="flex items-center gap-2 min-w-0">
+                            {/* Horizontally scrollable status filter tabs with touch momentum and auto-centering */}
+                            <div className="flex-1 min-w-0 overflow-x-auto touch-scroll no-scrollbar py-0.5">
+                                <div className="h-9 inline-flex items-center gap-1 bg-slate-100 p-1 rounded-md border border-slate-200/60">
+                                    {[
+                                        { id: 'Active', label: 'Active', count: counts.active },
+                                        { id: 'All', label: 'All', count: counts.all },
+                                        ...(counts.pendingDocs > 0 ? [
+                                            { id: 'Docs Awaiting Review', label: 'Docs Submitted', count: counts.pendingDocs, alert: true }
+                                        ] : []),
+                                        { id: 'Suspended', label: 'Suspended', count: counts.suspended, alert: counts.suspended > 0 },
+                                        ...(counts.pendingTermination > 0 ? [
+                                            { id: 'Pending Termination', label: 'Separated', count: counts.pendingTermination, alert: true }
+                                        ] : []),
+                                        { id: 'Salaried', label: 'Salaried', count: counts.salaried },
+                                        { id: 'Piece-Rate', label: 'Piece-Rate', count: counts.pieceRate }
+                                    ].map(tab => (
+                                        <button
+                                            key={tab.id}
+                                            type="button"
+                                            onClick={(e) => {
+                                                setFilterStatus(tab.id);
+                                                setCurrentPage(1);
+                                                try {
+                                                    e.currentTarget.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+                                                } catch {
+                                                    // Fallback for environments lacking scrollIntoView options
+                                                }
+                                            }}
+                                            className={`h-7 px-2.5 rounded text-xs font-medium transition-colors duration-100 flex items-center gap-1.5 whitespace-nowrap shrink-0 cursor-pointer focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-slate-950 ${
+                                                filterStatus === tab.id
+                                                    ? 'bg-white text-slate-950 shadow-2xs font-semibold'
+                                                    : 'text-slate-600 hover:text-slate-950 hover:bg-slate-200/60'
+                                            }`}
+                                        >
+                                            <span>{tab.label}</span>
+                                            <span className={`text-[10px] font-mono px-1 py-0.2 rounded-xs border ${
+                                                filterStatus === tab.id 
+                                                    ? 'bg-slate-100 text-slate-900 border-slate-200' 
+                                                    : tab.alert 
+                                                        ? 'bg-warning-subtle text-warning-ink border-warning/20 font-semibold'
+                                                        : 'bg-slate-200/60 text-slate-500 border-transparent'
+                                            }`}>
+                                                {tab.count}
+                                            </span>
+                                        </button>
+                                    ))}
+                                </div>
                             </div>
 
-                            {/* View Switcher: Icon-only h-9 w-9 square pair */}
+                            {/* View Switcher: pinned outside horizontal scroll track, always visible */}
                             <div className="h-9 flex items-center gap-0.5 bg-slate-100 p-1 rounded-md border border-slate-200/60 shrink-0">
                                 <button
                                     type="button"
@@ -627,6 +638,7 @@ export default function EmployeesIndex() {
                                         viewMode === 'grid' ? 'bg-white text-slate-950 shadow-2xs' : 'text-slate-500 hover:text-slate-950'
                                     }`}
                                     title="Card Grid View"
+                                    aria-label="Card Grid View"
                                 >
                                     <i className="ti ti-layout-grid text-sm" />
                                 </button>
@@ -637,6 +649,7 @@ export default function EmployeesIndex() {
                                         viewMode === 'table' ? 'bg-white text-slate-950 shadow-2xs' : 'text-slate-500 hover:text-slate-950'
                                     }`}
                                     title="Stacked List View"
+                                    aria-label="Stacked List View"
                                 >
                                     <i className="ti ti-list text-sm" />
                                 </button>

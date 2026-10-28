@@ -107,6 +107,28 @@ body {
   overscroll-behavior-y: contain;
 }
 
+/* Ensure mobile form controls never trigger iOS/Android auto-zoom upon tap/focus */
+@media screen and (max-width: 768px) {
+  input[type="text"],
+  input[type="number"],
+  input[type="password"],
+  input[type="email"],
+  input[type="search"],
+  input[type="tel"],
+  input[type="url"],
+  input[type="date"],
+  select,
+  textarea {
+    font-size: 16px !important;
+  }
+}
+
+button,
+[role="button"],
+a {
+  touch-action: manipulation;
+}
+
 .tap-active {
   transition: transform 0.08s ease-out, opacity 0.08s ease;
 }

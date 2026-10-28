@@ -108,6 +108,8 @@ export default function PolicyIncidentReports() {
                 title="Policy & Incident Reports"
                 breadcrumbs={['Employee', 'Policy & Incident Reports']}
                 description="Review your official notices and report history."
+                showBack
+                backFallback="/employee/dashboard"
                 actions={
                     <Link
                         to="/employee/profile"

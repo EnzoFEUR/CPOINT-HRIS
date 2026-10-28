@@ -403,8 +403,8 @@ export default function FactoryPiece({
 
                         {/* VIEW MODE: Compact View */}
                         {viewMode === 'compact' && (
-                            <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white shadow-2xs">
-                                <table className="w-full text-left border-collapse">
+                            <div className="overflow-x-auto touch-scroll rounded-lg border border-slate-200 bg-white shadow-2xs">
+                                <table className="w-full text-left border-collapse min-w-[760px]">
                                     <thead>
                                         <tr className="bg-slate-50/90 border-b border-slate-200 text-[10px] font-bold text-slate-400 uppercase tracking-wider">
                                             <th className="p-3">Process / Operation</th>

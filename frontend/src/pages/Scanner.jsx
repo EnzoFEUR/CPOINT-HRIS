@@ -35,6 +35,7 @@ import { requestHardwareCamera, stopHardwareStream } from '../utils/hardwareCame
 import { startVideoFrameLoop, captureVideoFrame, copyVideoFrame } from '../utils/cameraFrames.mjs';
 import { createQrScanner, startQrCamera, stopQrCamera } from '../utils/qrCamera';
 import { loadFaceModels, loadBaselineFallbackModel } from '../utils/faceModels';
+import { BLINK_PROMPTS, createBlinkState, getEyeOpenness, calibrateBlink, updateBlink, resetBlinkCycle } from '../utils/blinkDetection.mjs';
 import { playScannerSound as playSound } from '../utils/audio';
 import { performLogout } from '../utils/authSession';
 import { isOfflineFeatureActive } from '../routes/OfflineRouteGate.js';
@@ -49,47 +50,32 @@ const ENV = {
   FEEDBACK_DISPLAY_MS: parseInt(import.meta.env?.VITE_FEEDBACK_MS, 10) || 5_000,
   FACE_MATCH_THRESHOLD: 0.42,        // Euclidean distance (lower = stricter)
   REQUIRED_LOCK_FRAMES: 8,
-  DETECTION_INTERVAL_MS: 100,        // 10fps loop for ultra-low latency & responsive micro-challenges
+  DETECTION_INTERVAL_MS: 80,
   DETECTION_INPUT_SIZE: 320,
   MIN_FACE_RATIO: 0.08,
   CENTER_THRESHOLD_X: 0.28,
   CENTER_THRESHOLD_Y: 0.32,
-  BLINK_EAR_THRESHOLD: 0.24,         // Stricter EAR threshold for genuine eyelid closure
-  BLINK_CONSEC_FRAMES: 2,           // Minimum 2 consecutive frames (~200ms) to eliminate paper jitter
   REQUIRED_BLINKS: 1,
 };
 
 // Validation utilities
 const isValidUUID = (str) => /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(str);
 
-// Eye aspect ratio
-const getEAR = (landmarks) => {
-  const pts = landmarks?.positions;
-  if (!pts || pts.length < 68) return 1.0; // Default open eyes if landmarks missing
-
-  const calcEAR = (i0, i1, i2, i3, i4, i5) => {
-    const v1 = Math.hypot(pts[i1].x - pts[i5].x, pts[i1].y - pts[i5].y);
-    const v2 = Math.hypot(pts[i2].x - pts[i4].x, pts[i2].y - pts[i4].y);
-    const h  = Math.hypot(pts[i0].x - pts[i3].x, pts[i0].y - pts[i3].y);
-    return h === 0 ? 1.0 : (v1 + v2) / (2.0 * h);
-  };
-
-  // Left eye: 36-41, Right eye: 42-47
-  return (calcEAR(36, 37, 38, 39, 40, 41) + calcEAR(42, 43, 44, 45, 46, 47)) / 2.0;
-};
-
 // Head pose estimation
 const getHeadPose = (landmarks) => {
   const pts = landmarks?.positions;
-  if (!pts || pts.length < 68) return { yawRatio: 1.0, noseOffset: 0.0, isCentered: true, isTurnedLeft: false, isTurnedRight: false, eyeDistance: 0 };
-
-  const dxLeft = pts[30].x - pts[0].x;
-  const dxRight = pts[16].x - pts[30].x;
-  const yawRatio = dxRight > 0 ? dxLeft / dxRight : 1.0;
-
-  const eyeMidX = (pts[36].x + pts[45].x) / 2;
+  if (!pts || pts.length < 68 || ![0, 16, 30, 36, 45].every(i => Number.isFinite(pts[i]?.x) && Number.isFinite(pts[i]?.y))) return null;
   const eyeDistance = Math.hypot(pts[45].x - pts[36].x, pts[45].y - pts[36].y);
-  const noseOffset = eyeDistance > 0 ? (pts[30].x - eyeMidX) / eyeDistance : 0.0;
+  if (eyeDistance < 16) return null;
+  // Measure along the eye axis so rolling a flat photo cannot imitate head yaw.
+  const ux = (pts[45].x - pts[36].x) / eyeDistance;
+  const uy = (pts[45].y - pts[36].y) / eyeDistance;
+  const along = (a, b) => (a.x - b.x) * ux + (a.y - b.y) * uy;
+  const dxLeft = along(pts[30], pts[0]), dxRight = along(pts[16], pts[30]);
+  if (dxLeft <= 0 || dxRight <= 0) return null;
+  const yawRatio = dxLeft / dxRight;
+  const eyeMid = { x: (pts[36].x + pts[45].x) / 2, y: (pts[36].y + pts[45].y) / 2 };
+  const noseOffset = along(pts[30], eyeMid) / eyeDistance;
 
   const isCentered = yawRatio >= 0.80 && yawRatio <= 1.25 && Math.abs(noseOffset) <= 0.12;
   const isTurnedLeft = yawRatio >= 1.38 || noseOffset >= 0.16;
@@ -278,7 +264,9 @@ const ScannerTerminal = () => {
     submitLock: false,
     lockFrames: 0,
     blinkCount: 0,
-    blinkFrames: 0,
+    blinkState: null,
+    neutralPose: null,
+    lastFaceAt: null,
     earHistory: [],
     depthSamples: [],
     padStage: 'ALIGN', // 'ALIGN' -> 'CHALLENGE' -> 'CENTER_BLINK' -> 'FLASH_CAPTURE'
@@ -324,7 +312,7 @@ const ScannerTerminal = () => {
   const updateStatus = useCallback((text) => {
     if (vaultRef.current.lastStatusText === text) return;
     vaultRef.current.lastStatusText = text;
-    dispatch({ type: 'SET_DEBUG_INFO', payload: { statusText: text } });
+    dispatch({ type: 'SET_LIVENESS', payload: { prompt: text } });
   }, [dispatch]);
 
   const throttledDispatch = useCallback((updates) => {
@@ -371,7 +359,9 @@ const ScannerTerminal = () => {
     vaultRef.current.submitLock = false;
     vaultRef.current.lockFrames = 0;
     vaultRef.current.blinkCount = 0;
-    vaultRef.current.blinkFrames = 0;
+    vaultRef.current.blinkState = null;
+    vaultRef.current.neutralPose = null;
+    vaultRef.current.lastFaceAt = null;
     vaultRef.current.earHistory = [];
     vaultRef.current.depthSamples = [];
     vaultRef.current.padStage = 'ALIGN';
@@ -495,7 +485,7 @@ const ScannerTerminal = () => {
       ear_min: earHistory.length ? Math.min(...earHistory) : 0.0,
       ear_max: earHistory.length ? Math.max(...earHistory) : 0.0,
       ear_avg: earHistory.length ? (earHistory.reduce((a, b) => a + b, 0) / earHistory.length) : 0.0,
-      flash_reflectance_confirmed: true,
+      flash_reflectance_confirmed: false,
       client_timestamp: new Date().toISOString(),
     };
 
@@ -576,34 +566,35 @@ const ScannerTerminal = () => {
     };
     syncCanvas();
 
-    // Reset state for new session with challenge direction
-    vaultRef.current.lockFrames = 0;
-    vaultRef.current.blinkCount = 0;
-    vaultRef.current.blinkFrames = 0;
-    vaultRef.current.earHistory = [];
-    vaultRef.current.depthSamples = [];
-    vaultRef.current.padStage = 'ALIGN';
-    vaultRef.current.targetDirection = Math.random() > 0.5 ? 'TURN_LEFT' : 'TURN_RIGHT';
-    vaultRef.current.challengeTurnFrames = 0;
-    vaultRef.current.challengePassed = false;
-    vaultRef.current.recenterFrames = 0;
-    vaultRef.current.flashActive = false;
-    vaultRef.current.submitLock = false;
-
-    dispatch({ type: 'SET_PROGRESS', payload: 0 });
-    dispatch({ type: 'SET_MATCH', payload: null });
-    dispatch({ 
-      type: 'SET_LIVENESS', 
-      payload: { 
-        stage: 'ALIGN', 
-        targetDirection: vaultRef.current.targetDirection,
-        status: 'ALIGNING', 
-        blinkCount: 0, 
-        ear: null, 
-        passed: false, 
-        flashActive: false 
-      } 
-    });
+    const vault = vaultRef.current;
+    const interruptEvidence = () => {
+      resetBlinkCycle(vault.blinkState);
+      vault.blinkCount = 0;
+      vault.lockFrames = 0;
+      vault.challengeTurnFrames = 0;
+      vault.recenterFrames = 0;
+    };
+    const resetChallenge = () => {
+      vault.blinkState = createBlinkState();
+      interruptEvidence();
+      vault.earHistory = [];
+      vault.depthSamples = [];
+      vault.neutralPose = null;
+      vault.lastFaceAt = null;
+      vault.lastStatusText = null;
+      vault.padStage = 'ALIGN';
+      vault.targetDirection = crypto.getRandomValues(new Uint32Array(1))[0] % 2 ? 'TURN_RIGHT' : 'TURN_LEFT';
+      vault.challengePassed = false;
+      vault.flashActive = false;
+      vault.submitLock = false;
+      dispatch({ type: 'SET_PROGRESS', payload: 0 });
+      dispatch({ type: 'SET_MATCH', payload: null });
+      dispatch({ type: 'SET_LIVENESS', payload: {
+        stage: 'ALIGN', targetDirection: vault.targetDirection, status: 'ALIGNING',
+        blinkCount: 0, ear: null, passed: false, flashActive: false, prompt: 'Look directly at the camera',
+      } });
+    };
+    resetChallenge();
 
     detectionRef.current = startVideoFrameLoop(video, async isActive => {
       if (!copyVideoFrame(video, frame)) return;
@@ -623,7 +614,7 @@ const ScannerTerminal = () => {
       if (!isActive()) return;
 
       if (!det) {
-        vaultRef.current.lockFrames = Math.max(0, vaultRef.current.lockFrames - 2);
+        interruptEvidence();
         throttledDispatch({ scanProgress: Math.max(0, (vaultRef.current.lockFrames / ENV.REQUIRED_LOCK_FRAMES) * 100), matchScore: null });
         updateStatus('Look directly at the camera to clock in');
         return;
@@ -656,7 +647,7 @@ const ScannerTerminal = () => {
       }
 
       if (!centered || !bigEnough) {
-        vaultRef.current.lockFrames = Math.max(0, vaultRef.current.lockFrames - 1);
+        interruptEvidence();
         throttledDispatch({ scanProgress: Math.max(0, (vaultRef.current.lockFrames / ENV.REQUIRED_LOCK_FRAMES) * 100) });
         updateStatus(!bigEnough ? 'Move closer to the camera' : 'Center your face in the frame');
         drawFaceMesh(ctx, det.landmarks, box, 'scanning');
@@ -664,7 +655,7 @@ const ScannerTerminal = () => {
       }
 
       if (!matched) {
-        vaultRef.current.lockFrames = 0;
+        resetChallenge();
         throttledDispatch({ scanProgress: 0, matchScore: currentScore });
         updateStatus('Face not recognized. Try again');
         drawFaceMesh(ctx, det.landmarks, box, 'mismatch');
@@ -673,39 +664,41 @@ const ScannerTerminal = () => {
 
       // Calculate Head Pose and Eye Aspect Ratio
       const pose = getHeadPose(det.landmarks);
-      const ear = getEAR(det.landmarks);
+      const eyes = getEyeOpenness(det.landmarks);
+      if (!eyes || !pose || det.detection.score < .55 || !Number.isFinite(pose.yawRatio) || pose.yawRatio <= 0 || !Number.isFinite(pose.noseOffset)) {
+        interruptEvidence();
+        updateStatus('Move closer so both eyes are clear');
+        dispatch({ type: 'SET_LIVENESS', payload: { status: 'EYES_UNCLEAR', blinkCount: 0 } });
+        return;
+      }
+      const now = performance.now();
+      if (vault.lastFaceAt !== null && now - vault.lastFaceAt > 650) resetChallenge();
+      vault.lastFaceAt = now;
+      const ear = eyes.mean;
       vaultRef.current.earHistory.push(ear);
       if (vaultRef.current.earHistory.length > 50) vaultRef.current.earHistory.shift();
 
-      // Track depth metric
-      if (pose.eyeDistance > 0) {
-        const eyeMidX = (det.landmarks.positions[36].x + det.landmarks.positions[45].x) / 2;
-        const depthMetric = (det.landmarks.positions[30].x - eyeMidX) / pose.eyeDistance;
-        vaultRef.current.depthSamples.push(depthMetric);
-        if (vaultRef.current.depthSamples.length > 60) vaultRef.current.depthSamples.shift();
+      // A 2D movement proxy, not a depth-camera measurement or proof of liveness.
+      if (vault.padStage !== 'CENTER_BLINK') {
+        vault.depthSamples.push(pose.noseOffset);
+        if (vault.depthSamples.length > 60) vault.depthSamples.shift();
       }
-
-      // Track consecutive blinks
-      if (ear < ENV.BLINK_EAR_THRESHOLD) {
-        vaultRef.current.blinkFrames += 1;
-      } else {
-        if (vaultRef.current.blinkFrames >= ENV.BLINK_CONSEC_FRAMES) {
-          vaultRef.current.blinkCount += 1;
-        }
-        vaultRef.current.blinkFrames = 0;
-      }
+      const relativeYaw = vault.neutralPose ? pose.yawRatio / vault.neutralPose.yawRatio : 1;
+      const relativeNose = vault.neutralPose ? pose.noseOffset - vault.neutralPose.noseOffset : 0;
 
       // Challenge state machine
       // 1. Align face
       if (vaultRef.current.padStage === 'ALIGN') {
         if (pose.isCentered) {
+          const eyesReady = calibrateBlink(vault.blinkState, eyes, now);
           vaultRef.current.lockFrames += 1;
           const progress = Math.min((vaultRef.current.lockFrames / 3) * 25, 25);
           throttledDispatch({ scanProgress: progress, matchScore: currentScore });
-          updateStatus('Face detected. Checking presence...');
+          updateStatus(eyesReady ? 'Face detected. Checking presence...' : BLINK_PROMPTS.CALIBRATING);
           drawFaceMesh(ctx, det.landmarks, box, 'scanning');
 
-          if (vaultRef.current.lockFrames >= 3) {
+          if (vaultRef.current.lockFrames >= 3 && eyesReady) {
+            vault.neutralPose = { yawRatio: pose.yawRatio, noseOffset: pose.noseOffset };
             vaultRef.current.padStage = 'CHALLENGE';
             vaultRef.current.challengeTurnFrames = 0;
             playSound('scan');
@@ -721,7 +714,7 @@ const ScannerTerminal = () => {
             });
           }
         } else {
-          vaultRef.current.lockFrames = Math.max(0, vaultRef.current.lockFrames - 1);
+          interruptEvidence();
           updateStatus('Look directly at the camera');
           drawFaceMesh(ctx, det.landmarks, box, 'scanning');
         }
@@ -730,7 +723,9 @@ const ScannerTerminal = () => {
 
       // 2. Head turn challenge
       if (vaultRef.current.padStage === 'CHALLENGE') {
-        const targetTurnMet = vaultRef.current.targetDirection === 'TURN_LEFT' ? pose.isTurnedLeft : pose.isTurnedRight;
+        const targetTurnMet = vaultRef.current.targetDirection === 'TURN_LEFT'
+          ? relativeYaw >= 1.38 || relativeNose >= .16
+          : relativeYaw <= .72 || relativeNose <= -.16;
         const directiveText = vaultRef.current.targetDirection === 'TURN_LEFT'
           ? 'Turn your head slightly to the left'
           : 'Turn your head slightly to the right';
@@ -743,9 +738,15 @@ const ScannerTerminal = () => {
           drawFaceMesh(ctx, det.landmarks, box, 'locked');
 
           if (vaultRef.current.challengeTurnFrames >= 2) {
+            if (calculateVariance(vault.depthSamples) < .0005) {
+              updateStatus('Turn a little farther');
+              return;
+            }
             vaultRef.current.challengePassed = true;
             vaultRef.current.padStage = 'CENTER_BLINK';
             vaultRef.current.recenterFrames = 0;
+            resetBlinkCycle(vault.blinkState);
+            vault.blinkCount = 0;
             playSound('scan');
             haptic('scan');
             dispatch({
@@ -753,12 +754,13 @@ const ScannerTerminal = () => {
               payload: {
                 stage: 'CENTER_BLINK',
                 targetDirection: vaultRef.current.targetDirection,
-                status: 'CENTER_AND_BLINK',
+                status: 'RECENTER',
                 ear
               }
             });
           }
         } else {
+          vault.challengeTurnFrames = 0;
           throttledDispatch({ scanProgress: 35, matchScore: currentScore });
           updateStatus(directiveText);
           drawFaceMesh(ctx, det.landmarks, box, 'scanning');
@@ -768,21 +770,34 @@ const ScannerTerminal = () => {
 
       // 3. Re-center and blink
       if (vaultRef.current.padStage === 'CENTER_BLINK') {
-        if (!pose.isCentered) {
+        const returned = vault.neutralPose && Math.abs(Math.log(relativeYaw)) <= .22 && Math.abs(relativeNose) <= .12;
+        if (!returned) {
+          vault.recenterFrames = 0;
+          resetBlinkCycle(vault.blinkState);
+          vault.blinkCount = 0;
+          dispatch({ type: 'SET_LIVENESS', payload: { status: 'RECENTER', blinkCount: 0 } });
           throttledDispatch({ scanProgress: 60, matchScore: currentScore });
           updateStatus('Turn face back to center');
           drawFaceMesh(ctx, det.landmarks, box, 'scanning');
           return;
         }
 
+        vault.recenterFrames++;
+        if (vault.recenterFrames < 3) {
+          updateStatus('Face the camera');
+          drawFaceMesh(ctx, det.landmarks, box, 'scanning');
+          return;
+        }
+        updateBlink(vault.blinkState, eyes, now);
+        vault.blinkCount = vault.blinkState.count;
         if (vaultRef.current.blinkCount < ENV.REQUIRED_BLINKS) {
           throttledDispatch({ scanProgress: 75, matchScore: currentScore });
-          updateStatus('Blink your eyes to confirm');
+          updateStatus(BLINK_PROMPTS[vault.blinkState.phase]);
           dispatch({
             type: 'SET_LIVENESS',
             payload: {
               stage: 'CENTER_BLINK',
-              status: 'BLINK_TO_VERIFY',
+              status: vault.blinkState.phase,
               blinkCount: vaultRef.current.blinkCount,
               ear
             }
@@ -817,11 +832,15 @@ const ScannerTerminal = () => {
         captureTimerRef.current = setTimeout(() => {
           if (request !== cameraRequestRef.current) return;
           captureAndSubmit(currentScore, vaultRef.current.blinkCount, vaultRef.current.earHistory, verifiedImage);
-        }, 180);
+        }, 0);
         return;
       }
-    }, { intervalMs: ENV.DETECTION_INTERVAL_MS, onError: () => {
-      dispatch({ type: 'SET_ERROR', payload: { message: 'Face processing stopped. Restart the scanner to retry.', code: 'FACE_PROCESSING_FAILED' } });
+    }, { intervalMs: ENV.DETECTION_INTERVAL_MS, onError: error => {
+      canvas.getContext('2d')?.clearRect(0, 0, canvas.width, canvas.height);
+      dispatch({ type: 'SET_ERROR', payload: {
+        message: error?.code === 'FACE_PROCESSING_TIMEOUT' ? 'Face processing timed out. Reload this page to retry.' : 'Face tracking interrupted. Restart the scanner to retry.',
+        code: error?.code || 'FACE_PROCESSING_FAILED',
+      } });
     } });
   }, [dispatch, throttledDispatch, updateStatus, captureAndSubmit]);
 
@@ -967,21 +986,26 @@ const ScannerTerminal = () => {
       try {
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 3500);
+        const abortBaseline = () => controller.abort();
+        qrController.signal.addEventListener('abort', abortBaseline, { once: true });
+        if (qrController.signal.aborted) abortBaseline();
 
-        let imgRes;
+        let blob;
         try {
-          const signal = AbortSignal.any([controller.signal, qrController.signal]);
+          const signal = controller.signal;
           const media = await resolvePrivateMedia(storagePath, { signal });
           if (request !== scanRequestRef.current || mediaSession !== getPrivateMediaSession()) return;
-          imgRes = await fetch(media.url, { signal, cache: 'no-store' });
+          const imgRes = await fetch(media.url, { signal, cache: 'no-store' });
+          if (request !== scanRequestRef.current || mediaSession !== getPrivateMediaSession()) return;
+          if (!imgRes.ok) throw new Error('BASELINE_NOT_FOUND');
+          blob = await imgRes.blob();
         }
-        finally { clearTimeout(timeoutId); }
+        finally {
+          clearTimeout(timeoutId);
+          qrController.signal.removeEventListener('abort', abortBaseline);
+        }
         if (request !== scanRequestRef.current || mediaSession !== getPrivateMediaSession()) return;
 
-        if (!imgRes.ok) throw new Error('BASELINE_NOT_FOUND');
-
-        const blob = await imgRes.blob();
-        if (request !== scanRequestRef.current || mediaSession !== getPrivateMediaSession()) return;
         const url = URL.createObjectURL(blob);
         if (photoObjectUrlRef.current) URL.revokeObjectURL(photoObjectUrlRef.current);
         photoObjectUrlRef.current = url;
@@ -1163,6 +1187,43 @@ const ScannerTerminal = () => {
     style.href = scannerStylesUrl;
     document.head.appendChild(style);
 
+    // Lock viewport meta on mobile devices to strictly prevent browser zooming
+    const viewportMeta = document.querySelector('meta[name="viewport"]');
+    const originalViewportContent = viewportMeta ? viewportMeta.getAttribute('content') : null;
+    if (viewportMeta) {
+      viewportMeta.setAttribute(
+        'content',
+        'width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover'
+      );
+    }
+
+    // Multi-tier touch & gesture anti-zoom barrier
+    const preventPinchZoom = (e) => {
+      if (e.touches && e.touches.length > 1) {
+        e.preventDefault();
+      }
+    };
+
+    const preventGestureZoom = (e) => {
+      e.preventDefault();
+    };
+
+    let lastTouchEndTime = 0;
+    const preventDoubleTapZoom = (e) => {
+      const now = Date.now();
+      if (now - lastTouchEndTime <= 300) {
+        e.preventDefault();
+      }
+      lastTouchEndTime = now;
+    };
+
+    window.addEventListener('touchstart', preventPinchZoom, { passive: false });
+    window.addEventListener('touchmove', preventPinchZoom, { passive: false });
+    window.addEventListener('touchend', preventDoubleTapZoom, { passive: false });
+    window.addEventListener('gesturestart', preventGestureZoom, { passive: false });
+    window.addEventListener('gesturechange', preventGestureZoom, { passive: false });
+    window.addEventListener('gestureend', preventGestureZoom, { passive: false });
+
     // Wake lock (keep screen on)
     if ('wakeLock' in navigator) {
       navigator.wakeLock.request('screen').then(lock => { if (mounted) wakeLock = lock; else lock.release().catch(() => {}); }).catch(() => {});
@@ -1182,6 +1243,15 @@ const ScannerTerminal = () => {
       window.removeEventListener('orientationchange', handleViewportChange);
       window.removeEventListener('online', onOnline);
       window.removeEventListener('offline', onOffline);
+      window.removeEventListener('touchstart', preventPinchZoom);
+      window.removeEventListener('touchmove', preventPinchZoom);
+      window.removeEventListener('touchend', preventDoubleTapZoom);
+      window.removeEventListener('gesturestart', preventGestureZoom);
+      window.removeEventListener('gesturechange', preventGestureZoom);
+      window.removeEventListener('gestureend', preventGestureZoom);
+      if (viewportMeta && originalViewportContent) {
+        viewportMeta.setAttribute('content', originalViewportContent);
+      }
       document.getElementById('scanner-css')?.remove();
       wakeLock?.release().catch(() => {});
     };
@@ -1198,7 +1268,7 @@ const ScannerTerminal = () => {
 
   // RENDER
   return (
-    <div className="h-[100dvh] w-screen bg-black text-white relative overflow-hidden font-sans select-none">
+    <div className="scanner-root h-[100dvh] w-screen bg-black text-white relative overflow-hidden font-sans select-none touch-none overscroll-none">
 
 
       {/* Debug corner trigger */}
@@ -1498,7 +1568,7 @@ const ScannerTerminal = () => {
               </button>
 
               {/* Status Badge */}
-              <span className={`px-2.5 py-1 rounded-md text-xs font-semibold tracking-wide border shadow-2xs flex items-center gap-2 ${statusMeta.pill}`}>
+              <span role="status" aria-live="polite" aria-atomic="true" className={`px-2.5 py-1 rounded-md text-xs font-semibold tracking-wide border shadow-2xs flex items-center gap-1.5 sm:gap-2 max-w-[56vw] sm:max-w-xs md:max-w-none whitespace-normal text-center leading-snug shrink min-w-0 ${statusMeta.pill}`}>
                 {state.employee?.is_medical_exempt ? (
                   <>
                     <HeartPulse className="w-3.5 h-3.5 text-warning" />
@@ -1507,7 +1577,7 @@ const ScannerTerminal = () => {
                 ) : state.liveness.stage === 'ALIGN' ? (
                   <>
                     <Scan className="w-3.5 h-3.5 text-accent-on-dark animate-pulse" />
-                    <span>Look directly at the camera</span>
+                    <span>{state.liveness.prompt || 'Look directly at the camera'}</span>
                   </>
                 ) : state.liveness.stage === 'CHALLENGE' ? (
                   <>
@@ -1517,13 +1587,13 @@ const ScannerTerminal = () => {
                       <ArrowRight className="w-3.5 h-3.5 text-warning animate-bounce" />
                     )}
                     <span className="font-bold tracking-wider text-warning">
-                      {state.liveness.targetDirection === 'TURN_LEFT' ? 'Turn your head slightly left' : 'Turn your head slightly right'}
+                      {state.liveness.prompt || (state.liveness.targetDirection === 'TURN_LEFT' ? 'Turn your head slightly left' : 'Turn your head slightly right')}
                     </span>
                   </>
                 ) : state.liveness.stage === 'CENTER_BLINK' ? (
                   <>
                     <Eye className="w-3.5 h-3.5 text-accent-on-dark animate-pulse" />
-                    <span className="font-bold text-accent-on-dark">Face camera and blink your eyes</span>
+                    <span className="font-bold text-accent-on-dark">{state.liveness.prompt || 'Face the camera'}</span>
                   </>
                 ) : state.liveness.passed && state.scanProgress < 100 ? (
                   <>
@@ -1546,29 +1616,29 @@ const ScannerTerminal = () => {
               </span>
 
               {/* Right Controls: Offline Terminal + Flip Camera + Live Clock */}
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
                 {isOfflineFeatureActive && (
                   <a
                     href="/attendance-terminal"
-                    className="h-8 px-2.5 rounded-md bg-slate-900/80 hover:bg-slate-800 text-slate-200 hover:text-white border border-white/10 transition-colors duration-100 flex items-center gap-1.5 text-xs font-medium cursor-pointer shadow-2xs"
+                    className="h-8 w-8 sm:w-auto px-0 sm:px-2.5 rounded-md bg-slate-900/80 hover:bg-slate-800 text-slate-200 hover:text-white border border-white/10 transition-colors duration-100 flex items-center justify-center gap-1.5 text-xs font-medium cursor-pointer shadow-2xs shrink-0"
                     title="Switch to Offline Attendance Terminal"
                   >
-                    <WifiOff className="w-3.5 h-3.5 text-amber-400" />
+                    <WifiOff className="w-3.5 h-3.5 text-amber-400 shrink-0" />
                     <span className="text-[11px] hidden md:inline">Offline</span>
                   </a>
                 )}
                 <button
                   onClick={toggleCameraFacing}
                   disabled={state.loadingMsg === 'Starting camera...'}
-                  className="h-8 px-2.5 rounded-md bg-slate-900/80 hover:bg-slate-800 text-slate-200 hover:text-white border border-white/10 transition-colors duration-100 flex items-center gap-1.5 text-xs font-medium cursor-pointer shadow-2xs"
+                  className="h-8 w-8 sm:w-auto px-0 sm:px-2.5 rounded-md bg-slate-900/80 hover:bg-slate-800 text-slate-200 hover:text-white border border-white/10 transition-colors duration-100 flex items-center justify-center gap-1.5 text-xs font-medium cursor-pointer shadow-2xs shrink-0"
                   title="Flip Camera (Front / Rear)"
                 >
-                  <RefreshCw className="w-3.5 h-3.5 text-accent-on-dark" />
+                  <RefreshCw className="w-3.5 h-3.5 text-accent-on-dark shrink-0" />
                   <span className="text-[11px] hidden sm:inline capitalize">
                     {cameraFacing === 'user' ? 'Front' : 'Rear'}
                   </span>
                 </button>
-                <div className="font-mono text-xs font-semibold bg-slate-900/80 text-slate-300 px-2 py-1 rounded-md border border-white/10 tabular-nums hidden sm:block">
+                <div className="font-mono text-xs font-semibold bg-slate-900/80 text-slate-300 px-2 py-1 rounded-md border border-white/10 tabular-nums hidden sm:block shrink-0">
                   {state.clockTime}
                 </div>
               </div>
@@ -1662,8 +1732,8 @@ const ScannerTerminal = () => {
               </div>
               <h2 className="text-base font-bold text-white mb-1">Scan Interrupted</h2>
               <p className="text-slate-400 text-xs mb-4">{state.error?.message || 'An unexpected error occurred.'}</p>
-              <button onClick={handleReset} className="w-full h-9 bg-slate-800 hover:bg-slate-700 text-white rounded-md font-semibold text-xs transition-colors duration-100 cursor-pointer shadow-2xs">
-                Return to Scanner
+              <button onClick={state.error?.code === 'FACE_PROCESSING_TIMEOUT' ? () => window.location.reload() : handleReset} className="w-full h-9 bg-slate-800 hover:bg-slate-700 text-white rounded-md font-semibold text-xs transition-colors duration-100 cursor-pointer shadow-2xs">
+                {state.error?.code === 'FACE_PROCESSING_TIMEOUT' ? 'Reload Scanner' : 'Return to Scanner'}
               </button>
             </div>
           </div>
@@ -1674,32 +1744,32 @@ const ScannerTerminal = () => {
       {state.mode === MODES.QR && (
         <div className="absolute top-0 inset-x-0 z-30 bg-slate-950/90 border-b border-slate-800 pb-3 pointer-events-none">
           <div className="flex justify-between items-center px-4 sm:px-6 pt-[max(env(safe-area-inset-top,12px),12px)]">
-            <div className="flex items-center gap-2 pt-1">
-              <div className="h-8 w-8 rounded-md bg-slate-800 flex items-center justify-center text-slate-200 border border-slate-700">
+            <div className="flex items-center gap-2 pt-1 pointer-events-auto">
+              <div className="h-7 w-7 rounded-md bg-slate-800 flex items-center justify-center text-slate-200 border border-slate-700">
                 {deviceInfo.isMobile ? (
-                  <Smartphone className="w-4 h-4 text-slate-200" />
+                  <Smartphone className="w-3.5 h-3.5 text-slate-200" />
                 ) : (
-                  <Monitor className="w-4 h-4 text-slate-200" />
+                  <Monitor className="w-3.5 h-3.5 text-slate-200" />
                 )}
               </div>
-              <div>
+              <div className="hidden xs:block">
                 <h1 className="text-xs font-bold text-white tracking-wide">
                   {deviceInfo.isMobile ? 'Gate Kiosk' : 'Terminal Station'}
                 </h1>
               </div>
             </div>
-            <div className="flex items-center gap-2 pointer-events-auto">
+            <div className="flex items-center gap-1.5 sm:gap-2 pointer-events-auto shrink-0">
               {isOfflineFeatureActive && (
                 <a
                   href="/attendance-terminal"
-                  className="h-7 px-2.5 rounded-md bg-slate-900/90 hover:bg-slate-800 text-slate-200 hover:text-white border border-slate-700/80 transition-colors duration-100 flex items-center gap-1.5 text-xs font-medium shadow-2xs"
+                  className="h-7 w-7 sm:w-auto px-0 sm:px-2.5 rounded-md bg-slate-900/90 hover:bg-slate-800 text-slate-200 hover:text-white border border-slate-700/80 transition-colors duration-100 flex items-center justify-center gap-1.5 text-xs font-medium shadow-2xs shrink-0"
                   title="Switch to Offline Attendance Terminal"
                 >
-                  <WifiOff className="w-3.5 h-3.5 text-amber-400" />
+                  <WifiOff className="w-3.5 h-3.5 text-amber-400 shrink-0" />
                   <span className="text-[11px] hidden sm:inline">Offline</span>
                 </a>
               )}
-              <div className="font-mono text-xs font-semibold bg-slate-900 text-slate-300 px-2.5 py-1 rounded-md border border-slate-700 tabular-nums">
+              <div className="font-mono text-xs font-semibold bg-slate-900 text-slate-300 px-2.5 py-1 rounded-md border border-slate-700 tabular-nums shrink-0">
                 {state.clockTime}
               </div>
             </div>

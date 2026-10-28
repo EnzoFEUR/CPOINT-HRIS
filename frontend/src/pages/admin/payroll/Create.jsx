@@ -12,6 +12,7 @@ import { fetchWithAuth } from '../../../utils/api';
 import { supabase } from '../../../supabaseClient';
 import FactoryPiece from './FactoryPiece';
 import { factorySaveResult } from '../../../utils/factorySaveResult.mjs';
+import BackButton from '../../../components/ui/BackButton';
 
 // Payroll utilities & constants
 import { parseDate, extractDateStr, formatLocalDate, formatReadableDate, getEmployeeDept, isFactoryDept, getEmployeeRates, matchJobTitle, loadPayrollAttendance } from './utils/payrollHelpers';
@@ -1946,13 +1947,9 @@ const PayrollCreate = () => {
 
     return (
         <div className="max-w-5xl mx-auto py-4 sm:py-8 px-3 sm:px-6 pb-[calc(2.5rem+env(safe-area-inset-bottom))]">
-            <Link
-                to="/admin/payroll"
-                className="inline-flex items-center gap-1.5 text-xs sm:text-sm font-semibold text-slate-500 hover:text-slate-800 transition-colors duration-100 mb-4"
-            >
-                <i className="ti ti-arrow-left text-base" />
-                <span>Back to Payroll Ledger</span>
-            </Link>
+            <div className="mb-4">
+                <BackButton fallback="/admin/payroll" label="Back to Payroll Ledger" />
+            </div>
 
             <div className="bg-white p-5 sm:p-6 rounded-lg shadow-2xs border border-slate-200">
 

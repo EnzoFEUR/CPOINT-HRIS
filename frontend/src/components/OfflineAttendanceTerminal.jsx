@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { createQrScanner, startQrCamera, stopQrCamera } from '../utils/qrCamera';
 import { supabase } from '../supabaseClient';
 import PageHeader from './ui/PageHeader';
+import { useConfirm } from './ui/ConfirmDialog';
 import { captureOfflineBadge, exportOfflineBackup, getOfflineStorageStatus, importOfflineBackup, listOfflineEvents, MAX_EVENTS, readMeta } from '../utils/offlineAttendanceStore';
 import { clearAcceptedOfflineCaptures, enrollOfflineTerminal, offlineApi, offlineDiagnosticText, offlineSyncMessage, refreshOfflineRoster, syncOfflineAttendance } from '../utils/offlineAttendanceSync';
 import { isOfflineTestEnabled, offlineTestAvailable, OFFLINE_TEST_CHANGED, setOfflineTestEnabled } from '../utils/offlineAttendanceTestMode.mjs';
@@ -22,6 +23,7 @@ const receiptLabels = {
 };
 
 export default function OfflineAttendanceTerminal({ canProvision = false, operatorEmail = '', alwaysShow = true, onActiveChange }) {
+  const confirm = useConfirm();
   const [open, setOpen] = useState(alwaysShow);
   const [enrollment, setEnrollment] = useState(null);
   const [events, setEvents] = useState([]);
@@ -240,8 +242,16 @@ export default function OfflineAttendanceTerminal({ canProvision = false, operat
     });
   };
 
-  const cleanupAccepted = () => {
-    if (!window.confirm('Remove accepted attendance copies from this device? Pending and disputed captures will stay. Server attendance and terminal authorization will not change.')) return;
+  const cleanupAccepted = async () => {
+    const confirmed = await confirm({
+      title: 'Purge Local Attendance Copies',
+      message: 'Remove accepted attendance copies from this device? Pending and disputed captures will stay. Server attendance and terminal authorization will not change.',
+      variant: 'warning',
+      icon: 'ti-database-x',
+      confirmLabel: 'Purge Accepted Copies',
+      cancelLabel: 'Keep Local Copies',
+    });
+    if (!confirmed) return;
     perform(async () => {
       const count = await clearAcceptedOfflineCaptures();
       setMessage(count ? `${count} accepted copies removed from this device. Pending captures remain saved.` : 'No accepted copies could be removed. Synchronize and ask HR to finish reviewing captures.');
@@ -284,6 +294,9 @@ export default function OfflineAttendanceTerminal({ canProvision = false, operat
       {/* Production PageHeader */}
       <PageHeader
         breadcrumbs={['Admin', 'Attendance', 'Offline Terminal']}
+        showBack={alwaysShow && !offline}
+        backFallback={canEnroll ? '/admin/attendance' : '/scanner'}
+        backLabel={canEnroll ? 'Daily Logs' : 'Online scanner'}
         actions={
           <div className="flex flex-wrap items-center gap-2">
             {(offline || testOffline) && (
@@ -302,14 +315,6 @@ export default function OfflineAttendanceTerminal({ canProvision = false, operat
               >
                 Close Terminal
               </button>
-            ) : !offline ? (
-              <Link
-                to={canEnroll ? '/admin/attendance' : '/scanner'}
-                className="h-9 px-3.5 rounded-md bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-semibold shadow-2xs transition-colors inline-flex items-center gap-1.5"
-              >
-                <i className="ti ti-arrow-left text-xs" />
-                <span>{canEnroll ? 'Daily Logs' : 'Online scanner'}</span>
-              </Link>
             ) : null}
           </div>
         }

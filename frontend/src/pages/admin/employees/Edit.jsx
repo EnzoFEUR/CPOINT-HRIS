@@ -9,6 +9,7 @@ import { formatPhPhone, validatePhPhone } from '../../../utils/phoneUtils';
 import PhilippineAddressSelector from '../../../components/PhilippineAddressSelector';
 import EmailDomainWarning from '../../../components/EmailDomainWarning';
 import { sanitizePersonnelText, isPersonnelEmailInput, isValidPersonnelEmail, isEmployeePayInput, getEmployeePayError } from '../../../../../shared/personnelInput.mjs';
+import BackButton from '../../../components/ui/BackButton';
 
 export default function Edit() {
     const { id } = useParams();
@@ -403,9 +404,7 @@ export default function Edit() {
     return (
         <div className="max-w-4xl mx-auto space-y-4 sm:space-y-6 pb-24 lg:pb-6 px-4 sm:px-6 lg:px-8 font-sans relative">
             <div className="flex items-center justify-between">
-                <Link to={`/admin/employees/${id}`} className="h-8 px-3 bg-white text-slate-600 font-semibold text-xs rounded-md hover:bg-slate-50 hover:text-accent transition-colors duration-100 shadow-2xs border border-slate-200 flex items-center gap-1.5">
-                    <i className="ti ti-arrow-left text-sm" /> Cancel Edit
-                </Link>
+                <BackButton fallback={`/admin/employees/${id}`} label="Cancel Edit" />
             </div>
 
             <div className="bg-white p-5 sm:p-6 rounded-lg shadow-2xs border border-slate-200">

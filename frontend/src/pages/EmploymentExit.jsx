@@ -514,6 +514,8 @@ export default function EmploymentExit({ manager = false }) {
                         ? ['Admin', 'Employees', 'Employment Exit']
                         : ['Self Service', 'Exit & Retirement']
                 }
+                showBack
+                backFallback={manager ? '/admin/employees' : '/employee/dashboard'}
                 actions={
                     <div className="flex items-center gap-2 flex-wrap">
                         <a

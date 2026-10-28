@@ -7,6 +7,7 @@ import { supabase } from '../../../supabaseClient';
 import JSZip from 'jszip';
 import { saveAs } from 'file-saver';
 import { formatPhDisplay } from '../../../utils/phoneUtils';
+import BackButton from '../../../components/ui/BackButton';
 
 // ---------- helpers ----------
 
@@ -267,12 +268,7 @@ export default function ArchivedEmployeeProfile() {
           <p className="text-slate-500 text-xs mb-5">
             This employee record may have been permanently removed or updated.
           </p>
-          <button
-            onClick={() => navigate('/admin/archive')}
-            className="h-9 inline-flex items-center gap-1.5 px-3 bg-accent hover:bg-accent-hover text-white rounded-md text-xs font-semibold transition-colors duration-100 cursor-pointer shadow-2xs"
-          >
-            <i className="ti ti-arrow-left text-sm"></i> Back to Archive
-          </button>
+          <BackButton fallback="/admin/archive" label="Back to Archive" />
         </div>
       </div>
     );
@@ -284,12 +280,7 @@ export default function ArchivedEmployeeProfile() {
     <div className="p-6 space-y-6 max-w-7xl mx-auto">
       {/* Top Action Bar */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <button
-          onClick={() => navigate('/admin/archive')}
-          className="h-8 inline-flex items-center gap-1.5 px-3 border border-slate-200 rounded-md bg-white hover:bg-slate-50 text-slate-700 text-xs font-semibold shadow-2xs transition-colors duration-100 w-fit cursor-pointer"
-        >
-          <i className="ti ti-arrow-left text-sm"></i> Back to Archive Directory
-        </button>
+        <BackButton fallback="/admin/archive" label="Back to Archive Directory" />
 
         <div className="flex flex-wrap items-center gap-2">
           <div className="h-8 inline-flex items-center gap-1.5 px-3 bg-slate-100 border border-slate-200 text-slate-600 rounded-md text-xs font-medium">

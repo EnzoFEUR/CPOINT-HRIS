@@ -669,7 +669,7 @@ export default function DisciplinaryIndex() {
                     </div>
 
                     {/* Filter Type */}
-                    <div className="flex items-center gap-2">
+                    <div className="grid grid-cols-2 sm:flex sm:items-center gap-2">
                         <select
                             value={filterType}
                             onChange={(e) => { setFilterType(e.target.value); setCurrentPage(1); }}
@@ -698,7 +698,7 @@ export default function DisciplinaryIndex() {
                         <select
                             value={sortBy}
                             onChange={(e) => setSortBy(e.target.value)}
-                            className="h-9 px-3 bg-slate-50 border border-slate-200 rounded-md text-xs font-medium text-slate-700 outline-none focus:bg-white focus:border-slate-400 focus:ring-1 focus:ring-slate-400 transition-colors duration-100"
+                            className="col-span-2 sm:col-span-1 h-9 px-3 bg-slate-50 border border-slate-200 rounded-md text-xs font-medium text-slate-700 outline-none focus:bg-white focus:border-slate-400 focus:ring-1 focus:ring-slate-400 transition-colors duration-100"
                         >
                             <option value="date_desc">Newest First</option>
                             <option value="date_asc">Oldest First</option>
@@ -709,41 +709,52 @@ export default function DisciplinaryIndex() {
                 </div>
 
                 {/* Status Navigation Tabs with Badges */}
-                <div className="flex items-center justify-between border-t border-slate-100 pt-3 overflow-x-auto no-scrollbar gap-2">
-                    <div className="flex items-center gap-1.5 shrink-0">
-                        {[
-                            { key: 'Active', label: 'Action Required', count: activeCases, badgeColor: 'bg-accent-subtle text-ink' },
-                            { key: 'All', label: 'All Incidents', count: totalCases },
-                            { key: 'Acknowledged', label: 'Acknowledged', count: acknowledgedCases, badgeColor: 'bg-surface-muted text-ink' },
-                            { key: 'Resolved', label: 'Resolved / Restored', count: resolvedCases, badgeColor: 'bg-slate-200 text-slate-700' },
-                            { key: 'Overturned', label: 'Cleared', count: overturnedCases, badgeColor: 'bg-accent-subtle text-ink' }
-                        ].map(tab => {
-                            const isSelected = filterStatus === tab.key;
-                            return (
-                                <button
-                                    key={tab.key}
-                                    onClick={() => handleFilterChange(tab.key)}
-                                    className={`h-8 px-3 rounded-md text-xs font-medium transition-colors duration-100 flex items-center gap-2 cursor-pointer ${
-                                        isSelected
-                                            ? 'bg-slate-900 text-white shadow-2xs'
-                                            : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
-                                    }`}
-                                >
-                                    <span>{tab.label}</span>
-                                    <span className={`px-1.5 py-0.5 rounded text-[10px] font-mono font-medium ${
-                                        isSelected 
-                                            ? 'bg-slate-800 text-slate-200 border border-slate-700' 
-                                            : (tab.badgeColor || 'bg-slate-100 text-slate-600')
-                                    }`}>
-                                        {tab.count}
-                                    </span>
-                                </button>
-                            );
-                        })}
+                <div className="flex items-center gap-2 border-t border-slate-100 pt-3 min-w-0">
+                    {/* Horizontally scrollable status filter tabs with touch momentum and auto-centering */}
+                    <div className="flex-1 min-w-0 overflow-x-auto touch-scroll no-scrollbar py-0.5">
+                        <div className="inline-flex items-center gap-1.5">
+                            {[
+                                { key: 'Active', label: 'Action Required', count: activeCases, badgeColor: 'bg-accent-subtle text-ink' },
+                                { key: 'All', label: 'All Incidents', count: totalCases },
+                                { key: 'Acknowledged', label: 'Acknowledged', count: acknowledgedCases, badgeColor: 'bg-surface-muted text-ink' },
+                                { key: 'Resolved', label: 'Resolved / Restored', count: resolvedCases, badgeColor: 'bg-slate-200 text-slate-700' },
+                                { key: 'Overturned', label: 'Cleared', count: overturnedCases, badgeColor: 'bg-accent-subtle text-ink' }
+                            ].map(tab => {
+                                const isSelected = filterStatus === tab.key;
+                                return (
+                                    <button
+                                        key={tab.key}
+                                        type="button"
+                                        onClick={(e) => {
+                                            handleFilterChange(tab.key);
+                                            try {
+                                                e.currentTarget.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+                                            } catch {}
+                                        }}
+                                        className={`h-8 px-3 rounded-md text-xs font-medium transition-colors duration-100 flex items-center gap-2 whitespace-nowrap shrink-0 cursor-pointer focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-slate-950 ${
+                                            isSelected
+                                                ? 'bg-slate-900 text-white shadow-2xs font-semibold'
+                                                : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+                                        }`}
+                                    >
+                                        <span className="whitespace-nowrap">{tab.label}</span>
+                                        <span className={`px-1.5 py-0.5 rounded text-[10px] font-mono font-medium shrink-0 ${
+                                            isSelected 
+                                                ? 'bg-slate-800 text-slate-200 border border-slate-700' 
+                                                : (tab.badgeColor || 'bg-slate-100 text-slate-600')
+                                        }`}>
+                                            {tab.count}
+                                        </span>
+                                    </button>
+                                );
+                            })}
+                        </div>
                     </div>
 
+                    {/* Pinned Reset Filters action button */}
                     {(searchQuery || filterStatus !== 'All' || filterType !== 'All' || filterSeverity !== 'All') && (
                         <button
+                            type="button"
                             onClick={() => {
                                 setSearchQuery('');
                                 setFilterStatus('All');
@@ -751,10 +762,12 @@ export default function DisciplinaryIndex() {
                                 setFilterSeverity('All');
                                 setCurrentPage(1);
                             }}
-                            className="text-xs font-semibold text-accent hover:text-accent flex items-center gap-1 shrink-0 cursor-pointer"
+                            className="h-8 px-2.5 rounded-md text-xs font-semibold text-accent hover:bg-accent-subtle/50 flex items-center gap-1 shrink-0 cursor-pointer transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent"
+                            title="Reset all filters"
                         >
-                            <i className="ti ti-filter-off text-xs" />
-                            <span>Reset Filters</span>
+                            <i className="ti ti-filter-off text-xs shrink-0" />
+                            <span className="hidden sm:inline whitespace-nowrap">Reset Filters</span>
+                            <span className="sm:hidden whitespace-nowrap">Reset</span>
                         </button>
                     )}
                 </div>
@@ -1272,13 +1285,13 @@ export default function DisciplinaryIndex() {
                                                     />
                                                 </div>
                                                 {/* Filter Pills */}
-                                                <div className="flex items-center gap-1 mt-1.5 overflow-x-auto no-scrollbar">
+                                                <div className="flex items-center gap-1 mt-1.5 overflow-x-auto touch-scroll no-scrollbar py-0.5">
                                                     {['All', 'Active', 'Warnings', 'Suspended', 'Terminated'].map(pill => (
                                                         <button
                                                             key={pill}
                                                             type="button"
                                                             onClick={() => setPersonnelFilter(pill)}
-                                                            className={`px-2 py-0.5 text-[10px] font-medium rounded-md transition-colors duration-100 cursor-pointer shrink-0 ${
+                                                            className={`px-2 py-0.5 text-[10px] font-medium rounded-md transition-colors duration-100 cursor-pointer shrink-0 whitespace-nowrap ${
                                                                 personnelFilter === pill
                                                                     ? 'bg-slate-900 text-white'
                                                                     : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-100'
@@ -1824,8 +1837,8 @@ export default function DisciplinaryIndex() {
                 <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70">
                     <div className="relative bg-white rounded-lg w-full max-w-2xl overflow-hidden shadow-xl border border-slate-200 flex flex-col max-h-[90vh]">
                         {/* Modal Header */}
-                        <div className="p-5 sm:p-6 bg-slate-900 text-white flex items-center justify-between shrink-0">
-                            <div className="flex items-center gap-4">
+                        <div className="p-4 sm:p-6 bg-slate-900 text-white flex items-center justify-between gap-3 shrink-0">
+                            <div className="flex items-center gap-3 sm:gap-4 min-w-0 flex-1">
                                 <EmployeeAvatar
                                     companyId={selectedEmployeeProfile.employee.company_id}
                                     employeeId={selectedEmployeeProfile.employee.id}
@@ -1833,28 +1846,28 @@ export default function DisciplinaryIndex() {
                                     avatarUrl={selectedEmployeeProfile.employee.avatar_url}
                                     photoUrl={selectedEmployeeProfile.employee.photo_url}
                                     department={selectedEmployeeProfile.employee.department}
-                                    size="h-14 w-14"
+                                    size="h-12 w-12 sm:h-14 sm:w-14"
                                     rounded="rounded-md"
                                     border="border border-slate-700"
                                 />
-                                <div>
-                                    <h3 className="text-base font-semibold text-white leading-tight">
+                                <div className="min-w-0 flex-1">
+                                    <h3 className="text-base font-semibold text-white leading-tight truncate">
                                         {selectedEmployeeProfile.employee.first_name} {selectedEmployeeProfile.employee.last_name}
                                     </h3>
-                                    <p className="text-xs text-slate-400 font-mono mt-0.5">
+                                    <p className="text-xs text-slate-400 font-mono mt-0.5 truncate">
                                         {selectedEmployeeProfile.employee.company_id || 'ID N/A'} • {selectedEmployeeProfile.employee.job_title || 'Staff'}
                                     </p>
-                                    <div className="flex items-center gap-2 mt-2">
-                                        <span className="px-2 py-0.5 rounded-md text-xs font-medium bg-slate-800 text-slate-300 border border-slate-700">
+                                    <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 mt-2">
+                                        <span className="px-2 py-0.5 rounded-md text-[11px] font-medium bg-slate-800 text-slate-300 border border-slate-700 whitespace-nowrap">
                                             {selectedEmployeeProfile.employee.department || 'Operations'}
                                         </span>
                                         {selectedEmployeeProfile.employee.is_active ? (
-                                            <span className="px-2 py-0.5 rounded-md text-xs font-medium bg-ink-subtle text-ink border border-line flex items-center gap-1">
+                                            <span className="px-2 py-0.5 rounded-md text-[11px] font-medium bg-ink-subtle text-ink border border-line flex items-center gap-1 whitespace-nowrap">
                                                 <i className="ti ti-check text-xs" />
                                                 Gate Access Allowed
                                             </span>
                                         ) : (
-                                            <span className="px-2 py-0.5 rounded-md text-xs font-medium bg-danger-ink text-danger border border-danger flex items-center gap-1">
+                                            <span className="px-2 py-0.5 rounded-md text-[11px] font-medium bg-danger-ink text-danger border border-danger flex items-center gap-1 whitespace-nowrap">
                                                 <i className="ti ti-lock text-xs" />
                                                 Gate Access Restricted
                                             </span>
@@ -1865,16 +1878,16 @@ export default function DisciplinaryIndex() {
 
                             <button 
                                 onClick={() => { setShowProfileModal(false); setSelectedEmployeeProfile(null); }}
-                                className="w-8 h-8 rounded-md bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white flex items-center justify-center cursor-pointer transition-colors duration-100"
+                                className="w-8 h-8 rounded-md bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white flex items-center justify-center shrink-0 cursor-pointer transition-colors duration-100"
                             >
                                 <i className="ti ti-x text-base" />
                             </button>
                         </div>
 
                         {/* Dossier Content & Disciplinary Lifetime History */}
-                        <div className="p-6 overflow-y-auto space-y-6">
+                        <div className="p-4 sm:p-6 overflow-y-auto space-y-6">
                             {/* Summary Counters */}
-                            <div className="grid grid-cols-4 gap-2">
+                            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                                 <div className="p-3 bg-slate-50 border border-slate-200 rounded-md text-center">
                                     <span className="text-[10px] font-medium text-slate-400 uppercase tracking-wider block">Warnings</span>
                                     <span className="text-xl font-bold font-mono text-warning-ink tabular-nums">

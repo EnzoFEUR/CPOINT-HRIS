@@ -56,7 +56,7 @@ const LiveClock = React.memo(() => {
  * Memoized QR card container to eliminate canvas/SVG redraws
  */
 const QrCodeCard = React.memo(({ qrValue }) => (
-  <div className="w-full bg-white rounded-lg p-5 sm:p-6 flex flex-col items-center justify-center border border-slate-200 shadow-2xs">
+  <div className="w-full bg-white rounded-lg p-4 sm:p-6 flex flex-col items-center justify-center border border-slate-200 shadow-2xs">
     <QRCode
       value={qrValue}
       size={260}

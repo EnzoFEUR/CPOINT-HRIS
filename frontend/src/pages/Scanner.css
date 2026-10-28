@@ -1,21 +1,47 @@
 #qr-reader {
-        width: 100vw !important;
-        height: 100dvh !important;
-        overflow: hidden !important;
-        position: relative !important;
-        display: flex !important;
-        align-items: center !important;
-        justify-content: center !important;
-        background: #000 !important;
-      }
-      #qr-reader video {
-        width: auto !important;
-        height: auto !important;
-        max-width: 100% !important;
-        max-height: 100% !important;
-        object-fit: contain !important;
-        position: static !important;
-        flex: none !important;
-      }
-      #qr-reader__dashboard_section_csr, #qr-reader__dashboard_section_swaplink,
-      #qr-reader__status_span, #qr-reader__header_message { display:none!important; }
+  width: 100vw !important;
+  height: 100dvh !important;
+  overflow: hidden !important;
+  position: relative !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  background: #000 !important;
+  touch-action: none !important;
+  -webkit-touch-callout: none !important;
+  -webkit-user-select: none !important;
+  user-select: none !important;
+  overscroll-behavior: none !important;
+}
+
+#qr-reader video,
+#qr-reader canvas {
+  width: auto !important;
+  height: auto !important;
+  max-width: 100% !important;
+  max-height: 100% !important;
+  object-fit: contain !important;
+  position: static !important;
+  flex: none !important;
+  touch-action: none !important;
+  -webkit-touch-callout: none !important;
+  -webkit-user-select: none !important;
+  user-select: none !important;
+  pointer-events: none !important;
+}
+
+.scanner-root {
+  touch-action: none !important;
+  -webkit-touch-callout: none !important;
+  -webkit-user-select: none !important;
+  user-select: none !important;
+  overscroll-behavior: none !important;
+  -webkit-text-size-adjust: 100% !important;
+}
+
+#qr-reader__dashboard_section_csr,
+#qr-reader__dashboard_section_swaplink,
+#qr-reader__status_span,
+#qr-reader__header_message {
+  display: none !important;
+}

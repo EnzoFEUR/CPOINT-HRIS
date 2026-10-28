@@ -13,6 +13,8 @@ import { getShoeRoleDetails, parseProductionGroup } from '../../../utils/factory
 import bannerCover from '../../../assets/employee-cover.jpg';
 import MonthlyWorkCalendar from '../../../components/attendance/MonthlyWorkCalendar';
 import LeaveCreditsPanel from '../../../components/LeaveCreditsPanel';
+import BackButton from '../../../components/ui/BackButton';
+import { useConfirm } from '../../../components/ui/ConfirmDialog';
 import { computeDisciplinaryStanding } from '../../../utils/disciplinaryStanding';
 import RequestDocumentModal from '../documents/RequestDocumentModal';
 import { formatPhDisplay } from '../../../utils/phoneUtils';
@@ -43,6 +45,7 @@ const SEPARATION_DEFAULTS = {
 };
 
 export default function Show() {
+    const confirm = useConfirm();
     const { id } = useParams();
     const navigate = useNavigate();
     const queryClient = useQueryClient();
@@ -189,7 +192,16 @@ export default function Show() {
 
     const handleRevokeExemption = async () => {
         if (!employee) return;
-        if (!window.confirm(`Remove medical exemption for ${employee.first_name} ${employee.last_name}? Standard biometric verification will be required.`)) return;
+        const fullName = `${employee.first_name || ''} ${employee.last_name || ''}`.trim() || 'this employee';
+        const confirmed = await confirm({
+            title: 'Revoke Medical Grace Exemption',
+            message: `Remove medical exemption for ${fullName}? Standard dual-factor biometric verification will immediately be re-enforced at all terminal kiosks.`,
+            variant: 'warning',
+            icon: 'ti-shield-lock',
+            confirmLabel: 'Revoke & Enforce Biometrics',
+            cancelLabel: 'Maintain Exemption'
+        });
+        if (!confirmed) return;
         setIsSubmittingExemption(true);
         try {
             const res = await fetchWithAuth(`/api/employees/${employee.id}/biometric-exemption`, {
@@ -247,7 +259,17 @@ export default function Show() {
 
     const handleResetBiometrics = async () => {
         if (!employee) return;
-        if (!window.confirm(`Are you sure you want to shred ${employee.first_name} ${employee.last_name}'s enrolled facial baseline? The employee will be required to re-enroll a fresh facial scan at the kiosk upon recovery.`)) return;
+        const fullName = `${employee.first_name || ''} ${employee.last_name || ''}`.trim() || 'this employee';
+        const confirmed = await confirm({
+            title: 'Shred Biometric Facial Baseline',
+            message: `Are you sure you want to shred ${fullName}'s enrolled facial baseline? The employee will be required to re-enroll a fresh facial scan at the kiosk upon recovery.`,
+            variant: 'danger',
+            destructive: true,
+            icon: 'ti-scan',
+            confirmLabel: 'Shred Baseline',
+            cancelLabel: 'Keep Baseline'
+        });
+        if (!confirmed) return;
         setIsResettingBiometrics(true);
         try {
             const res = await fetchWithAuth(`/api/employees/${employee.id}/reset-biometrics`, {
@@ -285,7 +307,15 @@ export default function Show() {
     };
 
     const handleResetTempPassword = async () => {
-        if (!window.confirm('Generate a new temporary password for this unregistered employee?')) return;
+        const confirmed = await confirm({
+            title: 'Generate New Temporary Password',
+            message: 'Generate a new temporary password for this unregistered employee? Any previously issued onboarding credentials will immediately be invalidated.',
+            variant: 'accent',
+            icon: 'ti-key',
+            confirmLabel: 'Generate New Password',
+            cancelLabel: 'Keep Current'
+        });
+        if (!confirmed) return;
         setIsResettingPassword(true);
         try {
             const res = await fetchWithAuth(`/api/employees/${id}/reset-temp-password`, {
@@ -561,11 +591,9 @@ export default function Show() {
                 
                 {/* Top navigation */}
                 <div className="flex flex-wrap items-center justify-between gap-3">
-                    <Link to="/admin/employees" className="h-8 px-3 bg-white text-slate-700 font-semibold text-xs rounded-md hover:bg-slate-50 hover:text-slate-900 active:bg-slate-100 transition-colors duration-100 shadow-2xs border border-slate-200 flex items-center gap-1.5 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-slate-950">
-                        <i className="ti ti-arrow-left text-sm" /> Back to Directory
-                    </Link>
+                    <BackButton fallback="/admin/employees" label="Back to Directory" />
                     
-                    <div className="flex items-center gap-1.5">
+                    <div className="flex items-center gap-1.5 flex-wrap">
                         {/* Secondary Actions */}
                         <Link to={`/admin/documents?employee_id=${employee.id}`} className="h-8 px-3 bg-white hover:bg-slate-50 active:bg-slate-100 text-slate-700 hover:text-slate-900 font-semibold text-xs rounded-md transition-colors duration-100 shadow-2xs border border-slate-200 flex items-center gap-1.5 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-slate-950">
                             <i className="ti ti-folders text-slate-500 text-sm" />
@@ -633,7 +661,7 @@ export default function Show() {
                 </div>
 
                 {/* Profile banner */}
-                <div className="bg-slate-900 rounded-lg p-5 sm:p-6 border border-slate-800 text-white shadow-2xs relative">
+                <div className="bg-slate-900 rounded-lg p-5 sm:p-6 border border-slate-800 text-white shadow-2xs relative overflow-hidden">
                     {/* Cover photo. Phones: top band that fades downward. sm and up: right-side panel that fades leftward.
                         Both resolve into the banner surface (#0f172a), so there is no seam at any width. */}
                     <div
@@ -652,7 +680,7 @@ export default function Show() {
                         <div className="absolute inset-0 hidden bg-[linear-gradient(to_right,#0f172a_0%,rgba(15,23,42,0.92)_18%,rgba(15,23,42,0.4)_60%,rgba(15,23,42,0)_100%)] sm:block" />
                     </div>
 
-                    <div className="relative z-10 flex flex-col sm:flex-row items-center sm:items-start gap-5 text-center sm:text-left">
+                    <div className="relative z-10 flex flex-col sm:flex-row items-center sm:items-start gap-5 text-center sm:text-left w-full min-w-0">
                         <div className={`relative h-24 w-24 sm:h-28 sm:w-28 shrink-0 transition-all duration-500 ${isInArchiveReview ? 'grayscale opacity-60' : ''}`}>
                             <EmployeeAvatar
                                 employee={employee}
@@ -674,8 +702,8 @@ export default function Show() {
                             ) : null}
                         </div>
 
-                        <div className="flex-1 min-w-0">
-                            <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2 mb-2">
+                        <div className="w-full flex-1 min-w-0 max-w-full">
+                            <div className="flex flex-wrap items-center justify-center sm:justify-start gap-1.5 sm:gap-2 mb-2">
                                 <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 bg-slate-800 text-slate-200 text-xs font-mono font-medium rounded border border-slate-700">
                                     <i className="ti ti-id text-slate-400" /> {employee.company_id || (employee.id ? String(employee.id).substring(0, 8) : 'CP-EMPLOYEE')}
                                 </span>
@@ -725,20 +753,22 @@ export default function Show() {
                                 )}
                             </div>
 
-                            <h1 className="text-xl sm:text-2xl font-semibold text-white tracking-tight truncate">
+                            <h1 className="text-xl sm:text-2xl font-semibold text-white tracking-tight break-words [overflow-wrap:anywhere] leading-snug">
                                 {employee.first_name} {employee.last_name}
                             </h1>
-                            <p className="text-slate-300 font-medium text-xs sm:text-sm mt-0.5 [overflow-wrap:anywhere]">
+                            <p className="text-slate-300 font-medium text-xs sm:text-sm mt-0.5 break-words [overflow-wrap:anywhere]">
                                 {employee.job_title || 'Staff Member'}
                             </p>
 
-                            <div className="flex flex-wrap items-center justify-center sm:justify-start gap-4 mt-3 text-xs font-medium text-slate-400">
-                                <span className="flex items-center gap-1.5">
-                                    <i className="ti ti-mail text-slate-400 text-sm" /> {employee.email}
+                            <div className="flex flex-wrap items-center justify-center sm:justify-start gap-x-4 gap-y-2 mt-3 text-xs font-medium text-slate-400 max-w-full">
+                                <span className="flex items-center gap-1.5 min-w-0 max-w-full">
+                                    <i className="ti ti-mail text-slate-400 text-sm shrink-0" />
+                                    <span className="break-all">{employee.email}</span>
                                 </span>
                                 {employee.phone && (
-                                    <span className="flex items-center gap-1.5 font-mono">
-                                        <i className="ti ti-phone text-slate-400 text-sm" /> {formatPhDisplay(employee.phone)}
+                                    <span className="flex items-center gap-1.5 font-mono shrink-0">
+                                        <i className="ti ti-phone text-slate-400 text-sm shrink-0" />
+                                        <span>{formatPhDisplay(employee.phone)}</span>
                                     </span>
                                 )}
                             </div>
@@ -980,17 +1010,17 @@ export default function Show() {
                         </div>
 
                         <div className="grid grid-cols-2 gap-4 text-xs">
-                            <div>
+                            <div className="min-w-0">
                                 <p className="font-semibold text-slate-400 uppercase tracking-wider mb-1 text-[10px]">First Name</p>
-                                <p className="font-semibold text-slate-800 text-sm">{employee.first_name || 'N/A'}</p>
+                                <p className="font-semibold text-slate-800 text-sm break-words [overflow-wrap:anywhere]">{employee.first_name || 'N/A'}</p>
                             </div>
-                            <div>
+                            <div className="min-w-0">
                                 <p className="font-semibold text-slate-400 uppercase tracking-wider mb-1 text-[10px]">Last Name</p>
-                                <p className="font-semibold text-slate-800 text-sm">{employee.last_name || 'N/A'}</p>
+                                <p className="font-semibold text-slate-800 text-sm break-words [overflow-wrap:anywhere]">{employee.last_name || 'N/A'}</p>
                             </div>
-                            <div className="col-span-2">
+                            <div className="col-span-2 min-w-0">
                                 <p className="font-semibold text-slate-400 uppercase tracking-wider mb-1 text-[10px]">Email Address</p>
-                                <p className="font-semibold text-slate-800 text-sm">{employee.email}</p>
+                                <p className="font-semibold text-slate-800 text-sm break-all">{employee.email}</p>
                             </div>
                             <div>
                                 <p className="font-semibold text-slate-400 uppercase tracking-wider mb-1 text-[10px]">Role Privilege</p>
@@ -1074,9 +1104,9 @@ export default function Show() {
                                 </div>
                                 <div>
                                     <p className="font-semibold text-slate-400 uppercase tracking-wider mb-1 text-[10px]">{isFactory ? 'Shoe Production Station' : 'Job Title'}</p>
-                                    <p className="font-semibold text-slate-800 text-sm flex items-center gap-1.5">
+                                    <p className="font-semibold text-slate-800 text-sm flex items-center gap-1.5 min-w-0">
                                         {isFactory && <i className={`ti ${shoeRole?.icon || 'ti-shoe'} text-ink-subtle shrink-0`} />}
-                                        <span className="min-w-0">{employee.job_title || 'N/A'}</span>
+                                        <span className="min-w-0 break-words [overflow-wrap:anywhere]">{employee.job_title || 'N/A'}</span>
                                     </p>
                                 </div>
                                 <div className="pt-2 border-t border-slate-100">
@@ -1518,7 +1548,7 @@ export default function Show() {
                                     <h2 className="text-base font-semibold text-slate-900 leading-snug">
                                         {removalMode === 'archive' ? 'Employee Separation & Archival' : 'Forensic Record Purge'}
                                     </h2>
-                                    <p className="text-xs text-slate-500 font-medium">
+                                    <p className="text-xs text-slate-500 font-medium break-words [overflow-wrap:anywhere]">
                                         Personnel: <strong className="text-slate-800 font-semibold">{employeeFullName}</strong> <span className="font-mono text-slate-400">({employee.company_id || 'No ID'})</span>
                                     </p>
                                 </div>
@@ -1715,11 +1745,11 @@ export default function Show() {
                                     </p>
                                     <div 
                                         onClick={() => setDeleteConfirmText(employeeFullName)}
-                                        className="p-2 bg-slate-100 hover:bg-slate-200 rounded font-mono text-center font-medium text-slate-800 text-xs border border-slate-200 select-all cursor-pointer transition-colors duration-100 flex items-center justify-center gap-1.5"
+                                        className="p-2 bg-slate-100 hover:bg-slate-200 rounded font-mono text-center font-medium text-slate-800 text-xs border border-slate-200 select-all cursor-pointer transition-colors duration-100 flex flex-wrap items-center justify-center gap-1.5"
                                         title="Click to auto-fill for quick testing"
                                     >
-                                        <span>{employeeFullName}</span>
-                                        <span className="text-[10px] text-slate-400 font-normal">(click to auto-fill)</span>
+                                        <span className="break-words [overflow-wrap:anywhere]">{employeeFullName}</span>
+                                        <span className="text-[10px] text-slate-400 font-normal shrink-0">(click to auto-fill)</span>
                                     </div>
                                     <input maxLength={201}
                                         type="text"

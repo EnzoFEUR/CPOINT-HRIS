@@ -172,7 +172,7 @@ export default function RetirementPay() {
     });
     if (exitRequestId && (!exitLink.data || !exitLink.isFetchedAfterMount)) return (
         <div className="space-y-4 p-4 sm:p-6">
-            <PageHeader title="Retirement Pay" breadcrumbs={['Admin', 'Payroll', 'Retirement Pay']} />
+            <PageHeader title="Retirement Pay" breadcrumbs={['Admin', 'Payroll', 'Retirement Pay']} showBack backFallback="/admin/payroll" backLabel="Back to Payroll" />
             <div role={exitLink.isError || !isCreditUuid(exitRequestId) ? 'alert' : 'status'} className="rounded-md border border-slate-200 bg-white p-4 text-sm text-slate-700">
                 {!isCreditUuid(exitRequestId) ? 'Invalid Employment Exit case reference.' : exitLink.isError ? exitLink.error.message : 'Opening the retirement case and its saved calculation…'}
                 {exitLink.isError && <button type="button" className={buttonClass} onClick={() => exitLink.refetch()}>Retry</button>}
@@ -587,12 +587,11 @@ function RetirementPayWorkspace({ exitRequestId, exitLink }) {
         <div className="w-full pb-24 lg:pb-8 font-sans space-y-5">
             <PageHeader
                 breadcrumbs={['Admin', 'Payroll', 'Retirement Pay']}
+                showBack
+                backFallback="/admin/payroll"
+                backLabel="Back to Payroll"
                 actions={
                     <div className="flex items-center gap-2 flex-wrap">
-                        <Link to="/admin/payroll" className={buttonClass}>
-                            <i className="ti ti-arrow-left text-base text-slate-500" />
-                            <span>Back to Payroll</span>
-                        </Link>
                         <a
                             href={sourceUrl}
                             target="_blank"
@@ -1178,8 +1177,8 @@ function RetirementPayWorkspace({ exitRequestId, exitLink }) {
                     )}
 
                     {/* Table View */}
-                    <div className="overflow-x-auto rounded-lg border border-slate-200">
-                        <table className="w-full text-left border-collapse text-xs sm:text-sm">
+                    <div className="overflow-x-auto touch-scroll rounded-lg border border-slate-200">
+                        <table className="w-full text-left border-collapse text-xs sm:text-sm min-w-[640px]">
                             <thead className="bg-slate-50/90 border-b border-slate-200 text-slate-600 text-[11px] font-semibold uppercase tracking-wider">
                                 <tr>
                                     <th className="py-3 px-3.5">Employee</th>

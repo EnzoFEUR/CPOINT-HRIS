@@ -229,6 +229,9 @@ const Calendar = () => {
         <div className="max-w-7xl mx-auto pb-24 lg:pb-8 px-4 sm:px-6 lg:px-8 font-sans">
             <PageHeader
                 breadcrumbs={['Admin', 'Attendance', 'Workforce Timeline']}
+                showBack
+                backFallback="/admin/attendance"
+                backLabel="Back to Logs"
             />
 
             <div className="grid grid-cols-1 xl:grid-cols-3 gap-4 sm:gap-6">
