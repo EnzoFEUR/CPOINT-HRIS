@@ -606,7 +606,7 @@ const ScannerTerminal = () => {
       const det = await faceapi
         .detectSingleFace(frame, new faceapi.TinyFaceDetectorOptions({
           inputSize: ENV.DETECTION_INPUT_SIZE,
-          scoreThreshold: 0.45
+          scoreThreshold: 0.40
         }))
         .withFaceLandmarks()
         .withFaceDescriptor();
@@ -772,8 +772,8 @@ const ScannerTerminal = () => {
       // 3. Re-center and blink
       if (vaultRef.current.padStage === 'CENTER_BLINK') {
         const blinkInProgress = vault.blinkState && ['ARMED', 'CLOSING', 'CLOSED', 'REOPEN', 'PASSED'].includes(vault.blinkState.phase);
-        const maxLogYaw = blinkInProgress ? .30 : .24;
-        const maxNose = blinkInProgress ? .16 : .13;
+        const maxLogYaw = blinkInProgress ? .32 : .24;
+        const maxNose = blinkInProgress ? .18 : .13;
         const returned = vault.neutralPose && Math.abs(Math.log(relativeYaw)) <= maxLogYaw && Math.abs(relativeNose) <= maxNose;
         if (!returned) {
           vault.recenterFrames = 0;

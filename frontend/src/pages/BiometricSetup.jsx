@@ -474,7 +474,7 @@ export default function BiometricSetup() {
       const det = await faceapi
         .detectSingleFace(frame, new faceapi.TinyFaceDetectorOptions({
           inputSize: ENV.DETECTION_INPUT_SIZE,
-          scoreThreshold: 0.45,
+          scoreThreshold: 0.40,
         }))
         .withFaceLandmarks();
 
@@ -561,11 +561,11 @@ export default function BiometricSetup() {
 
       // Allow slight landmark drift during a blink; photo capture still uses the strict pose.
       const blinkInProgress = ['ARMED', 'CLOSING', 'CLOSED', 'REOPEN', 'PASSED'].includes(vault.blinkState.phase);
-      const blinkPoseOk = match || (blinkInProgress && Math.abs(dy - target.yaw) < target.yawTol + .10 && Math.abs(dp - target.pitch) < target.pitchTol + .10);
+      const blinkPoseOk = match || (blinkInProgress && Math.abs(dy - target.yaw) < target.yawTol + .14 && Math.abs(dp - target.pitch) < target.pitchTol + .16);
       if (phaseIdx === 0) {
         if (blinkPoseOk) {
           updateBlink(vault.blinkState, eyes, now);
-        } else if (Math.abs(dy - target.yaw) > target.yawTol + .20 || Math.abs(dp - target.pitch) > target.pitchTol + .20) {
+        } else if (Math.abs(dy - target.yaw) > target.yawTol + .24 || Math.abs(dp - target.pitch) > target.pitchTol + .26) {
           resetBlinkCycle(vault.blinkState);
         }
         vault.blinkCount = vault.blinkState.count;

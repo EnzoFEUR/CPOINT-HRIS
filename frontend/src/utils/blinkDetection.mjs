@@ -75,15 +75,33 @@ export function calibrateBlink(state, eyes, now) {
 // Require stable open eyes, substantial bilateral closure, then confirmed reopening.
 export function updateBlink(state, eyes, now) {
   if (!acceptSample(state, eyes, now) || !state.baseline || state.phase === 'PASSED') return state;
-  const open = eyes.left >= state.baseline.left * .82 && eyes.right >= state.baseline.right * .82;
-  const closed = (eyes.left <= state.baseline.left * .65 || eyes.left <= .145) &&
-                 (eyes.right <= state.baseline.right * .65 || eyes.right <= .145);
-  // Less pronounced landmark closure needs repeated evidence rather than a single estimate.
-  const closing = (eyes.left <= state.baseline.left * .78 || eyes.left <= .175) &&
-                  (eyes.right <= state.baseline.right * .78 || eyes.right <= .175);
+  const baselineMean = state.baseline.mean ?? ((state.baseline.left + state.baseline.right) / 2);
+  const currentMean = eyes.mean ?? ((eyes.left + eyes.right) / 2);
+
   const wink = (eyes.left <= state.baseline.left * .58 && eyes.right >= state.baseline.right * .85)
     || (eyes.right <= state.baseline.right * .58 && eyes.left >= state.baseline.left * .85);
   if (wink) { resetBlinkCycle(state); return state; }
+
+  // Substantial bilateral closure or low absolute EAR floor
+  const closed = !wink && (
+    (currentMean <= baselineMean * .70) ||
+    (eyes.left <= state.baseline.left * .70 && eyes.right <= state.baseline.right * .70) ||
+    (currentMean <= .150) ||
+    (eyes.left <= .145 && eyes.right <= .145)
+  );
+
+  // Moderate closure: start of eyelid closure or soft voluntary blink
+  const closing = !wink && (
+    closed ||
+    (currentMean <= baselineMean * .82) ||
+    (eyes.left <= state.baseline.left * .82 && eyes.right <= state.baseline.right * .82)
+  );
+
+  // Clear open state: mutually exclusive with closing / closed
+  const open = !closing && (
+    (currentMean >= baselineMean * .84) ||
+    (eyes.left >= state.baseline.left * .82 && eyes.right >= state.baseline.right * .82)
+  );
 
   if (state.phase === 'OPEN') {
     if (open) {
@@ -94,11 +112,11 @@ export function updateBlink(state, eyes, now) {
     } else { state.openSince = null; state.openSamples = 0; }
   } else if (state.phase === 'ARMED') {
     if (open) state.lastOpenAt = now;
-    else if (closed && now - state.lastOpenAt <= 850) { state.phase = 'CLOSED'; state.closedAt = now; }
-    else if (closing && now - state.lastOpenAt <= 850) {
+    else if (closed && now - state.lastOpenAt <= 1000) { state.phase = 'CLOSED'; state.closedAt = now; }
+    else if (closing && now - state.lastOpenAt <= 1000) {
       state.phase = 'CLOSING'; state.closedAt = now; state.closedSamples = 1;
     }
-    else if (now - state.lastOpenAt > 850) resetBlinkCycle(state);
+    else if (now - state.lastOpenAt > 1000) resetBlinkCycle(state);
   } else if (state.phase === 'CLOSING') {
     if (!closing || now - state.closedAt > 1100) resetBlinkCycle(state);
     else {
@@ -106,7 +124,7 @@ export function updateBlink(state, eyes, now) {
       if (closed || (state.closedSamples >= 2 && now - state.closedAt >= 50)) state.phase = 'CLOSED';
     }
   } else if (state.phase === 'CLOSED') {
-    if (now - state.closedAt > 1200) resetBlinkCycle(state);
+    if (now - state.closedAt > 1000) resetBlinkCycle(state);
     else if (open) {
       if (now - state.closedAt < 50) resetBlinkCycle(state);
       else { state.phase = 'REOPEN'; state.reopenedAt = now; state.reopenedSamples = 1; }
