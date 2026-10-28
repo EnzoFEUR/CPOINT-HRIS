@@ -24,7 +24,8 @@ import {
   SlidersHorizontal,
   Apple,
   Smartphone,
-  Monitor
+  Monitor,
+  WifiOff
 } from 'lucide-react';
 import { fetchWithAuth } from '../utils/api';
 import { supabase } from '../supabaseClient';
@@ -1198,9 +1199,7 @@ const ScannerTerminal = () => {
   // RENDER
   return (
     <div className="h-[100dvh] w-screen bg-black text-white relative overflow-hidden font-sans select-none">
-      {isOfflineFeatureActive && (
-        <a href="/attendance-terminal" className="absolute top-3 right-3 z-[100] rounded-md border border-line bg-surface px-3 py-2 text-sm text-ink">Offline attendance terminal</a>
-      )}
+
 
       {/* Debug corner trigger */}
       <div
@@ -1546,8 +1545,18 @@ const ScannerTerminal = () => {
                 )}
               </span>
 
-              {/* Right Controls: Flip Camera + Live Clock */}
+              {/* Right Controls: Offline Terminal + Flip Camera + Live Clock */}
               <div className="flex items-center gap-2">
+                {isOfflineFeatureActive && (
+                  <a
+                    href="/attendance-terminal"
+                    className="h-8 px-2.5 rounded-md bg-slate-900/80 hover:bg-slate-800 text-slate-200 hover:text-white border border-white/10 transition-colors duration-100 flex items-center gap-1.5 text-xs font-medium cursor-pointer shadow-2xs"
+                    title="Switch to Offline Attendance Terminal"
+                  >
+                    <WifiOff className="w-3.5 h-3.5 text-amber-400" />
+                    <span className="text-[11px] hidden md:inline">Offline</span>
+                  </a>
+                )}
                 <button
                   onClick={toggleCameraFacing}
                   disabled={state.loadingMsg === 'Starting camera...'}
@@ -1679,8 +1688,20 @@ const ScannerTerminal = () => {
                 </h1>
               </div>
             </div>
-            <div className="font-mono text-xs font-semibold bg-slate-900 text-slate-300 px-2 py-1 rounded-md border border-slate-700 tabular-nums pointer-events-auto">
-              {state.clockTime}
+            <div className="flex items-center gap-2 pointer-events-auto">
+              {isOfflineFeatureActive && (
+                <a
+                  href="/attendance-terminal"
+                  className="h-7 px-2.5 rounded-md bg-slate-900/90 hover:bg-slate-800 text-slate-200 hover:text-white border border-slate-700/80 transition-colors duration-100 flex items-center gap-1.5 text-xs font-medium shadow-2xs"
+                  title="Switch to Offline Attendance Terminal"
+                >
+                  <WifiOff className="w-3.5 h-3.5 text-amber-400" />
+                  <span className="text-[11px] hidden sm:inline">Offline</span>
+                </a>
+              )}
+              <div className="font-mono text-xs font-semibold bg-slate-900 text-slate-300 px-2.5 py-1 rounded-md border border-slate-700 tabular-nums">
+                {state.clockTime}
+              </div>
             </div>
           </div>
         </div>

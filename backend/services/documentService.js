@@ -23,10 +23,23 @@ export function assertUuid(value, label = 'ID') {
     if (typeof value !== 'string' || !UUID.test(value)) throw new DocumentError(400, `${label} must be a valid UUID.`);
     return value.toLowerCase();
 }
-export function buildDocumentStoragePath(employeeId, category, extension) {
-    const id = assertUuid(employeeId, 'Employee ID');
+export function buildDocumentStoragePath(employeeIdentifier, category, extension, options = {}) {
     if (!FILE_TYPES.has(extension)) throw new DocumentError(400, 'Unsupported document type.');
     const folder = Object.hasOwn(DOCUMENT_STORAGE_FOLDERS, category) ? DOCUMENT_STORAGE_FOLDERS[category] : 'other-personnel-documents';
+
+    const companyId = options.companyId || (typeof employeeIdentifier === 'string' && employeeIdentifier.startsWith('CP-') ? employeeIdentifier : null);
+
+    if (companyId) {
+        const safeCompanyId = String(companyId).replace(/[^a-zA-Z0-9_\-]/g, '_');
+        const titlePart = options.title
+            ? formatCleanDocumentFileName(options.title, '').slice(0, 60).replace(/_+$/, '')
+            : '';
+        const uniqueSuffix = randomUUID().slice(0, 8);
+        const fileName = titlePart ? `${titlePart}_${uniqueSuffix}.${extension}` : `${randomUUID()}.${extension}`;
+        return `${safeCompanyId}/${fileName}`;
+    }
+
+    const id = assertUuid(employeeIdentifier, 'Employee ID');
     return `${id}/${folder}/${new Date().getUTCFullYear()}/${randomUUID()}.${extension}`;
 }
 export function assertDocumentId(value) {
@@ -44,7 +57,7 @@ export function getDocumentScope(user, requestedId) {
     if (employeeId) assertDocumentOwner(user, employeeId);
     return employeeId;
 }
-export function normalizeDocumentPath(value, employeeId, projectUrl) {
+export function normalizeDocumentPath(value, employeeId, projectUrl, companyId) {
     if (typeof value !== 'string' || !value.trim()) throw new DocumentError(400, 'Document has no storage path.');
     let path = value.trim();
     if (/^https?:\/\//i.test(path)) {
@@ -54,7 +67,16 @@ export function normalizeDocumentPath(value, employeeId, projectUrl) {
         if (!match) throw new DocumentError(400, 'Invalid document storage URL.');
         path = decodeURIComponent(match[1]);
     }
-    if (path.includes('\\') || path.split('/').some(part => !part || part === '.' || part === '..') || !path.startsWith(`${employeeId}/`)) throw new DocumentError(400, 'Invalid document storage path.');
+    if (path.includes('\\') || path.split('/').some(part => !part || part === '.' || part === '..')) {
+        throw new DocumentError(400, 'Invalid document storage path.');
+    }
+
+    const validPrefixes = [employeeId, companyId].filter(Boolean).map(id => `${id}/`);
+    const matchesPrefix = validPrefixes.some(prefix => path.startsWith(prefix));
+
+    if (!matchesPrefix && !(path.startsWith('CP-') && /^[A-Za-z0-9_\-.]+(\/[A-Za-z0-9_\-.]+)+$/.test(path))) {
+        throw new DocumentError(400, 'Invalid document storage path.');
+    }
     return path;
 }
 export function formatCleanDocumentFileName(title = '', originalName = '') {
@@ -190,7 +212,7 @@ export async function uploadDocument(client, user, body, file, { notify = create
         if (bucketInfo.public === true) throw new DocumentError(503, 'The documents bucket is public. In Supabase Storage, change documents to Private, then retry the import.', 'DOCUMENT_VAULT_PUBLIC');
         if (bucketInfo.public !== false) throw new DocumentError(503, 'Document storage returned incomplete privacy settings. Check the documents bucket configuration.', 'DOCUMENT_VAULT_UNAVAILABLE');
     }
-    const filePath = buildDocumentStoragePath(metadata.employee_id, metadata.category, file.originalname.split('.').pop().toLowerCase());
+    const filePath = buildDocumentStoragePath(metadata.employee_id, metadata.category, file.originalname.split('.').pop().toLowerCase(), { companyId: emp.company_id, title: metadata.title || file.originalname });
     const bucket = client.storage.from('documents');
     const { error: storageError } = await bucket.upload(filePath, file.buffer, { contentType: file.mimetype || 'application/octet-stream', upsert: false });
     if (storageError) throw storageError;
@@ -338,7 +360,8 @@ export async function listDocuments(client, user, filters = {}) {
             for (const doc of documents) {
                 if (doc.file_path) {
                     try {
-                        const norm = normalizeDocumentPath(doc.file_path, doc.employee_id, client.supabaseUrl);
+                        const emp = byId.get(doc.employee_id);
+                        const norm = normalizeDocumentPath(doc.file_path, doc.employee_id, client.supabaseUrl, emp?.company_id);
                         pathEntries.push(norm);
                     } catch (_) {}
                 }
@@ -355,7 +378,8 @@ export async function listDocuments(client, user, filters = {}) {
                     }
                     for (const doc of documents) {
                         try {
-                            const norm = normalizeDocumentPath(doc.file_path, doc.employee_id, client.supabaseUrl);
+                            const emp = byId.get(doc.employee_id);
+                        const norm = normalizeDocumentPath(doc.file_path, doc.employee_id, client.supabaseUrl, emp?.company_id);
                             doc.preview_url = signedMap.get(norm) || null;
                         } catch {
                             doc.preview_url = null;

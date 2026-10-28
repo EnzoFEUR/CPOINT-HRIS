@@ -256,7 +256,8 @@ const uploadImage = async (reqId, base64Str, type, identifier) => {
       throw new ValidationError('Image exceeds 10MB limit.');
     }
 
-    const fileName = `${CONFIG.STORAGE.ATTENDANCE_PREFIX}/${type}-${identifier}-${Date.now()}.jpg`;
+    const safeIdentifier = String(identifier || 'unassigned').replace(/[^a-zA-Z0-9_\-]/g, '_');
+    const fileName = `${CONFIG.STORAGE.ATTENDANCE_PREFIX}/${safeIdentifier}/${type}-${Date.now()}.jpg`;
     const { data, error } = await supabase.storage
       .from(CONFIG.STORAGE.BUCKET)
       .upload(fileName, buffer, { contentType: 'image/jpeg', cacheControl: '3600' });
