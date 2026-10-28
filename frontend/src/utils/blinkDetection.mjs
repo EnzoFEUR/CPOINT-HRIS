@@ -44,7 +44,7 @@ function acceptSample(state, eyes, now) {
     if (now < state.lastAt) resetBlinkCycle(state);
     return false;
   }
-  if (state.lastAt !== null && now - state.lastAt > 450) resetBlinkCycle(state);
+  if (state.lastAt !== null && now - state.lastAt > 650) resetBlinkCycle(state);
   state.lastAt = now;
   return true;
 }
@@ -75,12 +75,14 @@ export function calibrateBlink(state, eyes, now) {
 // Require stable open eyes, substantial bilateral closure, then confirmed reopening.
 export function updateBlink(state, eyes, now) {
   if (!acceptSample(state, eyes, now) || !state.baseline || state.phase === 'PASSED') return state;
-  const open = eyes.left >= state.baseline.left * .85 && eyes.right >= state.baseline.right * .85;
-  const closed = eyes.left <= state.baseline.left * .60 && eyes.right <= state.baseline.right * .60;
+  const open = eyes.left >= state.baseline.left * .82 && eyes.right >= state.baseline.right * .82;
+  const closed = (eyes.left <= state.baseline.left * .65 || eyes.left <= .145) &&
+                 (eyes.right <= state.baseline.right * .65 || eyes.right <= .145);
   // Less pronounced landmark closure needs repeated evidence rather than a single estimate.
-  const closing = eyes.left <= state.baseline.left * .75 && eyes.right <= state.baseline.right * .75;
-  const wink = (eyes.left <= state.baseline.left * .60 && eyes.right >= state.baseline.right * .85)
-    || (eyes.right <= state.baseline.right * .60 && eyes.left >= state.baseline.left * .85);
+  const closing = (eyes.left <= state.baseline.left * .78 || eyes.left <= .175) &&
+                  (eyes.right <= state.baseline.right * .78 || eyes.right <= .175);
+  const wink = (eyes.left <= state.baseline.left * .58 && eyes.right >= state.baseline.right * .85)
+    || (eyes.right <= state.baseline.right * .58 && eyes.left >= state.baseline.left * .85);
   if (wink) { resetBlinkCycle(state); return state; }
 
   if (state.phase === 'OPEN') {
@@ -92,28 +94,31 @@ export function updateBlink(state, eyes, now) {
     } else { state.openSince = null; state.openSamples = 0; }
   } else if (state.phase === 'ARMED') {
     if (open) state.lastOpenAt = now;
-    else if (closed && now - state.lastOpenAt <= 450) { state.phase = 'CLOSED'; state.closedAt = now; }
-    else if (closing && now - state.lastOpenAt <= 450) {
+    else if (closed && now - state.lastOpenAt <= 850) { state.phase = 'CLOSED'; state.closedAt = now; }
+    else if (closing && now - state.lastOpenAt <= 850) {
       state.phase = 'CLOSING'; state.closedAt = now; state.closedSamples = 1;
     }
-    else if (now - state.lastOpenAt > 450) resetBlinkCycle(state);
+    else if (now - state.lastOpenAt > 850) resetBlinkCycle(state);
   } else if (state.phase === 'CLOSING') {
-    if (!closing || now - state.closedAt > 900) resetBlinkCycle(state);
+    if (!closing || now - state.closedAt > 1100) resetBlinkCycle(state);
     else {
       state.closedSamples++;
-      if (closed || (state.closedSamples >= 2 && now - state.closedAt >= 60)) state.phase = 'CLOSED';
+      if (closed || (state.closedSamples >= 2 && now - state.closedAt >= 50)) state.phase = 'CLOSED';
     }
   } else if (state.phase === 'CLOSED') {
-    if (now - state.closedAt > 900) resetBlinkCycle(state);
+    if (now - state.closedAt > 1200) resetBlinkCycle(state);
     else if (open) {
-      if (now - state.closedAt < 60) resetBlinkCycle(state);
+      if (now - state.closedAt < 50) resetBlinkCycle(state);
       else { state.phase = 'REOPEN'; state.reopenedAt = now; state.reopenedSamples = 1; }
     }
   } else if (state.phase === 'REOPEN') {
-    if (!open) resetBlinkCycle(state);
-    else {
+    if (!open) {
+      state.reopenMisses = (state.reopenMisses || 0) + 1;
+      if (state.reopenMisses >= 2 || now - state.reopenedAt > 800) resetBlinkCycle(state);
+    } else {
+      state.reopenMisses = 0;
       state.reopenedSamples++;
-      if (state.reopenedSamples >= 2 && now - state.reopenedAt >= 60) {
+      if (state.reopenedSamples >= 2 && now - state.reopenedAt >= 50) {
         state.phase = 'PASSED'; state.count = 1;
       }
     }

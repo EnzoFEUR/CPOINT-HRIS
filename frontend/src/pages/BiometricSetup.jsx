@@ -507,7 +507,8 @@ export default function BiometricSetup() {
       dispatch({ type: 'SET_CONFIDENCE', payload: Math.round(score * 100) });
       dispatch({ type: 'SET_POSE', payload: pose });
 
-      if (score < ENV.FACE_CONFIDENCE_MIN) {
+      const minConfidence = (vault.baseline && vault.phaseIdx === 0 && !vault.blinkCount) ? 0.42 : ENV.FACE_CONFIDENCE_MIN;
+      if (score < minConfidence) {
         interruptEvidence();
         dispatch({ type: 'SET_PROGRESS', payload: { overall: (vault.phaseIdx / PHASE_LIST.length) * 100, phase: 0 } });
         dispatch({ type: 'SET_STATUS', payload: 'Hold still and face the light' });
@@ -560,17 +561,20 @@ export default function BiometricSetup() {
 
       // Allow slight landmark drift during a blink; photo capture still uses the strict pose.
       const blinkInProgress = ['ARMED', 'CLOSING', 'CLOSED', 'REOPEN', 'PASSED'].includes(vault.blinkState.phase);
-      const blinkPoseOk = match || (blinkInProgress && Math.abs(dy - target.yaw) < target.yawTol + .06 && Math.abs(dp - target.pitch) < target.pitchTol + .06);
+      const blinkPoseOk = match || (blinkInProgress && Math.abs(dy - target.yaw) < target.yawTol + .10 && Math.abs(dp - target.pitch) < target.pitchTol + .10);
       if (phaseIdx === 0) {
-        if (blinkPoseOk) updateBlink(vault.blinkState, eyes, now);
-        else resetBlinkCycle(vault.blinkState);
+        if (blinkPoseOk) {
+          updateBlink(vault.blinkState, eyes, now);
+        } else if (Math.abs(dy - target.yaw) > target.yawTol + .20 || Math.abs(dp - target.pitch) > target.pitchTol + .20) {
+          resetBlinkCycle(vault.blinkState);
+        }
         vault.blinkCount = vault.blinkState.count;
       }
       const livenessOk = vault.blinkCount >= ENV.REQUIRED_BLINKS;
       dispatch({ type: 'SET_LIVENESS', blinkCount: vault.blinkCount, livenessOk });
       if (!livenessOk && phaseIdx === 0) {
         vault.holdCount = 0;
-        dispatch({ type: 'SET_STATUS', payload: blinkPoseOk ? BLINK_PROMPTS[vault.blinkState.phase] : target.instruction });
+        dispatch({ type: 'SET_STATUS', payload: blinkPoseOk ? (BLINK_PROMPTS[vault.blinkState.phase] || target.instruction) : target.instruction });
         return;
       }
 

@@ -665,7 +665,8 @@ const ScannerTerminal = () => {
       // Calculate Head Pose and Eye Aspect Ratio
       const pose = getHeadPose(det.landmarks);
       const eyes = getEyeOpenness(det.landmarks);
-      if (!eyes || !pose || det.detection.score < .55 || !Number.isFinite(pose.yawRatio) || pose.yawRatio <= 0 || !Number.isFinite(pose.noseOffset)) {
+      const minConfidence = vault.padStage === 'CENTER_BLINK' ? 0.42 : .55;
+      if (!eyes || !pose || det.detection.score < minConfidence || !Number.isFinite(pose.yawRatio) || pose.yawRatio <= 0 || !Number.isFinite(pose.noseOffset)) {
         interruptEvidence();
         updateStatus('Move closer so both eyes are clear');
         dispatch({ type: 'SET_LIVENESS', payload: { status: 'EYES_UNCLEAR', blinkCount: 0 } });
@@ -770,7 +771,10 @@ const ScannerTerminal = () => {
 
       // 3. Re-center and blink
       if (vaultRef.current.padStage === 'CENTER_BLINK') {
-        const returned = vault.neutralPose && Math.abs(Math.log(relativeYaw)) <= .22 && Math.abs(relativeNose) <= .12;
+        const blinkInProgress = vault.blinkState && ['ARMED', 'CLOSING', 'CLOSED', 'REOPEN', 'PASSED'].includes(vault.blinkState.phase);
+        const maxLogYaw = blinkInProgress ? .30 : .24;
+        const maxNose = blinkInProgress ? .16 : .13;
+        const returned = vault.neutralPose && Math.abs(Math.log(relativeYaw)) <= maxLogYaw && Math.abs(relativeNose) <= maxNose;
         if (!returned) {
           vault.recenterFrames = 0;
           resetBlinkCycle(vault.blinkState);
