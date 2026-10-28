@@ -1,6 +1,6 @@
 export const BLINK_PROMPTS = Object.freeze({
   CALIBRATING: 'Keep both eyes open', OPEN: 'Keep both eyes open',
-  ARMED: 'Close both eyes', CLOSED: 'Open both eyes',
+  ARMED: 'Close briefly, then open', CLOSING: 'Close briefly, then open', CLOSED: 'Open both eyes',
   REOPEN: 'Keep both eyes open', PASSED: 'Blink confirmed',
 });
 
@@ -12,7 +12,7 @@ export function resetBlinkCycle(state) {
   Object.assign(state, {
     phase: state.baseline ? 'OPEN' : 'CALIBRATING', samples: [], lastAt: null,
     openSince: null, openSamples: 0, lastOpenAt: null, closedAt: null,
-    reopenedAt: null, reopenedSamples: 0, count: 0,
+    reopenedAt: null, reopenedSamples: 0, closedSamples: 0, count: 0,
   });
   return state;
 }
@@ -77,6 +77,8 @@ export function updateBlink(state, eyes, now) {
   if (!acceptSample(state, eyes, now) || !state.baseline || state.phase === 'PASSED') return state;
   const open = eyes.left >= state.baseline.left * .85 && eyes.right >= state.baseline.right * .85;
   const closed = eyes.left <= state.baseline.left * .60 && eyes.right <= state.baseline.right * .60;
+  // Less pronounced landmark closure needs repeated evidence rather than a single estimate.
+  const closing = eyes.left <= state.baseline.left * .75 && eyes.right <= state.baseline.right * .75;
   const wink = (eyes.left <= state.baseline.left * .60 && eyes.right >= state.baseline.right * .85)
     || (eyes.right <= state.baseline.right * .60 && eyes.left >= state.baseline.left * .85);
   if (wink) { resetBlinkCycle(state); return state; }
@@ -91,7 +93,16 @@ export function updateBlink(state, eyes, now) {
   } else if (state.phase === 'ARMED') {
     if (open) state.lastOpenAt = now;
     else if (closed && now - state.lastOpenAt <= 450) { state.phase = 'CLOSED'; state.closedAt = now; }
+    else if (closing && now - state.lastOpenAt <= 450) {
+      state.phase = 'CLOSING'; state.closedAt = now; state.closedSamples = 1;
+    }
     else if (now - state.lastOpenAt > 450) resetBlinkCycle(state);
+  } else if (state.phase === 'CLOSING') {
+    if (!closing || now - state.closedAt > 900) resetBlinkCycle(state);
+    else {
+      state.closedSamples++;
+      if (closed || (state.closedSamples >= 2 && now - state.closedAt >= 60)) state.phase = 'CLOSED';
+    }
   } else if (state.phase === 'CLOSED') {
     if (now - state.closedAt > 900) resetBlinkCycle(state);
     else if (open) {

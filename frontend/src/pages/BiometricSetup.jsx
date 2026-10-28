@@ -557,8 +557,11 @@ export default function BiometricSetup() {
       const color = match ? '#22c55e' : target.color;
       drawMesh(ctx, lm, box, color, match, pose);
 
+      // Allow slight landmark drift during a blink; photo capture still uses the strict pose.
+      const blinkInProgress = ['ARMED', 'CLOSING', 'CLOSED', 'REOPEN', 'PASSED'].includes(vault.blinkState.phase);
+      const blinkPoseOk = match || (blinkInProgress && Math.abs(dy - target.yaw) < target.yawTol + .06 && Math.abs(dp - target.pitch) < target.pitchTol + .06);
       if (phaseIdx === 0) {
-        if (match) updateBlink(vault.blinkState, eyes, now);
+        if (blinkPoseOk) updateBlink(vault.blinkState, eyes, now);
         else resetBlinkCycle(vault.blinkState);
         vault.blinkCount = vault.blinkState.count;
       }
@@ -566,7 +569,7 @@ export default function BiometricSetup() {
       dispatch({ type: 'SET_LIVENESS', blinkCount: vault.blinkCount, livenessOk });
       if (!livenessOk && phaseIdx === 0) {
         vault.holdCount = 0;
-        dispatch({ type: 'SET_STATUS', payload: match ? BLINK_PROMPTS[vault.blinkState.phase] : target.instruction });
+        dispatch({ type: 'SET_STATUS', payload: blinkPoseOk ? BLINK_PROMPTS[vault.blinkState.phase] : target.instruction });
         return;
       }
 
@@ -772,6 +775,11 @@ export default function BiometricSetup() {
         />
 
         {/* Camera Flip Button */}
+        {[MODES.CALIBRATING, MODES.ENROLLING].includes(state.mode) && (
+          <button type="button" onClick={handleReset} aria-label="Restart face registration" className="absolute top-3 left-3 z-30 h-8 px-2.5 rounded-md bg-slate-900/90 border border-slate-700 text-xs font-medium text-slate-200 hover:bg-slate-800 cursor-pointer">
+            Restart
+          </button>
+        )}
         <button
           type="button"
           onClick={toggleCameraFacing}
