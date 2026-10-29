@@ -1,24 +1,15 @@
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams } from 'react-router-dom';
 import printStylesUrl from './QrPrint.print.css?url&no-inline';
 import QRCode from '../../../components/QRCode';
 import BackButton from '../../../components/ui/BackButton';
 
 export default function QrPrint({ employee = {} }) {
     const { id } = useParams();
-    const navigate = useNavigate();
     const empId = employee.id || id;
     const fallbackPath = empId ? `/admin/employees/${empId}` : '/admin/employees';
 
     const handlePrint = () => {
         window.print();
-    };
-
-    const handleClose = () => {
-        if (window.opener) {
-            window.close();
-        } else {
-            navigate(fallbackPath);
-        }
     };
 
     return (

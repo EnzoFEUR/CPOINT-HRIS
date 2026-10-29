@@ -729,7 +729,7 @@ export default function DisciplinaryIndex() {
                                             handleFilterChange(tab.key);
                                             try {
                                                 e.currentTarget.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
-                                            } catch {}
+                                            } catch { /* Scrolling is optional; the selected filter is already applied. */ }
                                         }}
                                         className={`h-8 px-3 rounded-md text-xs font-medium transition-colors duration-100 flex items-center gap-2 whitespace-nowrap shrink-0 cursor-pointer focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-slate-950 ${
                                             isSelected

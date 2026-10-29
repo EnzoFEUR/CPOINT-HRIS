@@ -61,8 +61,7 @@ export default function DocumentPreviewModal({
     const [activeUrl, setActiveUrl] = useState(doc?.preview_url || null);
     const [isLoadingUrl, setIsLoadingUrl] = useState(Boolean(isOpen && doc?.id && !doc?.preview_url));
     const [loadError, setLoadError] = useState(null);
-    const [isDocxRendering, setIsDocxRendering] = useState(false);
-    const [docxRenderError, setDocxRenderError] = useState(null);
+    const [docxResult, setDocxResult] = useState(null);
     const docxContainerRef = useRef(null);
     const documentId = doc?.id;
     const previewUrl = doc?.preview_url;
@@ -70,14 +69,15 @@ export default function DocumentPreviewModal({
     const isImage = isImageDocument(fileName);
     const isPdf = isPdfDocument(fileName);
     const isDocx = isDocxDocument(fileName);
-    const [previewContext, setPreviewContext] = useState({ isOpen, documentId, previewUrl });
-    if (previewContext.isOpen !== isOpen || previewContext.documentId !== documentId || previewContext.previewUrl !== previewUrl) {
-        setPreviewContext({ isOpen, documentId, previewUrl });
+    const isDocxRendering = Boolean(isOpen && isDocx && activeUrl && docxResult?.url !== activeUrl);
+    const docxRenderError = isOpen && isDocx && docxResult?.url === activeUrl ? docxResult.error : null;
+    const [previewContext, setPreviewContext] = useState({ isOpen, documentId, previewUrl, isDocx });
+    if (previewContext.isOpen !== isOpen || previewContext.documentId !== documentId || previewContext.previewUrl !== previewUrl || previewContext.isDocx !== isDocx) {
+        setPreviewContext({ isOpen, documentId, previewUrl, isDocx });
         setZoom(1);
         setRotation(0);
         setLoadError(null);
-        setIsDocxRendering(false);
-        setDocxRenderError(null);
+        setDocxResult(null);
         setActiveUrl(isOpen ? previewUrl || null : null);
         setIsLoadingUrl(Boolean(isOpen && documentId && !previewUrl));
     }
@@ -120,17 +120,12 @@ export default function DocumentPreviewModal({
 
     // Asynchronously render DOCX OpenXML packages client-side
     useEffect(() => {
-        if (!isOpen || !isDocx || !activeUrl) {
-            setIsDocxRendering(false);
-            setDocxRenderError(null);
-            return;
-        }
+        if (!isOpen || !isDocx || !activeUrl) return;
 
         let active = true;
-        setIsDocxRendering(true);
-        setDocxRenderError(null);
 
         const renderDocx = async () => {
+            let error = null;
             try {
                 const res = activeUrl.startsWith('http')
                     ? await fetch(activeUrl)
@@ -242,10 +237,10 @@ export default function DocumentPreviewModal({
             } catch (err) {
                 if (!active) return;
                 console.error('[DocumentPreviewModal] DOCX render failure:', err);
-                setDocxRenderError(err.message || 'Unable to parse Word document format.');
+                error = err.message || 'Unable to parse Word document format.';
             } finally {
                 if (active) {
-                    setIsDocxRendering(false);
+                    setDocxResult({ url: activeUrl, error });
                 }
             }
         };
@@ -255,7 +250,7 @@ export default function DocumentPreviewModal({
         return () => {
             active = false;
         };
-    }, [isOpen, isDocx, activeUrl]);
+    }, [isOpen, isDocx, activeUrl, documentId, previewUrl]);
 
     if (!isOpen || !doc) return null;
 
@@ -614,4 +609,3 @@ export default function DocumentPreviewModal({
         </div>
     );
 }
-

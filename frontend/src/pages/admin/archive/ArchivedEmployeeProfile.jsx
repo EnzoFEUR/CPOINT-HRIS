@@ -1,6 +1,6 @@
 import ProtectedImage from '../../../components/ProtectedImage';
 import { useEffect, useMemo, useState } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { supabase } from '../../../supabaseClient';
 
@@ -140,7 +140,6 @@ const TABS = [
 
 export default function ArchivedEmployeeProfile() {
   const { id } = useParams();
-  const navigate = useNavigate();
   const [employee, setEmployee] = useState(null);
   const [activeTab, setActiveTab] = useState('overview');
   const [loading, setLoading] = useState(true);

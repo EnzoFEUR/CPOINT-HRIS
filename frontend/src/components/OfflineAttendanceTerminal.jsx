@@ -1,10 +1,9 @@
 import React, { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
-import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { createQrScanner, startQrCamera, stopQrCamera } from '../utils/qrCamera';
 import { supabase } from '../supabaseClient';
 import PageHeader from './ui/PageHeader';
-import { useConfirm } from './ui/ConfirmDialog';
+import { useConfirm } from './ui/useConfirm';
 import { captureOfflineBadge, exportOfflineBackup, getOfflineStorageStatus, importOfflineBackup, listOfflineEvents, MAX_EVENTS, readMeta } from '../utils/offlineAttendanceStore';
 import { clearAcceptedOfflineCaptures, enrollOfflineTerminal, offlineApi, offlineDiagnosticText, offlineSyncMessage, refreshOfflineRoster, syncOfflineAttendance } from '../utils/offlineAttendanceSync';
 import { isOfflineTestEnabled, offlineTestAvailable, OFFLINE_TEST_CHANGED, setOfflineTestEnabled } from '../utils/offlineAttendanceTestMode.mjs';

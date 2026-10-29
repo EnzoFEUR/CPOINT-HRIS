@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
-import { useSearchParams, Link } from 'react-router-dom';
+import { useSearchParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import BackButton from '../../../components/ui/BackButton';
@@ -22,7 +22,7 @@ import RequestDocumentModal from './RequestDocumentModal';
 import RejectDocumentModal from './RejectDocumentModal';
 import DocumentThumbnail from '../../../components/DocumentThumbnail';
 import DocumentPreviewModal from '../../../components/DocumentPreviewModal';
-import { useConfirm } from '../../../components/ui/ConfirmDialog';
+import { useConfirm } from '../../../components/ui/useConfirm';
 
 const CATEGORIES = ['All', ...DOCUMENT_CATEGORIES];
 
