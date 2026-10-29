@@ -360,23 +360,24 @@ export default function BiometricSetup() {
       return;
     }
 
-    const descs = captures.map(c => c.descriptor).filter(Boolean);
-    if (descs.length >= 2) {
-      let maxDist = 0;
-      for (let i = 0; i < descs.length; i++) {
-        for (let j = i + 1; j < descs.length; j++) {
-          const d = faceapi.euclideanDistance(descs[i], descs[j]);
-          if (d > maxDist) maxDist = d;
-        }
+    const centerCap = captures.find(c => c.phase === 'CENTER') || captures[0];
+    const centerDesc = centerCap?.descriptor;
+    const otherDescs = captures.filter(c => c !== centerCap && c.descriptor);
+
+    if (centerDesc && otherDescs.length >= 1) {
+      // Anchored comparison: verify each peripheral angle against the primary frontal center anchor
+      let maxDistFromCenter = 0;
+      for (const cap of otherDescs) {
+        const d = faceapi.euclideanDistance(centerDesc, cap.descriptor);
+        if (d > maxDistFromCenter) maxDistFromCenter = d;
       }
-      if (maxDist > ENV.DESC_CONSISTENCY_THRESHOLD) {
-        dispatch({ type: 'SET_ERROR', payload: { message: `Inconsistency detected across angles. Please maintain steady posture.`, code: 'IDENTITY_INCONSISTENCY' } });
+      if (maxDistFromCenter > ENV.DESC_CONSISTENCY_THRESHOLD) {
+        dispatch({ type: 'SET_ERROR', payload: { message: `Inconsistency detected across angles. Please maintain steady posture and face the camera.`, code: 'IDENTITY_INCONSISTENCY' } });
         playSound('error'); haptic('error');
         return;
       }
     }
 
-    const centerCap = captures.find(c => c.phase === 'CENTER') || captures[0];
     const primaryImage = centerCap.image;
 
     dispatch({ type: 'SET_MODE', payload: MODES.UPLOADING });
@@ -569,6 +570,15 @@ export default function BiometricSetup() {
           resetBlinkCycle(vault.blinkState);
         }
         vault.blinkCount = vault.blinkState.count;
+
+        // Instant multimodal cue so user knows when eyelids closed without peeking
+        if (vault.lastBlinkPhase !== vault.blinkState.phase) {
+          if (vault.blinkState.phase === 'CLOSED') {
+            playSound('phase');
+            haptic('phase');
+          }
+          vault.lastBlinkPhase = vault.blinkState.phase;
+        }
       }
       const livenessOk = vault.blinkCount >= ENV.REQUIRED_BLINKS;
       dispatch({ type: 'SET_LIVENESS', blinkCount: vault.blinkCount, livenessOk });
@@ -579,6 +589,16 @@ export default function BiometricSetup() {
       }
 
       if (match) {
+        // For Phase 0 (CENTER baseline), ensure eyes are fully open and looking at the camera before accumulating capture hold
+        const baselineLeft = vault.blinkState?.baseline?.left ?? 0.22;
+        const baselineRight = vault.blinkState?.baseline?.right ?? 0.22;
+        const eyesOpenSettled = phaseIdx !== 0 || (eyes && eyes.left >= baselineLeft * 0.84 && eyes.right >= baselineRight * 0.84);
+        if (!eyesOpenSettled) {
+          vault.holdCount = 0;
+          dispatch({ type: 'SET_STATUS', payload: 'Look straight at camera with eyes open' });
+          return;
+        }
+
         vault.holdCount += 1;
         const pp = Math.min((vault.holdCount / ENV.HOLD_FRAMES) * 100, 100);
         const ob = (phaseIdx / PHASE_LIST.length) * 100;

@@ -36,7 +36,7 @@ const CONFIG = Object.freeze({
     SCAN_WINDOW_MS: parseInt(process.env.SCAN_RATE_WINDOW_MS, 10) || 60_000,
     SCAN_MAX_REQUESTS: parseInt(process.env.SCAN_RATE_MAX, 10) || 5,
     ENROLL_WINDOW_MS: parseInt(process.env.ENROLL_RATE_WINDOW_MS, 10) || 300_000,
-    ENROLL_MAX_REQUESTS: parseInt(process.env.ENROLL_RATE_MAX, 10) || 3,
+    ENROLL_MAX_REQUESTS: parseInt(process.env.ENROLL_RATE_MAX, 10) || 10,
   },
   STORAGE: {
     BUCKET: process.env.STORAGE_BUCKET || 'public-bucket',

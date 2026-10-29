@@ -139,7 +139,7 @@ Choose exactly one decision:
 - RECAPTURE: Blur, poor lighting, occlusion, possible filters, insufficient detail, or any uncertainty. Keep enrollment blocked for another capture.
 - SUSPECTED_SPOOF: Specific visible evidence of a screen or printed-photo presentation. This is an unconfirmed assessment for review, not a disciplinary finding.
 
-Natural facial hair, eyebrows, makeup, glasses, smoothing, or compression alone are not evidence of a screen or printed photo. If uncertain, use RECAPTURE, not a definitive manipulation accusation.
+Natural facial hair, eyebrows, makeup, glasses, smoothing, or compression alone are not evidence of a screen or printed photo. If uncertain, use RECAPTURE, not a definitive manipulation accusation. Standard ambient indoor room lighting, consumer laptop or mobile webcam resolution (720p/1080p), and normal digital camera compression artifacts are fully expected and acceptable for LIVE. Do NOT classify typical indoor room illumination or ordinary consumer webcam sharpness as LOW_LIGHT, BLUR, or INSUFFICIENT_DETAIL unless key facial landmarks (eyes, nose, mouth) are illegible or obscured.
 presentation_cues may contain only: ${presentationCues.join(', ')}. HELD_PRESENTATION requires a visible displayed or printed face being held, not merely a hand or unrelated object.
 quality_issues may contain only: ${qualityIssues.join(', ')}.
 LIVE requires is_real_person=true and both arrays empty. SUSPECTED_SPOOF requires is_real_person=false and at least one presentation cue. Use confidence on a 0-to-1 scale as your model assessment, not a calibrated probability.

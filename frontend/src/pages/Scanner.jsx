@@ -772,8 +772,8 @@ const ScannerTerminal = () => {
       // 3. Re-center and blink
       if (vaultRef.current.padStage === 'CENTER_BLINK') {
         const blinkInProgress = vault.blinkState && ['ARMED', 'CLOSING', 'CLOSED', 'REOPEN', 'PASSED'].includes(vault.blinkState.phase);
-        const maxLogYaw = blinkInProgress ? .32 : .24;
-        const maxNose = blinkInProgress ? .18 : .13;
+        const maxLogYaw = blinkInProgress ? .38 : .24;
+        const maxNose = blinkInProgress ? .22 : .13;
         const returned = vault.neutralPose && Math.abs(Math.log(relativeYaw)) <= maxLogYaw && Math.abs(relativeNose) <= maxNose;
         if (!returned) {
           vault.recenterFrames = 0;
@@ -794,6 +794,15 @@ const ScannerTerminal = () => {
         }
         updateBlink(vault.blinkState, eyes, now);
         vault.blinkCount = vault.blinkState.count;
+
+        // Instant audio cue when eyes close so employee knows to reopen without peeking
+        if (vault.lastBlinkPhase !== vault.blinkState.phase) {
+          if (vault.blinkState.phase === 'CLOSED') {
+            playSound('scan');
+          }
+          vault.lastBlinkPhase = vault.blinkState.phase;
+        }
+
         if (vaultRef.current.blinkCount < ENV.REQUIRED_BLINKS) {
           throttledDispatch({ scanProgress: 75, matchScore: currentScore });
           updateStatus(BLINK_PROMPTS[vault.blinkState.phase]);
