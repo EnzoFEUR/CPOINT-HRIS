@@ -30,8 +30,8 @@ const ENV = {
 
 const POSE = Object.freeze({
   CENTER: { id: 0, label: 'CENTER', instruction: 'Look straight at camera', color: '#3b82f6', yaw: 0.00, pitch: 0.00, yawTol: 0.12, pitchTol: 0.14 },
-  LEFT:   { id: 1, label: 'LEFT',   instruction: 'Turn head slowly LEFT',   color: '#8b5cf6', yaw: 0.28, pitch: 0.00, yawTol: 0.12, pitchTol: 0.18 },
-  RIGHT:  { id: 2, label: 'RIGHT',  instruction: 'Turn head slowly RIGHT',  color: '#06b6d4', yaw: -0.28, pitch: 0.00, yawTol: 0.12, pitchTol: 0.18 },
+  LEFT:   { id: 1, label: 'LEFT',   instruction: 'Turn slightly LEFT',   color: '#8b5cf6', yaw: 0.28, pitch: 0.00, yawTol: 0.12, pitchTol: 0.18 },
+  RIGHT:  { id: 2, label: 'RIGHT',  instruction: 'Turn slightly RIGHT',  color: '#06b6d4', yaw: -0.28, pitch: 0.00, yawTol: 0.12, pitchTol: 0.18 },
   UP:     { id: 3, label: 'UP',     instruction: 'Tilt chin slightly UP',   color: '#f59e0b', yaw: 0.00, pitch: -0.14, yawTol: 0.18, pitchTol: 0.09 },
   DOWN:   { id: 4, label: 'DOWN',   instruction: 'Tilt chin slightly DOWN', color: '#ef4444', yaw: 0.00, pitch: 0.14, yawTol: 0.18, pitchTol: 0.09 },
 });
@@ -453,24 +453,42 @@ export default function BiometricSetup() {
     vault.faceTrack = {};
     vault.captureHold = {};
     vault.enrollmentAnchor = null;
+    vault.pendingReacquisition = false;
     const interruptEvidence = () => {
       vault.holdCount = 0;
       resetCaptureHold(vault.captureHold);
-      vault.blinkCount = 0;
-      resetBlinkCycle(vault.blinkState);
+      if (!vault.enrollmentAnchor) {
+        vault.blinkCount = 0;
+        resetBlinkCycle(vault.blinkState);
+        dispatch({ type: 'SET_LIVENESS', blinkCount: 0, livenessOk: false });
+      }
       if (!vault.baseline) vault.calibrationSamples = [];
-      dispatch({ type: 'SET_LIVENESS', blinkCount: 0, livenessOk: false });
     };
     const restartSequence = message => {
       vault.baseline = null;
       vault.calibrationSamples = [];
       vault.phaseIdx = 0;
       vault.enrollmentAnchor = null;
+      vault.pendingReacquisition = false;
       vault.faceTrack = {};
       vault.blinkState = createBlinkState();
       interruptEvidence();
       dispatch({ type: 'RESTART_SEQUENCE', payload: message });
       dispatch({ type: 'SET_STATUS', payload: message });
+    };
+    const readConsistentDescriptor = async (landmarks, isActive) => {
+      const [face] = await faceapi.extractFaces(frame, [landmarks.align(null, { useDlibAlignment: true })]);
+      const descriptor = await faceapi.computeFaceDescriptor(face);
+      if (!isActive()) return null;
+      const valid = descriptor?.length === 128 && Array.from(descriptor).every(Number.isFinite);
+      const distance = valid && vault.enrollmentAnchor ? faceapi.euclideanDistance(vault.enrollmentAnchor, descriptor) : 0;
+      if (!valid || !Number.isFinite(distance) || distance > ENV.DESC_CONSISTENCY_THRESHOLD) {
+        restartSequence('Face consistency changed. Look at the camera to restart');
+        return null;
+      }
+      // Descriptor work blocks this loop; it is not evidence that the detector lost the face.
+      vault.faceTrack.at = performance.now();
+      return descriptor;
     };
 
     const syncCanvas = () => {
@@ -499,6 +517,14 @@ export default function BiometricSetup() {
       if (!isActive()) return;
 
       if (faces.length !== 1) {
+        if (faces.length === 0 && vault.enrollmentAnchor && performance.now() - vault.faceTrack.at <= 650) {
+          vault.pendingReacquisition = true;
+          vault.holdCount = 0;
+          resetCaptureHold(vault.captureHold);
+          dispatch({ type: 'SET_PROGRESS', payload: { overall: (vault.phaseIdx / PHASE_LIST.length) * 100, phase: 0 } });
+          dispatch({ type: 'SET_STATUS', payload: 'Face briefly lost. Turn slightly back toward the camera' });
+          return;
+        }
         restartSequence(faces.length > 1 ? 'Only one person should be in the frame' : 'Place your face inside the guide');
         dispatch({ type: 'SET_CONFIDENCE', payload: 0 });
         dispatch({ type: 'SET_POSE', payload: { yaw: 0, pitch: 0, roll: 0, symmetry: 0 } });
@@ -546,6 +572,13 @@ export default function BiometricSetup() {
       const now = performance.now();
       if (!trackFace(vault.faceTrack, box, now)) {
         restartSequence('Face tracking changed. Look at the camera to restart');
+        return;
+      }
+      if (vault.pendingReacquisition) {
+        if (!await readConsistentDescriptor(lm, isActive)) return;
+        vault.pendingReacquisition = false;
+        resetCaptureHold(vault.captureHold);
+        dispatch({ type: 'SET_STATUS', payload: PHASE_LIST[vault.phaseIdx].instruction });
         return;
       }
       if (!vault.baseline) {
@@ -629,14 +662,8 @@ export default function BiometricSetup() {
 
         if (vault.holdCount >= ENV.HOLD_FRAMES && stability === 1) {
           // Match attendance's dlib-aligned crop and keep image/landmarks on the same frozen frame.
-          const [face] = await faceapi.extractFaces(frame, [lm.align(null, { useDlibAlignment: true })]);
-          const desc = await faceapi.computeFaceDescriptor(face);
-          if (!isActive()) return;
-          const distance = vault.enrollmentAnchor ? faceapi.euclideanDistance(vault.enrollmentAnchor, desc) : 0;
-          if (!desc || desc.length !== 128 || !Array.from(desc).every(Number.isFinite) || !Number.isFinite(distance) || distance > ENV.DESC_CONSISTENCY_THRESHOLD) {
-            restartSequence('Face consistency changed. Look at the camera to restart');
-            return;
-          }
+          const desc = await readConsistentDescriptor(lm, isActive);
+          if (!desc) return;
           vault.enrollmentAnchor ||= desc;
           const img = frame.toDataURL('image/jpeg', 0.9);
           const capture = {
