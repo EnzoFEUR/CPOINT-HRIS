@@ -1,6 +1,6 @@
 export const BLINK_PROMPTS = Object.freeze({
   CALIBRATING: 'Keep both eyes open', OPEN: 'Keep both eyes open',
-  ARMED: 'Close briefly, then open', CLOSING: 'Close briefly, then open', CLOSED: 'Open both eyes',
+  ARMED: 'Close both eyes for about half a second, then open', CLOSING: 'Close both eyes for about half a second, then open', CLOSED: 'Open both eyes',
   REOPEN: 'Keep both eyes open', PASSED: 'Blink confirmed',
 });
 
@@ -12,7 +12,7 @@ export function resetBlinkCycle(state) {
   Object.assign(state, {
     phase: state.baseline ? 'OPEN' : 'CALIBRATING', samples: [], lastAt: null,
     openSince: null, openSamples: 0, lastOpenAt: null, closedAt: null,
-    reopenedAt: null, reopenedSamples: 0, reopenMisses: 0, closedSamples: 0, count: 0,
+    reopenedAt: null, reopenedSamples: 0, reopenMisses: 0, closedSamples: 0, openCalibration: null, count: 0,
   });
   return state;
 }
@@ -80,6 +80,17 @@ export function areEyesOpen(state, eyes) {
 // Require stable open eyes, substantial bilateral closure, then confirmed reopening.
 export function updateBlink(state, eyes, now) {
   if (!acceptSample(state, eyes, now) || !state.baseline || state.phase === 'PASSED') return state;
+  // Refresh only from stable bilateral increases before closure; closed eyes cannot train the open reference.
+  if (['OPEN', 'ARMED'].includes(state.phase) && eyes.left >= state.baseline.left * 1.2 && eyes.right >= state.baseline.right * 1.2) {
+    state.openCalibration ||= createBlinkState();
+    if (calibrateBlink(state.openCalibration, eyes, now)) {
+      state.baseline = state.openCalibration.baseline;
+      resetBlinkCycle(state);
+      state.lastAt = now;
+    }
+    return state;
+  }
+  state.openCalibration = null;
   const wink = (eyes.left <= state.baseline.left * .58 && eyes.right >= state.baseline.right * .85)
     || (eyes.right <= state.baseline.right * .58 && eyes.left >= state.baseline.left * .85);
   if (wink) { resetBlinkCycle(state); return state; }
