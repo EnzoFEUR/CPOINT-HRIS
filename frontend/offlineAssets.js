@@ -21,7 +21,7 @@ export function offlineAssetManifest({ enabled = false } = {}) {
             };
             for (const [name] of [...entries, ...attendance]) visit(name);
             // Keep styles and their font/image dependencies available without relying on Vite's private CSS metadata.
-            const assets = Object.keys(bundle).filter(name => required.has(name) || /\.(?:css|woff2?|ttf|png|svg)$/.test(name)).map(name => `/${name}`);
+            const assets = Object.keys(bundle).filter(name => required.has(name) || name.startsWith('assets/blink-') || /\.(?:css|woff2?|ttf|png|svg)$/.test(name)).map(name => `/${name}`);
             this.emitFile({ type: 'asset', fileName: 'offline-assets.json', source: JSON.stringify({ schema_version: 1, assets }) });
             const template = readFileSync(new URL('./public/sw.js', import.meta.url), 'utf8').replace('const OFFLINE_BUILD_ENABLED = false;', `const OFFLINE_BUILD_ENABLED = ${enabled};`);
             const version = createHash('sha256').update(JSON.stringify(assets)).update(template).digest('hex').slice(0, 16);

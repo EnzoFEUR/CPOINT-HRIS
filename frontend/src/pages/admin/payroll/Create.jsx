@@ -6,7 +6,7 @@ import { isLastCutoffOfDecember } from '../../../../../shared/thirteenthMonth.mj
 import { getUser } from '../../../routes/guards';
 import { getEmployeeRestDays, getScheduledWorkDates, calculateTardiness, DEFAULT_WORK_POLICY } from '../../../../../shared/workPolicy.mjs';
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
-import { useNavigate, useLocation, useSearchParams, Link } from 'react-router-dom';
+import { useNavigate, useLocation, useSearchParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { fetchWithAuth } from '../../../utils/api';
 import { supabase } from '../../../supabaseClient';

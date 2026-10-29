@@ -1,18 +1,5 @@
-import { useState, useEffect, useRef, useCallback, createContext, useContext } from 'react';
-
-const ConfirmContext = createContext(null);
-
-/**
- * Enterprise confirmation dialog hook.
- * Returns an async function `confirm(options)` that resolves to `true` (confirmed) or `false` (cancelled).
- */
-export function useConfirm() {
-    const context = useContext(ConfirmContext);
-    if (!context) {
-        throw new Error('useConfirm must be used within a <ConfirmProvider>');
-    }
-    return context;
-}
+import { useState, useEffect, useRef, useCallback } from 'react';
+import { ConfirmContext } from './useConfirm';
 
 /**
  * Global ConfirmProvider that mounts at root and manages enterprise confirmation dialogs

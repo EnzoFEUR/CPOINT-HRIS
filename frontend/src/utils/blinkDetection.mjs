@@ -1,11 +1,11 @@
 export const BLINK_PROMPTS = Object.freeze({
   CALIBRATING: 'Keep both eyes open', OPEN: 'Keep both eyes open',
-  ARMED: 'Close both eyes for about half a second, then open', CLOSING: 'Close both eyes for about half a second, then open', CLOSED: 'Open both eyes',
+  ARMED: 'Blink both eyes once', CLOSING: 'Close both eyes, then open', CLOSED: 'Open both eyes',
   REOPEN: 'Keep both eyes open', PASSED: 'Blink confirmed',
 });
 
 export function createBlinkState() {
-  return resetBlinkCycle({ baseline: null });
+  return resetBlinkCycle({ baseline: null, source: null });
 }
 
 export function resetBlinkCycle(state) {
@@ -36,10 +36,12 @@ export function getEyeOpenness(landmarks) {
 }
 
 function acceptSample(state, eyes, now) {
-  if (!eyes || ![eyes.left, eyes.right].every(value => Number.isFinite(value) && value >= 0 && value <= .8) || !Number.isFinite(now)) {
+  const source = eyes?.source === 'expression' ? 'expression' : 'ear';
+  if (!eyes || ![eyes.left, eyes.right].every(value => Number.isFinite(value) && value >= 0 && value <= (source === 'expression' ? 1 : .8)) || !Number.isFinite(now) || (state.source && state.source !== source)) {
     resetBlinkCycle(state);
     return false;
   }
+  state.source ||= source;
   if (state.lastAt !== null && now <= state.lastAt) {
     if (now < state.lastAt) resetBlinkCycle(state);
     return false;
@@ -52,7 +54,8 @@ function acceptSample(state, eyes, now) {
 export function calibrateBlink(state, eyes, now) {
   if (!acceptSample(state, eyes, now)) return false;
   if (state.baseline) return true;
-  if ([eyes.left, eyes.right].some(value => value < .14 || value > .55)) {
+  const expression = state.source === 'expression';
+  if ([eyes.left, eyes.right].some(value => value < (expression ? .75 : .14) || value > (expression ? 1 : .55))) {
     state.samples = [];
     return false;
   }
@@ -74,6 +77,8 @@ export function calibrateBlink(state, eyes, now) {
 
 export function areEyesOpen(state, eyes) {
   return Boolean(state?.baseline && eyes && [eyes.left, eyes.right].every(Number.isFinite) &&
+    (eyes.source === 'expression' ? 'expression' : 'ear') === (state.source || 'ear') &&
+    (state.source !== 'expression' || (eyes.left >= .75 && eyes.right >= .75)) &&
     eyes.left >= state.baseline.left * .84 && eyes.right >= state.baseline.right * .84);
 }
 
@@ -81,7 +86,7 @@ export function areEyesOpen(state, eyes) {
 export function updateBlink(state, eyes, now) {
   if (!acceptSample(state, eyes, now) || !state.baseline || state.phase === 'PASSED') return state;
   // Refresh only from stable bilateral increases before closure; closed eyes cannot train the open reference.
-  if (['OPEN', 'ARMED'].includes(state.phase) && eyes.left >= state.baseline.left * 1.2 && eyes.right >= state.baseline.right * 1.2) {
+  if (state.source !== 'expression' && ['OPEN', 'ARMED'].includes(state.phase) && eyes.left >= state.baseline.left * 1.2 && eyes.right >= state.baseline.right * 1.2) {
     state.openCalibration ||= createBlinkState();
     if (calibrateBlink(state.openCalibration, eyes, now)) {
       state.baseline = state.openCalibration.baseline;
@@ -96,10 +101,12 @@ export function updateBlink(state, eyes, now) {
   if (wink) { resetBlinkCycle(state); return state; }
 
   // An absolute cutoff can classify a person's accepted open baseline as closed.
-  const closed = eyes.left <= state.baseline.left * .70 && eyes.right <= state.baseline.right * .70;
+  const closed = state.source === 'expression' ? eyes.left <= .4 && eyes.right <= .4
+    : eyes.left <= state.baseline.left * .70 && eyes.right <= state.baseline.right * .70;
 
   // Moderate closure: start of eyelid closure or soft voluntary blink
-  const closing = eyes.left <= state.baseline.left * .82 && eyes.right <= state.baseline.right * .82;
+  const closing = state.source === 'expression' ? eyes.left <= .55 && eyes.right <= .55
+    : eyes.left <= state.baseline.left * .82 && eyes.right <= state.baseline.right * .82;
 
   // Clear open state: mutually exclusive with closing / closed
   const open = areEyesOpen(state, eyes);

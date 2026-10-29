@@ -14,7 +14,7 @@ import bannerCover from '../../../assets/employee-cover.jpg';
 import MonthlyWorkCalendar from '../../../components/attendance/MonthlyWorkCalendar';
 import LeaveCreditsPanel from '../../../components/LeaveCreditsPanel';
 import BackButton from '../../../components/ui/BackButton';
-import { useConfirm } from '../../../components/ui/ConfirmDialog';
+import { useConfirm } from '../../../components/ui/useConfirm';
 import { computeDisciplinaryStanding } from '../../../utils/disciplinaryStanding';
 import RequestDocumentModal from '../documents/RequestDocumentModal';
 import { formatPhDisplay } from '../../../utils/phoneUtils';
