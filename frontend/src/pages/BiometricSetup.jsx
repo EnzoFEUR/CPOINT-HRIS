@@ -168,7 +168,7 @@ function reducer(state, action) {
     case 'SET_LIVENESS': return { ...state, blinkCount: action.blinkCount, livenessOk: action.livenessOk };
     case 'PUSH_CAPTURE': return { ...state, captured: [...state.captured, action.payload] };
     case 'SET_ERROR': return { ...state, mode: MODES.ERROR, error: action.payload };
-    case 'RESTART_SEQUENCE': return { ...state, mode: MODES.CALIBRATING, currentPhaseIdx: -1, captured: [], overallProgress: 0, phaseProgress: 0, blinkCount: 0, livenessOk: false, statusText: action.payload };
+    case 'RESTART_SEQUENCE': return { ...state, mode: MODES.CALIBRATING, currentPhaseIdx: -1, captured: [], overallProgress: 0, phaseProgress: 0, confidence: 0, blinkCount: 0, livenessOk: false, statusText: action.payload };
     case 'SET_ONLINE': return { ...state, isOnline: action.payload };
     case 'RESET':
       return {
@@ -457,6 +457,8 @@ export default function BiometricSetup() {
     const interruptEvidence = () => {
       vault.holdCount = 0;
       resetCaptureHold(vault.captureHold);
+      dispatch({ type: 'SET_CONFIDENCE', payload: 0 });
+      dispatch({ type: 'SET_PROGRESS', payload: { overall: (vault.phaseIdx / PHASE_LIST.length) * 100, phase: 0 } });
       if (!vault.enrollmentAnchor) {
         vault.blinkCount = 0;
         resetBlinkCycle(vault.blinkState);
@@ -519,6 +521,7 @@ export default function BiometricSetup() {
       if (faces.length !== 1) {
         if (faces.length === 0 && vault.enrollmentAnchor && performance.now() - vault.faceTrack.at <= 650) {
           vault.pendingReacquisition = true;
+          dispatch({ type: 'SET_CONFIDENCE', payload: 0 });
           vault.holdCount = 0;
           resetCaptureHold(vault.captureHold);
           dispatch({ type: 'SET_PROGRESS', payload: { overall: (vault.phaseIdx / PHASE_LIST.length) * 100, phase: 0 } });
@@ -548,7 +551,6 @@ export default function BiometricSetup() {
         return;
       }
 
-      dispatch({ type: 'SET_CONFIDENCE', payload: Math.round(score * 100) });
       dispatch({ type: 'SET_POSE', payload: pose });
 
       const minConfidence = (vault.baseline && vault.phaseIdx === 0 && !vault.blinkCount) ? 0.42 : ENV.FACE_CONFIDENCE_MIN;
@@ -574,6 +576,7 @@ export default function BiometricSetup() {
         restartSequence('Face tracking changed. Look at the camera to restart');
         return;
       }
+      dispatch({ type: 'SET_CONFIDENCE', payload: Math.round(score * 100) });
       if (vault.pendingReacquisition) {
         if (!await readConsistentDescriptor(lm, isActive)) return;
         vault.pendingReacquisition = false;
@@ -954,8 +957,17 @@ export default function BiometricSetup() {
 
             {/* Bottom Status Pill */}
             <div className="absolute bottom-3 inset-x-3 z-20 flex justify-center">
-              <div className="px-3 py-1 bg-slate-900/90 border border-slate-800 rounded-md text-center shadow-2xs">
-                <p role="status" aria-live="polite" aria-atomic="true" className="text-xs font-medium text-white">{state.statusText}</p>
+              <div className="w-full max-w-xs px-3 py-2 bg-slate-900/95 border border-slate-800 rounded-md text-center shadow-2xs">
+                <div className="flex items-center justify-between gap-3 text-[11px] font-medium mb-1.5">
+                  <span className={state.confidence > 0 ? 'text-emerald-300' : 'text-slate-400'}>
+                    {state.confidence > 0 ? 'Face detected' : 'Finding face'}
+                  </span>
+                  <span className="text-slate-200 tabular-nums">Capture readiness: {Math.round(state.phaseProgress)}%</span>
+                </div>
+                <div role="progressbar" aria-label="Current angle capture readiness" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(state.phaseProgress)} className="h-1 rounded-full bg-slate-700 overflow-hidden">
+                  <div className="h-full bg-emerald-400" style={{ width: `${state.phaseProgress}%` }} />
+                </div>
+                <p role="status" aria-live="polite" aria-atomic="true" className="text-xs font-medium text-white mt-1.5">{state.statusText}</p>
               </div>
             </div>
           </>
