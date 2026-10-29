@@ -29,6 +29,7 @@ const ENV = {
   FACE_WIDTH_MIN_PX: 45,
   REQUIRED_BLINKS: 1,
   DESC_CONSISTENCY_THRESHOLD: 0.52,
+  REGISTRATION_RECOVERY_MS: 2000,
 };
 
 const POSE = Object.freeze({
@@ -480,6 +481,12 @@ export default function BiometricSetup() {
       }
       if (!vault.baseline) vault.calibrationSamples = [];
     };
+    const pauseForReacquisition = () => {
+      vault.pendingReacquisition = true;
+      interruptEvidence();
+      dispatch({ type: 'SET_LIVENESS', blinkCount: vault.blinkCount, livenessOk: false, blinkPhase: 'PAUSED' });
+      dispatch({ type: 'SET_STATUS', payload: 'Completed captures kept. Turn slightly back toward the camera' });
+    };
     const restartSequence = message => {
       vault.baseline = null;
       vault.calibrationSamples = [];
@@ -543,14 +550,8 @@ export default function BiometricSetup() {
         return;
       }
       if (faces.length !== 1) {
-        if (faces.length === 0 && vault.enrollmentAnchor && performance.now() - vault.faceTrack.at <= 650) {
-          vault.pendingReacquisition = true;
-          dispatch({ type: 'SET_CONFIDENCE', payload: 0 });
-          dispatch({ type: 'SET_LIVENESS', blinkCount: vault.blinkCount, livenessOk: vault.blinkCount >= ENV.REQUIRED_BLINKS, blinkPhase: 'PAUSED' });
-          vault.holdCount = 0;
-          resetCaptureHold(vault.captureHold);
-          dispatch({ type: 'SET_PROGRESS', payload: { overall: (vault.phaseIdx / PHASE_LIST.length) * 100, phase: 0 } });
-          dispatch({ type: 'SET_STATUS', payload: 'Face briefly lost. Turn slightly back toward the camera' });
+        if (faces.length === 0 && vault.enrollmentAnchor && performance.now() - vault.faceTrack.at <= ENV.REGISTRATION_RECOVERY_MS) {
+          pauseForReacquisition();
           return;
         }
         restartSequence(faces.length > 1 ? 'Only one person should be in the frame' : 'Place your face inside the guide');
@@ -597,9 +598,14 @@ export default function BiometricSetup() {
 
       // Neutral Calibration Phase
       const now = observedAt;
+      const previousFaceAt = vault.faceTrack.at;
       if (!trackFace(vault.faceTrack, box, now)) {
-        restartSequence('Face tracking changed. Look at the camera to restart');
-        return;
+        if (!vault.enrollmentAnchor || !Number.isFinite(previousFaceAt) || now - previousFaceAt > ENV.REGISTRATION_RECOVERY_MS) {
+          restartSequence('Face tracking lost. Look at the camera to restart');
+          return;
+        }
+        // Geometry can change during a turn; the saved center descriptor must authorize recovery.
+        pauseForReacquisition();
       }
       dispatch({ type: 'SET_CONFIDENCE', payload: Math.round(score * 100) });
       if (vault.pendingReacquisition) {
