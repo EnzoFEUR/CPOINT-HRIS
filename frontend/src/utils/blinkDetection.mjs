@@ -12,7 +12,7 @@ export function resetBlinkCycle(state) {
   Object.assign(state, {
     phase: state.baseline ? 'OPEN' : 'CALIBRATING', samples: [], lastAt: null,
     openSince: null, openSamples: 0, lastOpenAt: null, closedAt: null,
-    reopenedAt: null, reopenedSamples: 0, closedSamples: 0, count: 0,
+    reopenedAt: null, reopenedSamples: 0, reopenMisses: 0, closedSamples: 0, count: 0,
   });
   return state;
 }
@@ -72,36 +72,26 @@ export function calibrateBlink(state, eyes, now) {
   return true;
 }
 
+export function areEyesOpen(state, eyes) {
+  return Boolean(state?.baseline && eyes && [eyes.left, eyes.right].every(Number.isFinite) &&
+    eyes.left >= state.baseline.left * .84 && eyes.right >= state.baseline.right * .84);
+}
+
 // Require stable open eyes, substantial bilateral closure, then confirmed reopening.
 export function updateBlink(state, eyes, now) {
   if (!acceptSample(state, eyes, now) || !state.baseline || state.phase === 'PASSED') return state;
-  const baselineMean = state.baseline.mean ?? ((state.baseline.left + state.baseline.right) / 2);
-  const currentMean = eyes.mean ?? ((eyes.left + eyes.right) / 2);
-
   const wink = (eyes.left <= state.baseline.left * .58 && eyes.right >= state.baseline.right * .85)
     || (eyes.right <= state.baseline.right * .58 && eyes.left >= state.baseline.left * .85);
   if (wink) { resetBlinkCycle(state); return state; }
 
-  // Substantial bilateral closure or low absolute EAR floor
-  const closed = !wink && (
-    (currentMean <= baselineMean * .70) ||
-    (eyes.left <= state.baseline.left * .70 && eyes.right <= state.baseline.right * .70) ||
-    (currentMean <= .150) ||
-    (eyes.left <= .145 && eyes.right <= .145)
-  );
+  // An absolute cutoff can classify a person's accepted open baseline as closed.
+  const closed = eyes.left <= state.baseline.left * .70 && eyes.right <= state.baseline.right * .70;
 
   // Moderate closure: start of eyelid closure or soft voluntary blink
-  const closing = !wink && (
-    closed ||
-    (currentMean <= baselineMean * .82) ||
-    (eyes.left <= state.baseline.left * .82 && eyes.right <= state.baseline.right * .82)
-  );
+  const closing = eyes.left <= state.baseline.left * .82 && eyes.right <= state.baseline.right * .82;
 
   // Clear open state: mutually exclusive with closing / closed
-  const open = !closing && (
-    (currentMean >= baselineMean * .84) ||
-    (eyes.left >= state.baseline.left * .82 && eyes.right >= state.baseline.right * .82)
-  );
+  const open = areEyesOpen(state, eyes);
 
   if (state.phase === 'OPEN') {
     if (open) {

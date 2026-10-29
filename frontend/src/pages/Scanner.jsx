@@ -35,7 +35,8 @@ import { requestHardwareCamera, stopHardwareStream } from '../utils/hardwareCame
 import { startVideoFrameLoop, captureVideoFrame, copyVideoFrame } from '../utils/cameraFrames.mjs';
 import { createQrScanner, startQrCamera, stopQrCamera } from '../utils/qrCamera';
 import { loadFaceModels, loadBaselineFallbackModel } from '../utils/faceModels';
-import { BLINK_PROMPTS, createBlinkState, getEyeOpenness, calibrateBlink, updateBlink, resetBlinkCycle } from '../utils/blinkDetection.mjs';
+import { BLINK_PROMPTS, createBlinkState, getEyeOpenness, calibrateBlink, updateBlink, resetBlinkCycle, areEyesOpen } from '../utils/blinkDetection.mjs';
+import { trackFace, resetCaptureHold, updateCaptureHold } from '../utils/faceCapture.mjs';
 import { playScannerSound as playSound } from '../utils/audio';
 import { performLogout } from '../utils/authSession';
 import { isOfflineFeatureActive } from '../routes/OfflineRouteGate.js';
@@ -450,7 +451,7 @@ const ScannerTerminal = () => {
     const request = scanRequestRef.current;
     vaultRef.current.submitLock = true;
     dispatch({ type: 'SET_MODE', payload: MODES.PROCESSING });
-    dispatch({ type: 'SET_LOADING', payload: 'Submitting verification...' });
+    dispatch({ type: 'SET_LOADING', payload: 'Verifying attendance...' });
 
     // Capture camera snapshot
     let img64;
@@ -529,6 +530,7 @@ const ScannerTerminal = () => {
           title: isOut ? 'Clocked out' : 'Clocked in',
           message: data.message || 'Attendance recorded.',
           code: data.code,
+          recordedAt: (isOut ? data.data?.time_out : data.data?.time_in) || null,
           image: img64
         }});
         playSound('success'); haptic('success');
@@ -567,7 +569,10 @@ const ScannerTerminal = () => {
     syncCanvas();
 
     const vault = vaultRef.current;
+    vault.faceTrack = {};
+    vault.captureHold = {};
     const interruptEvidence = () => {
+      resetCaptureHold(vault.captureHold);
       resetBlinkCycle(vault.blinkState);
       vault.blinkCount = 0;
       vault.lockFrames = 0;
@@ -576,6 +581,7 @@ const ScannerTerminal = () => {
     };
     const resetChallenge = () => {
       vault.blinkState = createBlinkState();
+      vault.faceTrack = {};
       interruptEvidence();
       vault.earHistory = [];
       vault.depthSamples = [];
@@ -603,25 +609,31 @@ const ScannerTerminal = () => {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
 
       // Face detection using TinyFaceDetector
-      const det = await faceapi
-        .detectSingleFace(frame, new faceapi.TinyFaceDetectorOptions({
+      const faces = await faceapi
+        .detectAllFaces(frame, new faceapi.TinyFaceDetectorOptions({
           inputSize: ENV.DETECTION_INPUT_SIZE,
           scoreThreshold: 0.40
         }))
         .withFaceLandmarks()
-        .withFaceDescriptor();
+        .withFaceDescriptors();
 
       if (!isActive()) return;
 
-      if (!det) {
-        interruptEvidence();
+      if (faces.length !== 1) {
+        resetChallenge();
+        updateStatus(faces.length > 1 ? 'Only one person should be in the frame' : 'Place your face inside the guide');
         throttledDispatch({ scanProgress: Math.max(0, (vaultRef.current.lockFrames / ENV.REQUIRED_LOCK_FRAMES) * 100), matchScore: null });
-        updateStatus('Look directly at the camera to clock in');
         return;
       }
+      const [det] = faces;
 
       const box = det.detection.box;
       const liveDsc = det.descriptor;
+      if (!liveDsc || liveDsc.length !== 128 || !Array.from(liveDsc).every(Number.isFinite)) {
+        resetChallenge();
+        updateStatus('Face detail is unclear. Look directly at the camera');
+        return;
+      }
       const nw = canvas.width, nh = canvas.height;
 
       // Geometry checks
@@ -673,7 +685,11 @@ const ScannerTerminal = () => {
         return;
       }
       const now = performance.now();
-      if (vault.lastFaceAt !== null && now - vault.lastFaceAt > 650) resetChallenge();
+      if (!trackFace(vault.faceTrack, box, now)) {
+        resetChallenge();
+        updateStatus('Face tracking changed. Look at the camera to restart');
+        return;
+      }
       vault.lastFaceAt = now;
       const ear = eyes.mean;
       vaultRef.current.earHistory.push(ear);
@@ -804,6 +820,7 @@ const ScannerTerminal = () => {
         }
 
         if (vaultRef.current.blinkCount < ENV.REQUIRED_BLINKS) {
+          resetCaptureHold(vault.captureHold);
           throttledDispatch({ scanProgress: 75, matchScore: currentScore });
           updateStatus(BLINK_PROMPTS[vault.blinkState.phase]);
           dispatch({
@@ -819,10 +836,23 @@ const ScannerTerminal = () => {
           return;
         }
 
+        if (!areEyesOpen(vault.blinkState, eyes)) {
+          resetCaptureHold(vault.captureHold);
+          updateStatus('Keep both eyes open for capture');
+          return;
+        }
+        const stability = updateCaptureHold(vault.captureHold, { box, yaw: Math.log(relativeYaw), pitch: relativeNose }, now);
+        if (stability < 1) {
+          throttledDispatch({ scanProgress: 80, matchScore: currentScore });
+          dispatch({ type: 'SET_LIVENESS', payload: { stage: 'CAPTURE', status: 'STABILIZING', blinkCount: vault.blinkCount } });
+          updateStatus('Blink confirmed. Hold still for capture');
+          return;
+        }
+
         // Completed challenge and blink
         vaultRef.current.padStage = 'FLASH_CAPTURE';
         throttledDispatch({ scanProgress: 90, matchScore: currentScore });
-        updateStatus('Presence check complete. Verifying attendance...');
+        updateStatus('Capture complete. Verifying attendance...');
         dispatch({
           type: 'SET_LIVENESS',
           payload: {
@@ -1603,15 +1633,15 @@ const ScannerTerminal = () => {
                       {state.liveness.prompt || (state.liveness.targetDirection === 'TURN_LEFT' ? 'Turn your head slightly left' : 'Turn your head slightly right')}
                     </span>
                   </>
-                ) : state.liveness.stage === 'CENTER_BLINK' ? (
+                ) : ['CENTER_BLINK', 'CAPTURE'].includes(state.liveness.stage) ? (
                   <>
-                    <Eye className="w-3.5 h-3.5 text-accent-on-dark animate-pulse" />
+                    <Eye className="w-3.5 h-3.5 text-accent-on-dark" />
                     <span className="font-bold text-accent-on-dark">{state.liveness.prompt || 'Face the camera'}</span>
                   </>
                 ) : state.liveness.passed && state.scanProgress < 100 ? (
                   <>
                     <ShieldCheck className="w-3.5 h-3.5 text-ink" />
-                    <span>Face verified. Recording clock-in...</span>
+                    <span>Capture complete. Verifying attendance...</span>
                   </>
                 ) : state.scanProgress >= 100 ? (
                   <>
@@ -1678,11 +1708,6 @@ const ScannerTerminal = () => {
                 <h3 className="text-sm font-bold text-white">
                   {state.employee ? `${state.employee.first_name} ${state.employee.last_name}` : '—'}
                 </h3>
-                {state.matchScore !== null && (
-                  <p className={`text-xs font-medium mt-0.5 ${state.matchScore >= 50 ? 'text-ink' : 'text-danger'}`}>
-                    Confidence: {state.matchScore}%
-                  </p>
-                )}
                 {state.employee?.is_medical_exempt && (
                   <div className="flex items-center justify-center gap-1.5 mt-1 text-[11px] font-bold text-warning">
                     <HeartPulse className="w-3.5 h-3.5 text-warning" />
@@ -1718,14 +1743,11 @@ const ScannerTerminal = () => {
                     {state.feedback.title}
                   </h2>
                 </div>
-                <p className="text-xs font-medium text-slate-200">{state.feedback.message}</p>
+                <p role="status" aria-live="polite" className="text-xs font-medium text-slate-200">{state.feedback.message}</p>
                 <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2 mt-2.5 text-xs text-slate-400">
-                  <span className="font-mono bg-slate-800 px-1.5 py-0.5 rounded-sm">
-                    {new Date().toLocaleTimeString('en-US', { hour12: false })}
-                  </span>
-                  {state.matchScore !== null && (
-                    <span className={`font-medium ${state.matchScore >= 50 ? 'text-ink' : 'text-danger'}`}>
-                      Confidence: {state.matchScore}%
+                  {state.feedback.recordedAt && Number.isFinite(Date.parse(state.feedback.recordedAt)) && (
+                    <span className="font-mono bg-slate-800 px-1.5 py-0.5 rounded-sm">
+                      Recorded: {new Date(state.feedback.recordedAt).toLocaleString('en-PH', { timeZone: 'Asia/Manila', hour12: false })} PHT
                     </span>
                   )}
                 </div>

@@ -7,7 +7,8 @@ import { fetchWithAuth } from '../utils/api';
 import { requestHardwareCamera, stopHardwareStream } from '../utils/hardwareCamera';
 import { startVideoFrameLoop, copyVideoFrame } from '../utils/cameraFrames.mjs';
 import { loadFaceModels } from '../utils/faceModels';
-import { BLINK_PROMPTS, createBlinkState, getEyeOpenness, calibrateBlink, updateBlink, resetBlinkCycle } from '../utils/blinkDetection.mjs';
+import { BLINK_PROMPTS, createBlinkState, getEyeOpenness, calibrateBlink, updateBlink, resetBlinkCycle, areEyesOpen } from '../utils/blinkDetection.mjs';
+import { trackFace, resetCaptureHold, updateCaptureHold } from '../utils/faceCapture.mjs';
 import { playBiometricSound as playSound } from '../utils/audio';
 import { isSecurity, isAdmin, isMedicalExempt } from '../routes/guards';
 import { needsProfileCompletion } from '../utils/userAccess.mjs';
@@ -31,8 +32,8 @@ const POSE = Object.freeze({
   CENTER: { id: 0, label: 'CENTER', instruction: 'Look straight at camera', color: '#3b82f6', yaw: 0.00, pitch: 0.00, yawTol: 0.12, pitchTol: 0.14 },
   LEFT:   { id: 1, label: 'LEFT',   instruction: 'Turn head slowly LEFT',   color: '#8b5cf6', yaw: 0.28, pitch: 0.00, yawTol: 0.12, pitchTol: 0.18 },
   RIGHT:  { id: 2, label: 'RIGHT',  instruction: 'Turn head slowly RIGHT',  color: '#06b6d4', yaw: -0.28, pitch: 0.00, yawTol: 0.12, pitchTol: 0.18 },
-  UP:     { id: 3, label: 'UP',     instruction: 'Tilt chin slightly UP',   color: '#f59e0b', yaw: 0.00, pitch: -0.14, yawTol: 0.18, pitchTol: 0.18 },
-  DOWN:   { id: 4, label: 'DOWN',   instruction: 'Tilt chin slightly DOWN', color: '#ef4444', yaw: 0.00, pitch: 0.14, yawTol: 0.18, pitchTol: 0.18 },
+  UP:     { id: 3, label: 'UP',     instruction: 'Tilt chin slightly UP',   color: '#f59e0b', yaw: 0.00, pitch: -0.14, yawTol: 0.18, pitchTol: 0.09 },
+  DOWN:   { id: 4, label: 'DOWN',   instruction: 'Tilt chin slightly DOWN', color: '#ef4444', yaw: 0.00, pitch: 0.14, yawTol: 0.18, pitchTol: 0.09 },
 });
 
 const PHASE_LIST = Object.values(POSE);
@@ -167,6 +168,7 @@ function reducer(state, action) {
     case 'SET_LIVENESS': return { ...state, blinkCount: action.blinkCount, livenessOk: action.livenessOk };
     case 'PUSH_CAPTURE': return { ...state, captured: [...state.captured, action.payload] };
     case 'SET_ERROR': return { ...state, mode: MODES.ERROR, error: action.payload };
+    case 'RESTART_SEQUENCE': return { ...state, mode: MODES.CALIBRATING, currentPhaseIdx: -1, captured: [], overallProgress: 0, phaseProgress: 0, blinkCount: 0, livenessOk: false, statusText: action.payload };
     case 'SET_ONLINE': return { ...state, isOnline: action.payload };
     case 'RESET':
       return {
@@ -381,7 +383,7 @@ export default function BiometricSetup() {
     const primaryImage = centerCap.image;
 
     dispatch({ type: 'SET_MODE', payload: MODES.UPLOADING });
-    dispatch({ type: 'SET_STATUS', payload: 'Transmitting encrypted biometric profile...' });
+    dispatch({ type: 'SET_STATUS', payload: 'Verifying and saving registration...' });
 
     try {
       const companyId = user.company_id || (isAdmin(user) ? 'CP-MAIN' : user.id);
@@ -448,12 +450,27 @@ export default function BiometricSetup() {
     if (!video || !canvas) return;
     const frame = video.ownerDocument.createElement('canvas');
     vault.blinkState = createBlinkState();
+    vault.faceTrack = {};
+    vault.captureHold = {};
+    vault.enrollmentAnchor = null;
     const interruptEvidence = () => {
       vault.holdCount = 0;
+      resetCaptureHold(vault.captureHold);
       vault.blinkCount = 0;
       resetBlinkCycle(vault.blinkState);
       if (!vault.baseline) vault.calibrationSamples = [];
       dispatch({ type: 'SET_LIVENESS', blinkCount: 0, livenessOk: false });
+    };
+    const restartSequence = message => {
+      vault.baseline = null;
+      vault.calibrationSamples = [];
+      vault.phaseIdx = 0;
+      vault.enrollmentAnchor = null;
+      vault.faceTrack = {};
+      vault.blinkState = createBlinkState();
+      interruptEvidence();
+      dispatch({ type: 'RESTART_SEQUENCE', payload: message });
+      dispatch({ type: 'SET_STATUS', payload: message });
     };
 
     const syncCanvas = () => {
@@ -472,8 +489,8 @@ export default function BiometricSetup() {
       const ctx = canvas.getContext('2d');
       ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-      const det = await faceapi
-        .detectSingleFace(frame, new faceapi.TinyFaceDetectorOptions({
+      const faces = await faceapi
+        .detectAllFaces(frame, new faceapi.TinyFaceDetectorOptions({
           inputSize: ENV.DETECTION_INPUT_SIZE,
           scoreThreshold: 0.40,
         }))
@@ -481,14 +498,14 @@ export default function BiometricSetup() {
 
       if (!isActive()) return;
 
-      if (!det) {
-        interruptEvidence();
+      if (faces.length !== 1) {
+        restartSequence(faces.length > 1 ? 'Only one person should be in the frame' : 'Place your face inside the guide');
         dispatch({ type: 'SET_CONFIDENCE', payload: 0 });
         dispatch({ type: 'SET_POSE', payload: { yaw: 0, pitch: 0, roll: 0, symmetry: 0 } });
         dispatch({ type: 'SET_PROGRESS', payload: { overall: (vault.phaseIdx / PHASE_LIST.length) * 100, phase: 0 } });
-        dispatch({ type: 'SET_STATUS', payload: 'Center face in frame' });
         return;
       }
+      const [det] = faces;
 
       const box = det.detection.box;
       const lm = det.landmarks;
@@ -527,6 +544,10 @@ export default function BiometricSetup() {
 
       // Neutral Calibration Phase
       const now = performance.now();
+      if (!trackFace(vault.faceTrack, box, now)) {
+        restartSequence('Face tracking changed. Look at the camera to restart');
+        return;
+      }
       if (!vault.baseline) {
         drawMesh(ctx, lm, box, '#3b82f6', false, pose);
         vault.calibrationSamples.push(pose);
@@ -584,33 +605,39 @@ export default function BiometricSetup() {
       dispatch({ type: 'SET_LIVENESS', blinkCount: vault.blinkCount, livenessOk });
       if (!livenessOk && phaseIdx === 0) {
         vault.holdCount = 0;
+        resetCaptureHold(vault.captureHold);
         dispatch({ type: 'SET_STATUS', payload: blinkPoseOk ? (BLINK_PROMPTS[vault.blinkState.phase] || target.instruction) : target.instruction });
         return;
       }
 
       if (match) {
         // For Phase 0 (CENTER baseline), ensure eyes are fully open and looking at the camera before accumulating capture hold
-        const baselineLeft = vault.blinkState?.baseline?.left ?? 0.22;
-        const baselineRight = vault.blinkState?.baseline?.right ?? 0.22;
-        const eyesOpenSettled = phaseIdx !== 0 || (eyes && eyes.left >= baselineLeft * 0.84 && eyes.right >= baselineRight * 0.84);
-        if (!eyesOpenSettled) {
+        if (!areEyesOpen(vault.blinkState, eyes)) {
           vault.holdCount = 0;
+          resetCaptureHold(vault.captureHold);
           dispatch({ type: 'SET_STATUS', payload: 'Look straight at camera with eyes open' });
           return;
         }
 
         vault.holdCount += 1;
-        const pp = Math.min((vault.holdCount / ENV.HOLD_FRAMES) * 100, 100);
+        const stability = updateCaptureHold(vault.captureHold, { box, yaw: dy, pitch: dp }, now);
+        const pp = Math.min(vault.holdCount / ENV.HOLD_FRAMES, stability) * 100;
         const ob = (phaseIdx / PHASE_LIST.length) * 100;
         const op = Math.min(ob + (pp / PHASE_LIST.length), 100);
         dispatch({ type: 'SET_PROGRESS', payload: { overall: op, phase: pp } });
         dispatch({ type: 'SET_STATUS', payload: `${target.instruction}. Hold steady.` });
 
-        if (vault.holdCount >= ENV.HOLD_FRAMES) {
+        if (vault.holdCount >= ENV.HOLD_FRAMES && stability === 1) {
           // Match attendance's dlib-aligned crop and keep image/landmarks on the same frozen frame.
           const [face] = await faceapi.extractFaces(frame, [lm.align(null, { useDlibAlignment: true })]);
           const desc = await faceapi.computeFaceDescriptor(face);
           if (!isActive()) return;
+          const distance = vault.enrollmentAnchor ? faceapi.euclideanDistance(vault.enrollmentAnchor, desc) : 0;
+          if (!desc || desc.length !== 128 || !Array.from(desc).every(Number.isFinite) || !Number.isFinite(distance) || distance > ENV.DESC_CONSISTENCY_THRESHOLD) {
+            restartSequence('Face consistency changed. Look at the camera to restart');
+            return;
+          }
+          vault.enrollmentAnchor ||= desc;
           const img = frame.toDataURL('image/jpeg', 0.9);
           const capture = {
             phase: target.label,
@@ -623,13 +650,14 @@ export default function BiometricSetup() {
           haptic('phase');
 
           vault.holdCount = 0;
+          resetCaptureHold(vault.captureHold);
           const nextIdx = phaseIdx + 1;
 
           if (nextIdx >= PHASE_LIST.length) {
             loopRef.current?.stop();
             loopRef.current = null;
             dispatch({ type: 'SET_MODE', payload: MODES.VALIDATING });
-            dispatch({ type: 'SET_STATUS', payload: 'Finalizing biometric baseline...' });
+            dispatch({ type: 'SET_STATUS', payload: 'Capture complete. Verifying registration...' });
             dispatch({ type: 'SET_PROGRESS', payload: { overall: 100, phase: 100 } });
           } else {
             vault.phaseIdx = nextIdx;
@@ -640,6 +668,7 @@ export default function BiometricSetup() {
         }
       } else {
         vault.holdCount = 0;
+        resetCaptureHold(vault.captureHold);
         dispatch({ type: 'SET_PROGRESS', payload: { overall: (phaseIdx / PHASE_LIST.length) * 100, phase: 0 } });
         dispatch({ type: 'SET_STATUS', payload: target.instruction });
       }
@@ -766,7 +795,7 @@ export default function BiometricSetup() {
           const isDone = i < doneCount;
           const isActive = i === state.currentPhaseIdx && state.mode !== MODES.SUCCESS;
           return (
-            <div key={ph.id} className="flex items-center gap-1.5">
+            <div key={ph.id} aria-label={`${ph.label}${isDone ? ' captured' : isActive ? ' current' : ''}`} aria-current={isActive ? 'step' : undefined} className="flex items-center gap-1.5">
               <div 
                 className={`w-7 h-7 sm:w-8 sm:h-8 rounded-md flex items-center justify-center text-xs font-semibold transition-colors duration-100 border ${
                   isDone ? 'bg-ink-subtle border-line text-white' :
@@ -834,7 +863,7 @@ export default function BiometricSetup() {
                 </div>
                 <h2 className="text-base font-bold text-white mb-1">Face Registration</h2>
                 <p className="text-slate-400 text-xs mb-5 max-w-[240px] leading-relaxed">
-                  Hold your face steady in good lighting to capture 5 quick angles.
+                  Follow the guide through 5 angles. Close both eyes briefly, then reopen; a tone confirms closure.
                 </p>
                 <button
                   onClick={startEnrollment}
@@ -899,7 +928,7 @@ export default function BiometricSetup() {
             {/* Bottom Status Pill */}
             <div className="absolute bottom-3 inset-x-3 z-20 flex justify-center">
               <div className="px-3 py-1 bg-slate-900/90 border border-slate-800 rounded-md text-center shadow-2xs">
-                <p className="text-xs font-medium text-white">{state.statusText}</p>
+                <p role="status" aria-live="polite" aria-atomic="true" className="text-xs font-medium text-white">{state.statusText}</p>
               </div>
             </div>
           </>
