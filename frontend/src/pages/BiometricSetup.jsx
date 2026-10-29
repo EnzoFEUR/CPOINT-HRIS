@@ -7,7 +7,9 @@ import { fetchWithAuth } from '../utils/api';
 import { requestHardwareCamera, stopHardwareStream } from '../utils/hardwareCamera';
 import { startVideoFrameLoop, copyVideoFrame } from '../utils/cameraFrames.mjs';
 import { loadFaceModels } from '../utils/faceModels';
-import { BLINK_PROMPTS, createBlinkState, getEyeOpenness, calibrateBlink, updateBlink, resetBlinkCycle, areEyesOpen } from '../utils/blinkDetection.mjs';
+import { BLINK_PROMPTS, createBlinkState, calibrateBlink, updateBlink, resetBlinkCycle, areEyesOpen } from '../utils/blinkDetection.mjs';
+import { createBlinkDetector } from '../utils/blinkDetector.mjs';
+import { readBlinkEyes } from '../utils/blinkExpression.mjs';
 import { trackFace, resetCaptureHold, updateCaptureHold } from '../utils/faceCapture.mjs';
 import { playBiometricSound as playSound } from '../utils/audio';
 import { isSecurity, isAdmin, isMedicalExempt } from '../routes/guards';
@@ -21,7 +23,7 @@ const ENV = {
   ENROLL_TIMEOUT_MS: parseInt(import.meta.env?.VITE_ENROLL_TIMEOUT_MS, 10) || 120_000,
   HOLD_FRAMES: 8,
   CALIBRATION_FRAMES: 12,
-  DETECTION_INTERVAL_MS: 80,
+  DETECTION_INTERVAL_MS: 50,
   DETECTION_INPUT_SIZE: 320,
   FACE_CONFIDENCE_MIN: 0.55,
   FACE_WIDTH_MIN_PX: 45,
@@ -216,6 +218,7 @@ export default function BiometricSetup() {
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
   const streamRef = useRef(null);
+  const blinkDetectorRef = useRef(null);
   const loopRef = useRef(null);
   const abortRef = useRef(null);
   const sessionTimerRef = useRef(null);
@@ -298,6 +301,7 @@ export default function BiometricSetup() {
   useEffect(() => {
     let mounted = true;
     let wakeLock = null;
+    let blinkDetector;
     const pendingCamera = cameraRequestRef;
 
     const boot = async () => {
@@ -318,7 +322,10 @@ export default function BiometricSetup() {
           } catch { /* The enrollment endpoint rechecks profile completion if this refresh fails. */ }
         }
 
-        await loadFaceModels();
+        if (!mounted) return;
+        blinkDetector = createBlinkDetector();
+        blinkDetectorRef.current = blinkDetector;
+        await Promise.all([loadFaceModels(), blinkDetector.ready]);
         if (!mounted) return;
         dispatch({ type: 'SET_MODELS_LOADED' });
         dispatch({ type: 'SET_STATUS', payload: 'Requesting optical sensor...' });
@@ -334,9 +341,12 @@ export default function BiometricSetup() {
           navigator.wakeLock.request('screen').then(l => { if (mounted) wakeLock = l; else l.release().catch(() => {}); }).catch(() => {});
         }
       } catch (err) {
+        blinkDetector?.close();
+        if (blinkDetectorRef.current === blinkDetector) blinkDetectorRef.current = null;
+        if (!mounted) return;
         console.error('[BOOT]', err);
         const isPermissionDenied = err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError';
-        const msg = isPermissionDenied 
+        const msg = err.code?.startsWith('BLINK_') ? 'Blink detection could not load. Reload this page to retry.' : isPermissionDenied
           ? 'Camera permission denied. Please allow camera access in browser settings.'
           : 'Unable to load camera or facial recognition weights. Please refresh.';
         dispatch({ type: 'SET_ERROR', payload: { message: msg, code: 'BOOT_FAILURE' } });
@@ -350,6 +360,8 @@ export default function BiometricSetup() {
       pendingCamera.current++;
       loopRef.current?.stop();
       loopRef.current = null;
+      blinkDetector?.close();
+      if (blinkDetectorRef.current === blinkDetector) blinkDetectorRef.current = null;
       stopHardwareStream(streamRef.current);
       streamRef.current = null;
       if (abortRef.current) abortRef.current.abort();
@@ -507,19 +519,29 @@ export default function BiometricSetup() {
 
     loopRef.current = startVideoFrameLoop(video, async isActive => {
       if (!copyVideoFrame(video, frame)) return;
+      const observedAt = performance.now();
       syncCanvas();
       const ctx = canvas.getContext('2d');
       ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-      const faces = await faceapi
+      const [faces, blinkResult] = await Promise.all([faceapi
         .detectAllFaces(frame, new faceapi.TinyFaceDetectorOptions({
           inputSize: ENV.DETECTION_INPUT_SIZE,
           scoreThreshold: 0.40,
         }))
-        .withFaceLandmarks();
+        .withFaceLandmarks(), blinkDetectorRef.current.analyze(frame)]);
 
       if (!isActive()) return;
 
+      if (performance.now() - observedAt > 650) {
+        interruptEvidence();
+        dispatch({ type: 'SET_STATUS', payload: 'Face processing is slow. Hold steady in good lighting' });
+        return;
+      }
+      if (blinkResult?.faces?.length > 1) {
+        restartSequence('Only one person should be in the frame');
+        return;
+      }
       if (faces.length !== 1) {
         if (faces.length === 0 && vault.enrollmentAnchor && performance.now() - vault.faceTrack.at <= 650) {
           vault.pendingReacquisition = true;
@@ -542,7 +564,7 @@ export default function BiometricSetup() {
       const box = det.detection.box;
       const lm = det.landmarks;
       const score = det.detection.score;
-      const eyes = getEyeOpenness(lm);
+      const eyes = readBlinkEyes(blinkResult, box, frame.width, frame.height);
       if (!eyes) {
         interruptEvidence();
         dispatch({ type: 'SET_STATUS', payload: 'Move closer so both eyes are clear' });
@@ -574,7 +596,7 @@ export default function BiometricSetup() {
       }
 
       // Neutral Calibration Phase
-      const now = performance.now();
+      const now = observedAt;
       if (!trackFace(vault.faceTrack, box, now)) {
         restartSequence('Face tracking changed. Look at the camera to restart');
         return;
@@ -712,7 +734,7 @@ export default function BiometricSetup() {
       vault.holdCount = 0;
       resetBlinkCycle(vault.blinkState);
       dispatch({ type: 'SET_ERROR', payload: {
-        message: error?.code === 'FACE_PROCESSING_TIMEOUT' ? 'Face processing timed out. Reload this page to retry.' : 'Face tracking interrupted. Restart registration to retry.',
+        message: error?.code?.startsWith('BLINK_') ? 'Blink detection interrupted. Reload this page to retry.' : error?.code === 'FACE_PROCESSING_TIMEOUT' ? 'Face processing timed out. Reload this page to retry.' : 'Face tracking interrupted. Restart registration to retry.',
         code: error?.code || 'FACE_PROCESSING_FAILED',
       } });
     } });
@@ -745,7 +767,7 @@ export default function BiometricSetup() {
     vault.blinkCount = 0;
     vault.blinkState = null;
     vault.phaseIdx = 0;
-    if (!state.modelsLoaded || state.error?.code === 'FACE_PROCESSING_TIMEOUT') { window.location.reload(); return; }
+    if (!state.modelsLoaded || state.error?.code === 'FACE_PROCESSING_TIMEOUT' || state.error?.code?.startsWith('BLINK_')) { window.location.reload(); return; }
     dispatch({ type: 'RESET' });
     if (!streamRef.current?.active || state.mode === MODES.ERROR || videoRef.current?.paused) {
       dispatch({ type: 'SET_MODE', payload: MODES.BOOT });
@@ -997,7 +1019,7 @@ export default function BiometricSetup() {
               onClick={handleReset}
               className="mt-4 h-9 px-4 bg-slate-800 hover:bg-slate-700 text-white rounded-md font-medium text-xs transition-colors duration-100 cursor-pointer"
             >
-              {state.error?.code === 'FACE_PROCESSING_TIMEOUT' ? 'Reload Registration' : 'Try Again'}
+              {state.error?.code === 'FACE_PROCESSING_TIMEOUT' || state.error?.code?.startsWith('BLINK_') ? 'Reload Registration' : 'Try Again'}
             </button>
           </div>
         )}

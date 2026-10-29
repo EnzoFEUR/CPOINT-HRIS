@@ -36,6 +36,8 @@ import { startVideoFrameLoop, captureVideoFrame, copyVideoFrame } from '../utils
 import { createQrScanner, startQrCamera, stopQrCamera } from '../utils/qrCamera';
 import { loadFaceModels, loadBaselineFallbackModel } from '../utils/faceModels';
 import { BLINK_PROMPTS, createBlinkState, getEyeOpenness, calibrateBlink, updateBlink, resetBlinkCycle, areEyesOpen } from '../utils/blinkDetection.mjs';
+import { createBlinkDetector } from '../utils/blinkDetector.mjs';
+import { readBlinkEyes } from '../utils/blinkExpression.mjs';
 import { trackFace, resetCaptureHold, updateCaptureHold } from '../utils/faceCapture.mjs';
 import BlinkStatus from '../components/ui/BlinkStatus';
 import { playScannerSound as playSound } from '../utils/audio';
@@ -52,7 +54,7 @@ const ENV = {
   FEEDBACK_DISPLAY_MS: parseInt(import.meta.env?.VITE_FEEDBACK_MS, 10) || 5_000,
   FACE_MATCH_THRESHOLD: 0.42,        // Euclidean distance (lower = stricter)
   REQUIRED_LOCK_FRAMES: 8,
-  DETECTION_INTERVAL_MS: 80,
+  DETECTION_INTERVAL_MS: 50,
   DETECTION_INPUT_SIZE: 320,
   MIN_FACE_RATIO: 0.08,
   CENTER_THRESHOLD_X: 0.28,
@@ -247,6 +249,7 @@ const ScannerTerminal = () => {
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
   const streamRef = useRef(null);
+  const blinkDetectorRef = useRef(null);
   const detectionRef = useRef(null);
   const abortControllerRef = useRef(null);
   const sessionTimerRef = useRef(null);
@@ -607,21 +610,32 @@ const ScannerTerminal = () => {
 
     detectionRef.current = startVideoFrameLoop(video, async isActive => {
       if (!copyVideoFrame(video, frame)) return;
+      const observedAt = performance.now();
       syncCanvas();
       const ctx = canvas.getContext('2d');
       ctx.clearRect(0, 0, canvas.width, canvas.height);
 
       // Face detection using TinyFaceDetector
-      const faces = await faceapi
+      const [faces, blinkResult] = await Promise.all([faceapi
         .detectAllFaces(frame, new faceapi.TinyFaceDetectorOptions({
           inputSize: ENV.DETECTION_INPUT_SIZE,
           scoreThreshold: 0.40
         }))
         .withFaceLandmarks()
-        .withFaceDescriptors();
+        .withFaceDescriptors(), blinkDetectorRef.current.analyze(frame)]);
 
       if (!isActive()) return;
 
+      if (performance.now() - observedAt > 650) {
+        interruptEvidence();
+        updateStatus('Face processing is slow. Hold steady in good lighting');
+        return;
+      }
+      if (blinkResult?.faces?.length > 1) {
+        resetChallenge();
+        updateStatus('Only one person should be in the frame');
+        return;
+      }
       if (faces.length !== 1) {
         resetChallenge();
         updateStatus(faces.length > 1 ? 'Only one person should be in the frame' : 'Place your face inside the guide');
@@ -679,7 +693,7 @@ const ScannerTerminal = () => {
 
       // Calculate Head Pose and Eye Aspect Ratio
       const pose = getHeadPose(det.landmarks);
-      const eyes = getEyeOpenness(det.landmarks);
+      const eyes = readBlinkEyes(blinkResult, box, frame.width, frame.height);
       const minConfidence = vault.padStage === 'CENTER_BLINK' ? 0.42 : .55;
       if (!eyes || !pose || det.detection.score < minConfidence || !Number.isFinite(pose.yawRatio) || pose.yawRatio <= 0 || !Number.isFinite(pose.noseOffset)) {
         interruptEvidence();
@@ -687,15 +701,15 @@ const ScannerTerminal = () => {
         dispatch({ type: 'SET_LIVENESS', payload: { status: 'EYES_UNCLEAR', blinkCount: 0 } });
         return;
       }
-      const now = performance.now();
+      const now = observedAt;
       if (!trackFace(vault.faceTrack, box, now)) {
         resetChallenge();
         updateStatus('Face tracking changed. Look at the camera to restart');
         return;
       }
       vault.lastFaceAt = now;
-      const ear = eyes.mean;
-      vaultRef.current.earHistory.push(ear);
+      const ear = getEyeOpenness(det.landmarks)?.mean ?? null;
+      if (Number.isFinite(ear)) vaultRef.current.earHistory.push(ear);
       if (vaultRef.current.earHistory.length > 50) vaultRef.current.earHistory.shift();
 
       // A 2D movement proxy, not a depth-camera measurement or proof of liveness.
@@ -885,7 +899,7 @@ const ScannerTerminal = () => {
     }, { intervalMs: ENV.DETECTION_INTERVAL_MS, onError: error => {
       canvas.getContext('2d')?.clearRect(0, 0, canvas.width, canvas.height);
       dispatch({ type: 'SET_ERROR', payload: {
-        message: error?.code === 'FACE_PROCESSING_TIMEOUT' ? 'Face processing timed out. Reload this page to retry.' : 'Face tracking interrupted. Restart the scanner to retry.',
+        message: error?.code?.startsWith('BLINK_') ? 'Blink detection interrupted. Reload this page to retry.' : error?.code === 'FACE_PROCESSING_TIMEOUT' ? 'Face processing timed out. Reload this page to retry.' : 'Face tracking interrupted. Restart the scanner to retry.',
         code: error?.code || 'FACE_PROCESSING_FAILED',
       } });
     } });
@@ -1180,18 +1194,23 @@ const ScannerTerminal = () => {
   useEffect(() => {
     let mounted = true;
     let wakeLock = null;
+    let blinkDetector;
     const pendingScan = scanRequestRef;
 
     // Load models
     (async () => {
       try {
-        await loadFaceModels();
+        blinkDetector = createBlinkDetector();
+        blinkDetectorRef.current = blinkDetector;
+        await Promise.all([loadFaceModels(), blinkDetector.ready]);
         if (mounted) {
           vaultRef.current.modelsLoaded = true;
           dispatch({ type: 'SET_MODELS_LOADED' });
         }
       } catch (err) {
         console.error('[BOOT]', err);
+        blinkDetector?.close();
+        if (blinkDetectorRef.current === blinkDetector) blinkDetectorRef.current = null;
         if (mounted) toast.error('Face verification unavailable. Approved Medical Grace QR attendance remains available. Refresh to retry face verification.');
       }
     })();
@@ -1283,6 +1302,8 @@ const ScannerTerminal = () => {
       qrAbortRef.current?.abort();
       if (photoObjectUrlRef.current) URL.revokeObjectURL(photoObjectUrlRef.current);
       stopFaceCamera();
+      blinkDetector?.close();
+      if (blinkDetectorRef.current === blinkDetector) blinkDetectorRef.current = null;
       stopQr();
       abortControllerRef.current?.abort();
       clearInterval(tick);
@@ -1781,8 +1802,8 @@ const ScannerTerminal = () => {
               </div>
               <h2 className="text-base font-bold text-white mb-1">Scan Interrupted</h2>
               <p className="text-slate-400 text-xs mb-4">{state.error?.message || 'An unexpected error occurred.'}</p>
-              <button onClick={state.error?.code === 'FACE_PROCESSING_TIMEOUT' ? () => window.location.reload() : handleReset} className="w-full h-9 bg-slate-800 hover:bg-slate-700 text-white rounded-md font-semibold text-xs transition-colors duration-100 cursor-pointer shadow-2xs">
-                {state.error?.code === 'FACE_PROCESSING_TIMEOUT' ? 'Reload Scanner' : 'Return to Scanner'}
+              <button onClick={state.error?.code === 'FACE_PROCESSING_TIMEOUT' || state.error?.code?.startsWith('BLINK_') ? () => window.location.reload() : handleReset} className="w-full h-9 bg-slate-800 hover:bg-slate-700 text-white rounded-md font-semibold text-xs transition-colors duration-100 cursor-pointer shadow-2xs">
+                {state.error?.code === 'FACE_PROCESSING_TIMEOUT' || state.error?.code?.startsWith('BLINK_') ? 'Reload Scanner' : 'Return to Scanner'}
               </button>
             </div>
           </div>

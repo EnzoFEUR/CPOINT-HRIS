@@ -3,6 +3,7 @@ import { fileURLToPath } from 'node:url';
 import { env as runtimeEnv } from 'node:process';
 import react from '@vitejs/plugin-react';
 import { offlineAssetManifest } from './offlineAssets.js';
+import { blinkAssets } from './blinkAssets.mjs';
 import { frontendSecurityHeaders } from '../shared/securityPolicy.mjs';
 import { DEV_NONCE_PLACEHOLDER, createBackendProxy, frontendHttpSecurity } from './devSecurity.mjs';
 
@@ -15,7 +16,7 @@ const securityHeadersFor = mode => {
 };
 
 export default defineConfig(({ mode }) => ({
-  plugins: [frontendHttpSecurity(securityHeadersFor(mode), { development: mode === 'development', allowedFsPaths }), react(), offlineAssetManifest({ enabled: loadEnv(mode, frontendRoot, 'VITE_').VITE_ENABLE_OFFLINE_ATTENDANCE === 'true' })],
+  plugins: [frontendHttpSecurity(securityHeadersFor(mode), { development: mode === 'development', allowedFsPaths }), react(), blinkAssets(), offlineAssetManifest({ enabled: loadEnv(mode, frontendRoot, 'VITE_').VITE_ENABLE_OFFLINE_ATTENDANCE === 'true' })],
   html: { cspNonce: mode === 'development' ? DEV_NONCE_PLACEHOLDER : undefined },
   resolve: {
     dedupe: ['react', 'react-dom'],
