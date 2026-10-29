@@ -846,7 +846,7 @@ export default function BiometricSetup() {
       </div>
 
       {/* Camera Viewport */}
-      <div className="relative z-10 w-full max-w-[360px] flex-1 max-h-[54dvh] sm:max-h-[58dvh] aspect-[3/4] sm:aspect-[4/5] bg-black rounded-lg overflow-hidden shadow-xl border border-slate-800 my-auto flex items-center justify-center">
+      <div data-camera-viewport="registration" className="relative z-10 w-full max-w-[360px] min-h-0 flex-1 max-h-[54dvh] sm:max-h-[58dvh] aspect-[3/4] sm:aspect-[4/5] bg-black rounded-lg overflow-hidden shadow-xl border border-slate-800 my-auto flex items-center justify-center">
         
         {/* Mirrored / Normal Video Stream */}
         <video 
@@ -958,22 +958,6 @@ export default function BiometricSetup() {
               </div>
             </div>
 
-            {/* Bottom Status Pill */}
-            <div className="absolute bottom-3 inset-x-3 z-20 flex justify-center">
-              <div className="w-full max-w-xs px-3 py-2 bg-slate-900/95 border border-slate-800 rounded-md text-center shadow-2xs">
-                <div className="flex items-center justify-between gap-3 text-[11px] font-medium mb-1.5">
-                  <span className={state.confidence > 0 ? 'text-emerald-300' : 'text-slate-400'}>
-                    {state.confidence > 0 ? 'Face detected' : 'Finding face'}
-                  </span>
-                  <span className="text-slate-200 tabular-nums">Capture readiness: {Math.round(state.phaseProgress)}%</span>
-                </div>
-                <div role="progressbar" aria-label="Current angle capture readiness" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(state.phaseProgress)} className="h-1 rounded-full bg-slate-700 overflow-hidden">
-                  <div className="h-full bg-emerald-400" style={{ width: `${state.phaseProgress}%` }} />
-                </div>
-                <div className="mt-1.5"><BlinkStatus phase={state.confidence > 0 ? state.blinkPhase : 'PAUSED'} /></div>
-                <p role="status" aria-live="polite" aria-atomic="true" className="text-xs font-medium text-white mt-1.5">{state.statusText}</p>
-              </div>
-            </div>
           </>
         )}
 
@@ -1018,6 +1002,20 @@ export default function BiometricSetup() {
           </div>
         )}
       </div>
+
+      {[MODES.CALIBRATING, MODES.ENROLLING].includes(state.mode) && (
+        <div data-blink-feedback="registration" className="w-full max-w-[360px] shrink-0 my-2 z-10 px-3 py-2 bg-slate-900/95 border border-slate-800 rounded-md text-center">
+          <div className="flex items-center justify-between gap-3 text-[11px] font-medium mb-1.5">
+            <span className={state.confidence > 0 ? 'text-emerald-300' : 'text-slate-400'}>{state.confidence > 0 ? 'Face detected' : 'Finding face'}</span>
+            <span className="text-slate-200 tabular-nums">Capture readiness: {Math.round(state.phaseProgress)}%</span>
+          </div>
+          <div role="progressbar" aria-label="Current angle capture readiness" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(state.phaseProgress)} className="h-1 rounded-full bg-slate-700 overflow-hidden">
+            <div className="h-full bg-emerald-400" style={{ width: `${state.phaseProgress}%` }} />
+          </div>
+          <div className="mt-1.5"><BlinkStatus phase={state.confidence > 0 ? state.blinkPhase : 'PAUSED'} /></div>
+          <p role="status" aria-live="polite" aria-atomic="true" className="text-xs font-medium text-white mt-1.5">{state.statusText}</p>
+        </div>
+      )}
 
       {/* Bottom Footer Details */}
       <div className="w-full max-w-[360px] z-10 pb-1 text-center flex items-center justify-between px-2 text-[10px] text-slate-500">

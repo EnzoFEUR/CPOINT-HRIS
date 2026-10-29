@@ -1567,7 +1567,8 @@ const ScannerTerminal = () => {
       {/* Face verification mode */}
       
         {state.mode === MODES.FACE && (
-          <div className="absolute inset-0 z-20 bg-black overflow-hidden">
+          <div className="absolute inset-0 z-20 bg-black overflow-hidden flex flex-col">
+            <div data-camera-viewport="scanner" className="relative flex-1 min-h-0 overflow-hidden">
             <video 
               ref={videoRef} 
               className={`absolute inset-0 w-full h-full object-contain ${cameraFacing === 'user' ? '-scale-x-100' : 'scale-x-100'}`}
@@ -1640,7 +1641,7 @@ const ScannerTerminal = () => {
                 ) : ['CENTER_BLINK', 'CAPTURE'].includes(state.liveness.stage) ? (
                   <>
                     <Eye className="w-3.5 h-3.5 text-accent-on-dark" />
-                    <span className="font-bold text-accent-on-dark">{state.liveness.prompt || 'Face the camera'}</span>
+                    <span className="font-bold text-accent-on-dark">Presence check</span>
                   </>
                 ) : state.liveness.passed && state.scanProgress < 100 ? (
                   <>
@@ -1712,7 +1713,6 @@ const ScannerTerminal = () => {
                 <h3 className="text-sm font-bold text-white">
                   {state.employee ? `${state.employee.first_name} ${state.employee.last_name}` : '—'}
                 </h3>
-                {!state.employee?.is_medical_exempt && <div className="mt-1"><BlinkStatus phase={state.liveness.blinkPhase} /></div>}
                 {state.employee?.is_medical_exempt && (
                   <div className="flex items-center justify-center gap-1.5 mt-1 text-[11px] font-bold text-warning">
                     <HeartPulse className="w-3.5 h-3.5 text-warning" />
@@ -1721,6 +1721,15 @@ const ScannerTerminal = () => {
                 )}
               </div>
             </div>
+            </div>
+            {!state.employee?.is_medical_exempt && (
+              <div data-blink-feedback="scanner" className="shrink-0 z-30 border-t border-slate-800 bg-slate-950 px-4 pt-2 pb-[max(env(safe-area-inset-bottom,12px),12px)] text-center">
+                <BlinkStatus phase={state.liveness.blinkPhase} />
+                {['CENTER_BLINK', 'CAPTURE'].includes(state.liveness.stage) && (
+                  <p className="text-xs text-slate-300 mt-1">{state.liveness.prompt || 'Face the camera'}</p>
+                )}
+              </div>
+            )}
           </div>
         )}
       
