@@ -14,6 +14,7 @@ import { isSecurity, isAdmin, isMedicalExempt } from '../routes/guards';
 import { needsProfileCompletion } from '../utils/userAccess.mjs';
 import { performLogout } from '../utils/authSession';
 import BackButton from '../components/ui/BackButton';
+import BlinkStatus from '../components/ui/BlinkStatus';
 
 const ENV = {
   API_BASE: import.meta.env?.VITE_API_BASE || '/api',
@@ -149,6 +150,7 @@ const initialState = {
   pose: { yaw: 0, pitch: 0, roll: 0, symmetry: 0 },
   confidence: 0,
   blinkCount: 0,
+  blinkPhase: 'CALIBRATING',
   livenessOk: false,
   captured: [],
   error: null,
@@ -165,10 +167,10 @@ function reducer(state, action) {
     case 'SET_STATUS': return { ...state, statusText: action.payload };
     case 'SET_POSE': return { ...state, pose: action.payload };
     case 'SET_CONFIDENCE': return { ...state, confidence: action.payload };
-    case 'SET_LIVENESS': return { ...state, blinkCount: action.blinkCount, livenessOk: action.livenessOk };
+    case 'SET_LIVENESS': return { ...state, blinkCount: action.blinkCount, livenessOk: action.livenessOk, blinkPhase: action.blinkPhase };
     case 'PUSH_CAPTURE': return { ...state, captured: [...state.captured, action.payload] };
     case 'SET_ERROR': return { ...state, mode: MODES.ERROR, error: action.payload };
-    case 'RESTART_SEQUENCE': return { ...state, mode: MODES.CALIBRATING, currentPhaseIdx: -1, captured: [], overallProgress: 0, phaseProgress: 0, confidence: 0, blinkCount: 0, livenessOk: false, statusText: action.payload };
+    case 'RESTART_SEQUENCE': return { ...state, mode: MODES.CALIBRATING, currentPhaseIdx: -1, captured: [], overallProgress: 0, phaseProgress: 0, confidence: 0, blinkCount: 0, blinkPhase: 'CALIBRATING', livenessOk: false, statusText: action.payload };
     case 'SET_ONLINE': return { ...state, isOnline: action.payload };
     case 'RESET':
       return {
@@ -462,7 +464,7 @@ export default function BiometricSetup() {
       if (!vault.enrollmentAnchor) {
         vault.blinkCount = 0;
         resetBlinkCycle(vault.blinkState);
-        dispatch({ type: 'SET_LIVENESS', blinkCount: 0, livenessOk: false });
+        dispatch({ type: 'SET_LIVENESS', blinkCount: 0, livenessOk: false, blinkPhase: vault.blinkState.phase });
       }
       if (!vault.baseline) vault.calibrationSamples = [];
     };
@@ -522,6 +524,7 @@ export default function BiometricSetup() {
         if (faces.length === 0 && vault.enrollmentAnchor && performance.now() - vault.faceTrack.at <= 650) {
           vault.pendingReacquisition = true;
           dispatch({ type: 'SET_CONFIDENCE', payload: 0 });
+          dispatch({ type: 'SET_LIVENESS', blinkCount: vault.blinkCount, livenessOk: vault.blinkCount >= ENV.REQUIRED_BLINKS, blinkPhase: 'PAUSED' });
           vault.holdCount = 0;
           resetCaptureHold(vault.captureHold);
           dispatch({ type: 'SET_PROGRESS', payload: { overall: (vault.phaseIdx / PHASE_LIST.length) * 100, phase: 0 } });
@@ -638,7 +641,7 @@ export default function BiometricSetup() {
         }
       }
       const livenessOk = vault.blinkCount >= ENV.REQUIRED_BLINKS;
-      dispatch({ type: 'SET_LIVENESS', blinkCount: vault.blinkCount, livenessOk });
+      dispatch({ type: 'SET_LIVENESS', blinkCount: vault.blinkCount, livenessOk, blinkPhase: vault.blinkState.phase });
       if (!livenessOk && phaseIdx === 0) {
         vault.holdCount = 0;
         resetCaptureHold(vault.captureHold);
@@ -967,6 +970,7 @@ export default function BiometricSetup() {
                 <div role="progressbar" aria-label="Current angle capture readiness" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(state.phaseProgress)} className="h-1 rounded-full bg-slate-700 overflow-hidden">
                   <div className="h-full bg-emerald-400" style={{ width: `${state.phaseProgress}%` }} />
                 </div>
+                <div className="mt-1.5"><BlinkStatus phase={state.confidence > 0 ? state.blinkPhase : 'PAUSED'} /></div>
                 <p role="status" aria-live="polite" aria-atomic="true" className="text-xs font-medium text-white mt-1.5">{state.statusText}</p>
               </div>
             </div>

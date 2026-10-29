@@ -37,6 +37,7 @@ import { createQrScanner, startQrCamera, stopQrCamera } from '../utils/qrCamera'
 import { loadFaceModels, loadBaselineFallbackModel } from '../utils/faceModels';
 import { BLINK_PROMPTS, createBlinkState, getEyeOpenness, calibrateBlink, updateBlink, resetBlinkCycle, areEyesOpen } from '../utils/blinkDetection.mjs';
 import { trackFace, resetCaptureHold, updateCaptureHold } from '../utils/faceCapture.mjs';
+import BlinkStatus from '../components/ui/BlinkStatus';
 import { playScannerSound as playSound } from '../utils/audio';
 import { performLogout } from '../utils/authSession';
 import { isOfflineFeatureActive } from '../routes/OfflineRouteGate.js';
@@ -173,6 +174,7 @@ const initialState = {
   scanProgress: 0,
   matchScore: null,
   liveness: { 
+    blinkPhase: 'PENDING',
     stage: 'ALIGN', 
     targetDirection: null, 
     status: 'ALIGNING', 
@@ -578,6 +580,7 @@ const ScannerTerminal = () => {
       vault.lockFrames = 0;
       vault.challengeTurnFrames = 0;
       vault.recenterFrames = 0;
+      dispatch({ type: 'SET_LIVENESS', payload: { blinkPhase: 'PAUSED', blinkCount: 0, passed: false } });
     };
     const resetChallenge = () => {
       vault.blinkState = createBlinkState();
@@ -597,7 +600,7 @@ const ScannerTerminal = () => {
       dispatch({ type: 'SET_MATCH', payload: null });
       dispatch({ type: 'SET_LIVENESS', payload: {
         stage: 'ALIGN', targetDirection: vault.targetDirection, status: 'ALIGNING',
-        blinkCount: 0, ear: null, passed: false, flashActive: false, prompt: 'Look directly at the camera',
+        blinkCount: 0, blinkPhase: 'PENDING', ear: null, passed: false, flashActive: false, prompt: 'Look directly at the camera',
       } });
     };
     resetChallenge();
@@ -795,7 +798,7 @@ const ScannerTerminal = () => {
           vault.recenterFrames = 0;
           resetBlinkCycle(vault.blinkState);
           vault.blinkCount = 0;
-          dispatch({ type: 'SET_LIVENESS', payload: { status: 'RECENTER', blinkCount: 0 } });
+          dispatch({ type: 'SET_LIVENESS', payload: { status: 'RECENTER', blinkCount: 0, blinkPhase: 'PAUSED' } });
           throttledDispatch({ scanProgress: 60, matchScore: currentScore });
           updateStatus('Turn face back to center');
           drawFaceMesh(ctx, det.landmarks, box, 'scanning');
@@ -810,6 +813,7 @@ const ScannerTerminal = () => {
         }
         updateBlink(vault.blinkState, eyes, now);
         vault.blinkCount = vault.blinkState.count;
+        dispatch({ type: 'SET_LIVENESS', payload: { blinkPhase: vault.blinkState.phase, blinkCount: vault.blinkCount } });
 
         // Instant audio cue when eyes close so employee knows to reopen without peeking
         if (vault.lastBlinkPhase !== vault.blinkState.phase) {
@@ -1708,6 +1712,7 @@ const ScannerTerminal = () => {
                 <h3 className="text-sm font-bold text-white">
                   {state.employee ? `${state.employee.first_name} ${state.employee.last_name}` : '—'}
                 </h3>
+                {!state.employee?.is_medical_exempt && <div className="mt-1"><BlinkStatus phase={state.liveness.blinkPhase} /></div>}
                 {state.employee?.is_medical_exempt && (
                   <div className="flex items-center justify-center gap-1.5 mt-1 text-[11px] font-bold text-warning">
                     <HeartPulse className="w-3.5 h-3.5 text-warning" />
