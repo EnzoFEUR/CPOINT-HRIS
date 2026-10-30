@@ -39,6 +39,7 @@ import { BLINK_PROMPTS, createBlinkState, getEyeOpenness, calibrateBlink, update
 import { createBlinkDetector } from '../utils/blinkDetector.mjs';
 import { readBlinkEyes } from '../utils/blinkExpression.mjs';
 import { trackFace, resetCaptureHold, updateCaptureHold } from '../utils/faceCapture.mjs';
+import { readTrackedFace, drawTrackedFace } from '../utils/faceTracking.mjs';
 import BlinkStatus from '../components/ui/BlinkStatus';
 import { playScannerSound as playSound } from '../utils/audio';
 import { performLogout } from '../utils/authSession';
@@ -62,10 +63,26 @@ const ENV = {
   REQUIRED_BLINKS: 1,
 };
 
+const detectIdentityFaces = async (frame, minConfidence) => {
+  const faces = await faceapi.detectAllFaces(frame, new faceapi.TinyFaceDetectorOptions({
+    inputSize: ENV.DETECTION_INPUT_SIZE, scoreThreshold: .4,
+  })).withFaceLandmarks();
+  if (faces.length !== 1) return faces;
+  const [face] = faces;
+  const box = face.detection.box;
+  const centered = Math.abs(box.x + box.width / 2 - frame.width / 2) < frame.width * ENV.CENTER_THRESHOLD_X
+    && Math.abs(box.y + box.height / 2 - frame.height / 2) < frame.height * ENV.CENTER_THRESHOLD_Y;
+  if (face.detection.score < minConfidence || !centered || box.width < frame.width * ENV.MIN_FACE_RATIO) return faces;
+  // Keep the exact dlib-aligned recognition crop; unusable frames need no descriptor inference.
+  const [aligned] = await faceapi.extractFaces(frame, [face.landmarks.align(null, { useDlibAlignment: true })]);
+  const descriptor = await faceapi.computeFaceDescriptor(aligned);
+  return [{ detection: face.detection, landmarks: face.landmarks, descriptor }];
+};
+
 // Validation utilities
 const isValidUUID = (str) => /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(str);
 
-// Head pose estimation
+// Legacy 2D movement measurement retained for the existing server telemetry contract.
 const getHeadPose = (landmarks) => {
   const pts = landmarks?.positions;
   if (!pts || pts.length < 68 || ![0, 16, 30, 36, 45].every(i => Number.isFinite(pts[i]?.x) && Number.isFinite(pts[i]?.y))) return null;
@@ -109,53 +126,6 @@ const haptic = (type) => {
   if (type === 'success') navigator.vibrate([40, 30, 60]);
   else if (type === 'error') navigator.vibrate([80, 50, 80, 50, 120]);
   else navigator.vibrate(30);
-};
-
-// Canvas renderer
-const drawFaceMesh = (ctx, landmarks, box, state) => {
-  const pts = landmarks.positions;
-  const palette = {
-    scanning: { dot: '#3b82f6', line: 'rgba(59,130,246,0.45)', corner: 'rgba(59,130,246,0.55)' },
-    locked:   { dot: '#22c55e', line: 'rgba(34,197,94,0.55)',  corner: 'rgba(34,197,94,0.7)' },
-    mismatch: { dot: '#ef4444', line: 'rgba(239,68,68,0.55)',  corner: 'rgba(239,68,68,0.7)' },
-  };
-  const c = palette[state] || palette.scanning;
-  const r = state === 'locked' ? 2.8 : 1.6;
-  const lw = state === 'locked' ? 2 : 1;
-
-  ctx.fillStyle = c.dot;
-  for (const pt of pts) { ctx.beginPath(); ctx.arc(pt.x, pt.y, r, 0, Math.PI * 2); ctx.fill(); }
-
-  const drawPath = (indices, close = false) => {
-    if (indices.length < 2) return;
-    ctx.strokeStyle = c.line; ctx.lineWidth = lw; ctx.beginPath();
-    ctx.moveTo(pts[indices[0]].x, pts[indices[0]].y);
-    for (let i = 1; i < indices.length; i++) ctx.lineTo(pts[indices[i]].x, pts[indices[i]].y);
-    if (close) ctx.closePath();
-    ctx.stroke();
-  };
-
-  // Jaw, brows, nose, eyes, mouth
-  drawPath([0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16]);
-  drawPath([17,18,19,20,21]);
-  drawPath([22,23,24,25,26]);
-  drawPath([27,28,29,30]);
-  drawPath([31,32,33,34,35]);
-  drawPath([36,37,38,39,40,41], true);
-  drawPath([42,43,44,45,46,47], true);
-  drawPath([48,49,50,51,52,53,54,55,56,57,58,59], true);
-  drawPath([60,61,62,63,64,65,66,67], true);
-
-  // Corner bracket
-  const { x, y, width: w, height: h } = box;
-  const cl = Math.min(32, w * 0.18);
-  ctx.strokeStyle = c.corner; ctx.lineWidth = 3; ctx.setLineDash([]);
-  ctx.beginPath();
-  ctx.moveTo(x, y + cl); ctx.lineTo(x, y); ctx.lineTo(x + cl, y);
-  ctx.moveTo(x + w - cl, y); ctx.lineTo(x + w, y); ctx.lineTo(x + w, y + cl);
-  ctx.moveTo(x + w, y + h - cl); ctx.lineTo(x + w, y + h); ctx.lineTo(x + w - cl, y + h);
-  ctx.moveTo(x + cl, y + h); ctx.lineTo(x, y + h); ctx.lineTo(x, y + h - cl);
-  ctx.stroke();
 };
 
 // State machine
@@ -615,14 +585,10 @@ const ScannerTerminal = () => {
       const ctx = canvas.getContext('2d');
       ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-      // Face detection using TinyFaceDetector
-      const [faces, blinkResult] = await Promise.all([faceapi
-        .detectAllFaces(frame, new faceapi.TinyFaceDetectorOptions({
-          inputSize: ENV.DETECTION_INPUT_SIZE,
-          scoreThreshold: 0.40
-        }))
-        .withFaceLandmarks()
-        .withFaceDescriptors(), blinkDetectorRef.current.analyze(frame)]);
+      const minConfidence = vault.padStage === 'CENTER_BLINK' ? 0.42 : .55;
+      const [faces, blinkResult] = await Promise.all([
+        detectIdentityFaces(frame, minConfidence), blinkDetectorRef.current.analyze(frame),
+      ]);
 
       if (!isActive()) return;
 
@@ -646,11 +612,13 @@ const ScannerTerminal = () => {
 
       const box = det.detection.box;
       const liveDsc = det.descriptor;
-      if (!liveDsc || liveDsc.length !== 128 || !Array.from(liveDsc).every(Number.isFinite)) {
-        resetChallenge();
-        updateStatus('Face detail is unclear. Look directly at the camera');
+      const tracked = readTrackedFace(blinkResult, box, frame.width, frame.height);
+      if (!tracked) {
+        interruptEvidence();
+        updateStatus('Keep your face visible and turn slightly toward the camera');
         return;
       }
+      const pose = tracked.pose;
       const nw = canvas.width, nh = canvas.height;
 
       // Geometry checks
@@ -659,6 +627,19 @@ const ScannerTerminal = () => {
       const centered = Math.abs(cx - nw / 2) < nw * ENV.CENTER_THRESHOLD_X &&
                        Math.abs(cy - nh / 2) < nh * ENV.CENTER_THRESHOLD_Y;
       const bigEnough = box.width >= nw * ENV.MIN_FACE_RATIO;
+
+      if (!centered || !bigEnough || det.detection.score < minConfidence) {
+        interruptEvidence();
+        throttledDispatch({ scanProgress: 0, matchScore: null });
+        updateStatus(!bigEnough ? 'Move closer to the camera' : !centered ? 'Center your face in the frame' : 'Hold still and face the light');
+        drawTrackedFace(ctx, tracked, '#3b82f6', false);
+        return;
+      }
+      if (!liveDsc || liveDsc.length !== 128 || !Array.from(liveDsc).every(Number.isFinite)) {
+        resetChallenge();
+        updateStatus('Face detail is unclear. Look directly at the camera');
+        return;
+      }
 
       // Identity match Euclidean distance
       let matched = true;
@@ -675,36 +656,27 @@ const ScannerTerminal = () => {
         matched = true;
       }
 
-      if (!centered || !bigEnough) {
-        interruptEvidence();
-        throttledDispatch({ scanProgress: Math.max(0, (vaultRef.current.lockFrames / ENV.REQUIRED_LOCK_FRAMES) * 100) });
-        updateStatus(!bigEnough ? 'Move closer to the camera' : 'Center your face in the frame');
-        drawFaceMesh(ctx, det.landmarks, box, 'scanning');
-        return;
-      }
-
       if (!matched) {
         resetChallenge();
         throttledDispatch({ scanProgress: 0, matchScore: currentScore });
         updateStatus('Face not recognized. Try again');
-        drawFaceMesh(ctx, det.landmarks, box, 'mismatch');
+        drawTrackedFace(ctx, tracked, '#ef4444', false);
         return;
       }
 
-      // Calculate Head Pose and Eye Aspect Ratio
-      const pose = getHeadPose(det.landmarks);
+      // Keep face geometry fresh even when eye-expression readings are temporarily unavailable.
+      const now = observedAt;
+      if (!trackFace(vault.faceTrack, tracked.box, now)) {
+        resetChallenge();
+        updateStatus('Face tracking changed. Look at the camera to restart');
+        return;
+      }
+      const legacyPose = getHeadPose(det.landmarks);
       const eyes = readBlinkEyes(blinkResult, box, frame.width, frame.height);
-      const minConfidence = vault.padStage === 'CENTER_BLINK' ? 0.42 : .55;
-      if (!eyes || !pose || det.detection.score < minConfidence || !Number.isFinite(pose.yawRatio) || pose.yawRatio <= 0 || !Number.isFinite(pose.noseOffset)) {
+      if (!eyes || !legacyPose || det.detection.score < minConfidence || !Number.isFinite(legacyPose.noseOffset)) {
         interruptEvidence();
         updateStatus('Move closer so both eyes are clear');
         dispatch({ type: 'SET_LIVENESS', payload: { status: 'EYES_UNCLEAR', blinkCount: 0 } });
-        return;
-      }
-      const now = observedAt;
-      if (!trackFace(vault.faceTrack, box, now)) {
-        resetChallenge();
-        updateStatus('Face tracking changed. Look at the camera to restart');
         return;
       }
       vault.lastFaceAt = now;
@@ -714,25 +686,25 @@ const ScannerTerminal = () => {
 
       // A 2D movement proxy, not a depth-camera measurement or proof of liveness.
       if (vault.padStage !== 'CENTER_BLINK') {
-        vault.depthSamples.push(pose.noseOffset);
+        vault.depthSamples.push(legacyPose.noseOffset);
         if (vault.depthSamples.length > 60) vault.depthSamples.shift();
       }
-      const relativeYaw = vault.neutralPose ? pose.yawRatio / vault.neutralPose.yawRatio : 1;
-      const relativeNose = vault.neutralPose ? pose.noseOffset - vault.neutralPose.noseOffset : 0;
+      const relativeYaw = vault.neutralPose ? pose.yaw - vault.neutralPose.yaw : 0;
+      const relativePitch = vault.neutralPose ? pose.pitch - vault.neutralPose.pitch : 0;
 
       // Challenge state machine
       // 1. Align face
       if (vaultRef.current.padStage === 'ALIGN') {
-        if (pose.isCentered) {
+        if (Math.abs(pose.yaw) <= .24 && Math.abs(pose.pitch) <= .24 && Math.abs(pose.roll) <= .35) {
           const eyesReady = calibrateBlink(vault.blinkState, eyes, now);
           vaultRef.current.lockFrames += 1;
           const progress = Math.min((vaultRef.current.lockFrames / 3) * 25, 25);
           throttledDispatch({ scanProgress: progress, matchScore: currentScore });
           updateStatus(eyesReady ? 'Face detected. Checking presence...' : BLINK_PROMPTS.CALIBRATING);
-          drawFaceMesh(ctx, det.landmarks, box, 'scanning');
+          drawTrackedFace(ctx, tracked, '#3b82f6', false);
 
           if (vaultRef.current.lockFrames >= 3 && eyesReady) {
-            vault.neutralPose = { yawRatio: pose.yawRatio, noseOffset: pose.noseOffset };
+            vault.neutralPose = { yaw: pose.yaw, pitch: pose.pitch };
             vaultRef.current.padStage = 'CHALLENGE';
             vaultRef.current.challengeTurnFrames = 0;
             playSound('scan');
@@ -750,7 +722,7 @@ const ScannerTerminal = () => {
         } else {
           interruptEvidence();
           updateStatus('Look directly at the camera');
-          drawFaceMesh(ctx, det.landmarks, box, 'scanning');
+          drawTrackedFace(ctx, tracked, '#3b82f6', false);
         }
         return;
       }
@@ -758,8 +730,8 @@ const ScannerTerminal = () => {
       // 2. Head turn challenge
       if (vaultRef.current.padStage === 'CHALLENGE') {
         const targetTurnMet = vaultRef.current.targetDirection === 'TURN_LEFT'
-          ? relativeYaw >= 1.38 || relativeNose >= .16
-          : relativeYaw <= .72 || relativeNose <= -.16;
+          ? relativeYaw >= .16 && relativeYaw <= .4
+          : relativeYaw <= -.16 && relativeYaw >= -.4;
         const directiveText = vaultRef.current.targetDirection === 'TURN_LEFT'
           ? 'Turn your head slightly to the left'
           : 'Turn your head slightly to the right';
@@ -769,7 +741,7 @@ const ScannerTerminal = () => {
           const progress = 25 + Math.min((vaultRef.current.challengeTurnFrames / 2) * 35, 35);
           throttledDispatch({ scanProgress: progress, matchScore: currentScore });
           updateStatus('Head turn detected');
-          drawFaceMesh(ctx, det.landmarks, box, 'locked');
+          drawTrackedFace(ctx, tracked, '#22c55e', true);
 
           if (vaultRef.current.challengeTurnFrames >= 2) {
             if (calculateVariance(vault.depthSamples) < .0005) {
@@ -796,8 +768,8 @@ const ScannerTerminal = () => {
         } else {
           vault.challengeTurnFrames = 0;
           throttledDispatch({ scanProgress: 35, matchScore: currentScore });
-          updateStatus(directiveText);
-          drawFaceMesh(ctx, det.landmarks, box, 'scanning');
+          updateStatus(Math.abs(relativeYaw) > .4 ? 'Turn slightly back toward the camera' : directiveText);
+          drawTrackedFace(ctx, tracked, '#3b82f6', false);
         }
         return;
       }
@@ -805,9 +777,9 @@ const ScannerTerminal = () => {
       // 3. Re-center and blink
       if (vaultRef.current.padStage === 'CENTER_BLINK') {
         const blinkInProgress = vault.blinkState && ['ARMED', 'CLOSING', 'CLOSED', 'REOPEN', 'PASSED'].includes(vault.blinkState.phase);
-        const maxLogYaw = blinkInProgress ? .38 : .24;
-        const maxNose = blinkInProgress ? .22 : .13;
-        const returned = vault.neutralPose && Math.abs(Math.log(relativeYaw)) <= maxLogYaw && Math.abs(relativeNose) <= maxNose;
+        const maxYaw = blinkInProgress ? .24 : .14;
+        const maxPitch = blinkInProgress ? .24 : .14;
+        const returned = vault.neutralPose && Math.abs(relativeYaw) <= maxYaw && Math.abs(relativePitch) <= maxPitch;
         if (!returned) {
           vault.recenterFrames = 0;
           resetBlinkCycle(vault.blinkState);
@@ -815,14 +787,14 @@ const ScannerTerminal = () => {
           dispatch({ type: 'SET_LIVENESS', payload: { status: 'RECENTER', blinkCount: 0, blinkPhase: 'PAUSED' } });
           throttledDispatch({ scanProgress: 60, matchScore: currentScore });
           updateStatus('Turn face back to center');
-          drawFaceMesh(ctx, det.landmarks, box, 'scanning');
+          drawTrackedFace(ctx, tracked, '#3b82f6', false);
           return;
         }
 
         vault.recenterFrames++;
         if (vault.recenterFrames < 3) {
           updateStatus('Face the camera');
-          drawFaceMesh(ctx, det.landmarks, box, 'scanning');
+          drawTrackedFace(ctx, tracked, '#3b82f6', false);
           return;
         }
         updateBlink(vault.blinkState, eyes, now);
@@ -850,7 +822,7 @@ const ScannerTerminal = () => {
               ear
             }
           });
-          drawFaceMesh(ctx, det.landmarks, box, 'scanning');
+          drawTrackedFace(ctx, tracked, '#3b82f6', false);
           return;
         }
 
@@ -859,7 +831,7 @@ const ScannerTerminal = () => {
           updateStatus('Keep both eyes open for capture');
           return;
         }
-        const stability = updateCaptureHold(vault.captureHold, { box, yaw: Math.log(relativeYaw), pitch: relativeNose }, now);
+        const stability = updateCaptureHold(vault.captureHold, { box, yaw: relativeYaw, pitch: relativePitch }, now);
         if (stability < 1) {
           throttledDispatch({ scanProgress: 80, matchScore: currentScore });
           dispatch({ type: 'SET_LIVENESS', payload: { stage: 'CAPTURE', status: 'STABILIZING', blinkCount: vault.blinkCount } });
@@ -882,7 +854,7 @@ const ScannerTerminal = () => {
             ear
           }
         });
-        drawFaceMesh(ctx, det.landmarks, box, 'locked');
+        drawTrackedFace(ctx, tracked, '#22c55e', true);
 
         // Flash and capture snapshot
         detectionRef.current?.stop();

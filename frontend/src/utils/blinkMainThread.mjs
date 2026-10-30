@@ -14,7 +14,7 @@ export function createMainThreadBlinkDetector({ load = () => import('@mediapipe/
       const result = await FaceLandmarker.createFromOptions(files, {
         canvas: document.createElement('canvas'),
         baseOptions: { modelAssetPath: `${base}/face-landmarker.task`, delegate: 'CPU' },
-        runningMode: 'VIDEO', numFaces: 2, outputFaceBlendshapes: true,
+        runningMode: 'VIDEO', numFaces: 2, outputFaceBlendshapes: true, outputFacialTransformationMatrixes: true,
         minFaceDetectionConfidence: .5, minFacePresenceConfidence: .5, minTrackingConfidence: .5,
       });
       if (closed) { result.close(); return; }

@@ -11,6 +11,7 @@ import { BLINK_PROMPTS, createBlinkState, calibrateBlink, updateBlink, resetBlin
 import { createBlinkDetector } from '../utils/blinkDetector.mjs';
 import { readBlinkEyes } from '../utils/blinkExpression.mjs';
 import { trackFace, resetCaptureHold, updateCaptureHold } from '../utils/faceCapture.mjs';
+import { readTrackedFace, drawTrackedFace } from '../utils/faceTracking.mjs';
 import { playBiometricSound as playSound } from '../utils/audio';
 import { isSecurity, isAdmin, isMedicalExempt } from '../routes/guards';
 import { needsProfileCompletion } from '../utils/userAccess.mjs';
@@ -32,6 +33,7 @@ const ENV = {
   REGISTRATION_RECOVERY_MS: 2000,
 };
 
+// Relative pose targets in radians, measured from the calibrated forward position.
 const POSE = Object.freeze({
   CENTER: { id: 0, label: 'CENTER', instruction: 'Look straight at camera', color: '#3b82f6', yaw: 0.00, pitch: 0.00, yawTol: 0.12, pitchTol: 0.14 },
   LEFT:   { id: 1, label: 'LEFT',   instruction: 'Turn slightly LEFT',   color: '#8b5cf6', yaw: 0.28, pitch: 0.00, yawTol: 0.12, pitchTol: 0.18 },
@@ -42,99 +44,11 @@ const POSE = Object.freeze({
 
 const PHASE_LIST = Object.values(POSE);
 
-// 3D head pose estimation normalized by inter-ocular distance
-const estimateHeadPose = (landmarks) => {
-  const p = landmarks.positions;
-  const leftEyeOuter  = p[36];
-  const rightEyeOuter = p[45];
-  const noseTip       = p[30];
-  const chin          = p[8];
-  const leftMouth     = p[48];
-  const rightMouth    = p[54];
-
-  const eyeMid = {
-    x: (leftEyeOuter.x + rightEyeOuter.x) / 2,
-    y: (leftEyeOuter.y + rightEyeOuter.y) / 2,
-  };
-
-  const iod = Math.hypot(rightEyeOuter.x - leftEyeOuter.x, rightEyeOuter.y - leftEyeOuter.y) || 1;
-  const yaw = (noseTip.x - eyeMid.x) / (iod * 0.5);
-  const eyeToNoseY = eyeMid.y - noseTip.y;
-  const noseToChinY = chin.y - noseTip.y;
-  const pitch = (noseToChinY - eyeToNoseY * 1.4) / iod;
-  const roll = Math.atan2(rightEyeOuter.y - leftEyeOuter.y, rightEyeOuter.x - leftEyeOuter.x);
-  const mouthW = Math.hypot(rightMouth.x - leftMouth.x, rightMouth.y - leftMouth.y);
-  const symmetry = Math.abs(1 - (mouthW / (iod * 0.85)));
-
-  return { yaw, pitch, roll, iod, scale: iod, symmetry };
-};
-
-
 const haptic = (type) => {
   if (!navigator.vibrate) return;
   if (type === 'phase') navigator.vibrate([20, 40, 20]);
   else if (type === 'success') navigator.vibrate([30, 40, 50, 40, 80]);
   else if (type === 'error') navigator.vibrate([100, 50, 100]);
-};
-
-// Canvas face mesh and direction pointer
-const drawMesh = (ctx, landmarks, box, color, isLocked, pose = null) => {
-  const pts = landmarks.positions;
-  const r = isLocked ? 2.5 : 1.5;
-  const lw = isLocked ? 1.8 : 1;
-
-  ctx.fillStyle = color;
-  pts.forEach(pt => { ctx.beginPath(); ctx.arc(pt.x, pt.y, r, 0, Math.PI * 2); ctx.fill(); });
-
-  const line = (idxs, close) => {
-    ctx.strokeStyle = color; ctx.lineWidth = lw; ctx.beginPath();
-    idxs.forEach((pt, i) => i === 0 ? ctx.moveTo(pt.x, pt.y) : ctx.lineTo(pt.x, pt.y));
-    if (close) ctx.closePath(); ctx.stroke();
-  };
-
-  line(pts.slice(0, 17), false);
-  line(pts.slice(17, 22), false);
-  line(pts.slice(22, 27), false);
-  line(pts.slice(27, 31), false);
-  line(pts.slice(31, 36), false);
-  line(pts.slice(36, 42), true);
-  line(pts.slice(42, 48), true);
-  line(pts.slice(48, 60), true);
-  line(pts.slice(60, 68), true);
-
-  // Direction pointer vector
-  if (pose && pts[30]) {
-    const nose = pts[30];
-    const arrowLength = 70;
-    const dx = Math.sin(pose.yaw) * arrowLength;
-    const dy = Math.sin(pose.pitch) * arrowLength;
-    const tipX = nose.x + dx;
-    const tipY = nose.y - dy;
-
-    ctx.beginPath();
-    ctx.moveTo(nose.x, nose.y);
-    ctx.lineTo(tipX, tipY);
-    ctx.lineWidth = 3.5;
-    ctx.strokeStyle = isLocked ? '#22c55e' : '#3b82f6';
-    ctx.lineCap = 'round';
-    ctx.stroke();
-
-    ctx.beginPath();
-    ctx.arc(tipX, tipY, 5, 0, Math.PI * 2);
-    ctx.fillStyle = isLocked ? '#22c55e' : '#3b82f6';
-    ctx.fill();
-  }
-
-  // Facial bracket corners
-  const cl = Math.min(28, box.width * 0.15);
-  ctx.strokeStyle = color; ctx.lineWidth = 2.5; ctx.setLineDash([]);
-  const { x, y, width: w, height: h } = box;
-  ctx.beginPath();
-  ctx.moveTo(x, y + cl); ctx.lineTo(x, y); ctx.lineTo(x + cl, y);
-  ctx.moveTo(x + w - cl, y); ctx.lineTo(x + w, y); ctx.lineTo(x + w, y + cl);
-  ctx.moveTo(x + w, y + h - cl); ctx.lineTo(x + w, y + h); ctx.lineTo(x + w - cl, y + h);
-  ctx.moveTo(x + cl, y + h); ctx.lineTo(x, y + h); ctx.lineTo(x, y + h - cl);
-  ctx.stroke();
 };
 
 const MODES = Object.freeze({
@@ -469,6 +383,12 @@ export default function BiometricSetup() {
     vault.captureHold = {};
     vault.enrollmentAnchor = null;
     vault.pendingReacquisition = false;
+    const sessionStartedAt = performance.now();
+    // Forward recovery must not overlap the accepted UP or DOWN capture ranges.
+    const forwardPitchTolerance = Math.min(POSE.CENTER.pitchTol,
+      Math.abs(POSE.UP.pitch) - POSE.UP.pitchTol, Math.abs(POSE.DOWN.pitch) - POSE.DOWN.pitchTol);
+    let recoveryStartedAt = null;
+    let requireForwardRecovery = false;
     const interruptEvidence = () => {
       vault.holdCount = 0;
       resetCaptureHold(vault.captureHold);
@@ -481,11 +401,15 @@ export default function BiometricSetup() {
       }
       if (!vault.baseline) vault.calibrationSamples = [];
     };
-    const pauseForReacquisition = () => {
+    const pauseForReacquisition = (requireForward = false) => {
+      recoveryStartedAt ??= performance.now();
+      requireForwardRecovery ||= requireForward || performance.now() - recoveryStartedAt > ENV.REGISTRATION_RECOVERY_MS;
       vault.pendingReacquisition = true;
       interruptEvidence();
       dispatch({ type: 'SET_LIVENESS', blinkCount: vault.blinkCount, livenessOk: false, blinkPhase: 'PAUSED' });
-      dispatch({ type: 'SET_STATUS', payload: 'Completed captures kept. Turn slightly back toward the camera' });
+      dispatch({ type: 'SET_STATUS', payload: requireForwardRecovery
+        ? 'Completed captures kept. Look straight at the camera with both eyes open'
+        : 'Completed captures kept. Keep your face and both eyes visible' });
     };
     const restartSequence = message => {
       vault.baseline = null;
@@ -493,16 +417,26 @@ export default function BiometricSetup() {
       vault.phaseIdx = 0;
       vault.enrollmentAnchor = null;
       vault.pendingReacquisition = false;
+      recoveryStartedAt = null;
+      requireForwardRecovery = false;
       vault.faceTrack = {};
       vault.blinkState = createBlinkState();
       interruptEvidence();
       dispatch({ type: 'RESTART_SEQUENCE', payload: message });
       dispatch({ type: 'SET_STATUS', payload: message });
     };
+    const sessionIsCurrent = () => {
+      if (performance.now() - sessionStartedAt < ENV.ENROLL_TIMEOUT_MS) return true;
+      restartSequence('Registration session expired');
+      loopRef.current?.stop();
+      loopRef.current = null;
+      dispatch({ type: 'SET_ERROR', payload: { message: 'Registration session expired. Restart registration to continue.', code: 'ENROLLMENT_EXPIRED' } });
+      return false;
+    };
     const readConsistentDescriptor = async (landmarks, isActive) => {
       const [face] = await faceapi.extractFaces(frame, [landmarks.align(null, { useDlibAlignment: true })]);
       const descriptor = await faceapi.computeFaceDescriptor(face);
-      if (!isActive()) return null;
+      if (!isActive() || !sessionIsCurrent()) return null;
       const valid = descriptor?.length === 128 && Array.from(descriptor).every(Number.isFinite);
       const distance = valid && vault.enrollmentAnchor ? faceapi.euclideanDistance(vault.enrollmentAnchor, descriptor) : 0;
       if (!valid || !Number.isFinite(distance) || distance > ENV.DESC_CONSISTENCY_THRESHOLD) {
@@ -525,6 +459,7 @@ export default function BiometricSetup() {
     loopRef.current?.stop();
 
     loopRef.current = startVideoFrameLoop(video, async isActive => {
+      if (!sessionIsCurrent()) return;
       if (!copyVideoFrame(video, frame)) return;
       const observedAt = performance.now();
       syncCanvas();
@@ -538,7 +473,7 @@ export default function BiometricSetup() {
         }))
         .withFaceLandmarks(), blinkDetectorRef.current.analyze(frame)]);
 
-      if (!isActive()) return;
+      if (!isActive() || !sessionIsCurrent()) return;
 
       if (performance.now() - observedAt > 650) {
         interruptEvidence();
@@ -550,8 +485,8 @@ export default function BiometricSetup() {
         return;
       }
       if (faces.length !== 1) {
-        if (faces.length === 0 && vault.enrollmentAnchor && performance.now() - vault.faceTrack.at <= ENV.REGISTRATION_RECOVERY_MS) {
-          pauseForReacquisition();
+        if (faces.length === 0 && vault.enrollmentAnchor) {
+          pauseForReacquisition(performance.now() - vault.faceTrack.at > ENV.REGISTRATION_RECOVERY_MS);
           return;
         }
         restartSequence(faces.length > 1 ? 'Only one person should be in the frame' : 'Place your face inside the guide');
@@ -565,15 +500,14 @@ export default function BiometricSetup() {
       const box = det.detection.box;
       const lm = det.landmarks;
       const score = det.detection.score;
-      const eyes = readBlinkEyes(blinkResult, box, frame.width, frame.height);
-      if (!eyes) {
-        interruptEvidence();
-        dispatch({ type: 'SET_STATUS', payload: 'Move closer so both eyes are clear' });
-        return;
-      }
-      const pose = estimateHeadPose(lm);
-      if (!Number.isFinite(pose.yaw) || !Number.isFinite(pose.pitch) || !Number.isFinite(pose.roll)) {
-        interruptEvidence();
+      const tracked = readTrackedFace(blinkResult, box, frame.width, frame.height);
+      const pose = tracked?.pose;
+      if (!pose || !Number.isFinite(pose.yaw) || !Number.isFinite(pose.pitch) || !Number.isFinite(pose.roll)) {
+        if (vault.enrollmentAnchor) pauseForReacquisition();
+        else {
+          interruptEvidence();
+          dispatch({ type: 'SET_STATUS', payload: 'Keep your face visible and turn slightly toward the camera' });
+        }
         return;
       }
 
@@ -584,7 +518,7 @@ export default function BiometricSetup() {
         interruptEvidence();
         dispatch({ type: 'SET_PROGRESS', payload: { overall: (vault.phaseIdx / PHASE_LIST.length) * 100, phase: 0 } });
         dispatch({ type: 'SET_STATUS', payload: 'Hold still and face the light' });
-        drawMesh(ctx, lm, box, '#f59e0b', false, pose);
+        drawTrackedFace(ctx, tracked, '#f59e0b', false);
         return;
       }
 
@@ -592,31 +526,56 @@ export default function BiometricSetup() {
         interruptEvidence();
         dispatch({ type: 'SET_PROGRESS', payload: { overall: (vault.phaseIdx / PHASE_LIST.length) * 100, phase: 0 } });
         dispatch({ type: 'SET_STATUS', payload: 'Move slightly closer' });
-        drawMesh(ctx, lm, box, '#f59e0b', false, pose);
+        drawTrackedFace(ctx, tracked, '#f59e0b', false);
         return;
       }
 
-      // Neutral Calibration Phase
+      // Face geometry remains fresh even when eye-expression observations are unusable.
       const now = observedAt;
       const previousFaceAt = vault.faceTrack.at;
-      if (!trackFace(vault.faceTrack, box, now)) {
-        if (!vault.enrollmentAnchor || !Number.isFinite(previousFaceAt) || now - previousFaceAt > ENV.REGISTRATION_RECOVERY_MS) {
+      if (!trackFace(vault.faceTrack, tracked.box, now)) {
+        if (!vault.enrollmentAnchor) {
           restartSequence('Face tracking lost. Look at the camera to restart');
           return;
         }
         // Geometry can change during a turn; the saved center descriptor must authorize recovery.
-        pauseForReacquisition();
+        pauseForReacquisition(!Number.isFinite(previousFaceAt) || now - previousFaceAt > ENV.REGISTRATION_RECOVERY_MS);
       }
       dispatch({ type: 'SET_CONFIDENCE', payload: Math.round(score * 100) });
+      const eyes = readBlinkEyes(blinkResult, box, frame.width, frame.height);
+      if (!eyes) {
+        if (vault.enrollmentAnchor) pauseForReacquisition();
+        else {
+          interruptEvidence();
+          dispatch({ type: 'SET_STATUS', payload: 'Move closer so both eyes are clear' });
+        }
+        return;
+      }
       if (vault.pendingReacquisition) {
+        requireForwardRecovery ||= now - recoveryStartedAt > ENV.REGISTRATION_RECOVERY_MS;
+        const facingForward = vault.baseline && Math.abs(pose.yaw - vault.baseline.yaw) < POSE.CENTER.yawTol
+          && Math.abs(pose.pitch - vault.baseline.pitch) < forwardPitchTolerance;
+        if (!areEyesOpen(vault.blinkState, eyes) || (requireForwardRecovery && !facingForward)) {
+          pauseForReacquisition();
+          drawTrackedFace(ctx, tracked, '#f59e0b', false);
+          return;
+        }
         if (!await readConsistentDescriptor(lm, isActive)) return;
         vault.pendingReacquisition = false;
+        recoveryStartedAt = null;
+        requireForwardRecovery = false;
         resetCaptureHold(vault.captureHold);
         dispatch({ type: 'SET_STATUS', payload: PHASE_LIST[vault.phaseIdx].instruction });
         return;
       }
       if (!vault.baseline) {
-        drawMesh(ctx, lm, box, '#3b82f6', false, pose);
+        drawTrackedFace(ctx, tracked, '#3b82f6', false);
+        if (Math.abs(pose.yaw) > .24 || Math.abs(pose.pitch) > .24 || Math.abs(pose.roll) > .35) {
+          vault.calibrationSamples = [];
+          resetBlinkCycle(vault.blinkState);
+          dispatch({ type: 'SET_STATUS', payload: 'Look straight at the camera with your head upright' });
+          return;
+        }
         vault.calibrationSamples.push(pose);
         if (vault.calibrationSamples.length > ENV.CALIBRATION_FRAMES) vault.calibrationSamples.shift();
         // Let positioning settle before freezing the open-eye baseline for this challenge.
@@ -646,7 +605,7 @@ export default function BiometricSetup() {
       const match = yawMatch && pitchMatch;
 
       const color = match ? '#22c55e' : target.color;
-      drawMesh(ctx, lm, box, color, match, pose);
+      drawTrackedFace(ctx, tracked, color, match);
 
       // Allow slight landmark drift during a blink; photo capture still uses the strict pose.
       const blinkInProgress = ['ARMED', 'CLOSING', 'CLOSED', 'REOPEN', 'PASSED'].includes(vault.blinkState.phase);
@@ -678,11 +637,11 @@ export default function BiometricSetup() {
       }
 
       if (match) {
-        // For Phase 0 (CENTER baseline), ensure eyes are fully open and looking at the camera before accumulating capture hold
+        // Every angle needs open eyes; preserve its directional instruction.
         if (!areEyesOpen(vault.blinkState, eyes)) {
           vault.holdCount = 0;
           resetCaptureHold(vault.captureHold);
-          dispatch({ type: 'SET_STATUS', payload: 'Look straight at camera with eyes open' });
+          dispatch({ type: 'SET_STATUS', payload: `${target.instruction}. Keep both eyes open` });
           return;
         }
 
@@ -731,7 +690,9 @@ export default function BiometricSetup() {
         vault.holdCount = 0;
         resetCaptureHold(vault.captureHold);
         dispatch({ type: 'SET_PROGRESS', payload: { overall: (phaseIdx / PHASE_LIST.length) * 100, phase: 0 } });
-        dispatch({ type: 'SET_STATUS', payload: target.instruction });
+        const turnedTooFar = (target.yaw !== 0 && Math.abs(dy) > Math.abs(target.yaw) + target.yawTol)
+          || (target.pitch !== 0 && Math.abs(dp) > Math.abs(target.pitch) + target.pitchTol);
+        dispatch({ type: 'SET_STATUS', payload: turnedTooFar ? 'Turn slightly back toward the camera' : target.instruction });
       }
     }, { intervalMs: ENV.DETECTION_INTERVAL_MS, onError: error => {
       canvas.getContext('2d')?.clearRect(0, 0, canvas.width, canvas.height);
