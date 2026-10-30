@@ -14,7 +14,7 @@ const ready = (async () => {
   detector = await vision.FaceLandmarker.createFromOptions(files, {
     canvas,
     baseOptions: { modelAssetPath: `${base}face-landmarker.task`, delegate: 'CPU' },
-    runningMode: 'VIDEO', numFaces: 2, outputFaceBlendshapes: true,
+    runningMode: 'VIDEO', numFaces: 2, outputFaceBlendshapes: true, outputFacialTransformationMatrixes: true,
     minFaceDetectionConfidence: .5, minFacePresenceConfidence: .5, minTrackingConfidence: .5,
   });
   self.postMessage({ type: 'ready' });
@@ -27,7 +27,9 @@ self.onmessage = async ({ data }) => {
     await ready;
     const start = performance.now();
     const result = detector.detectForVideo(bitmap, data.timestamp);
-    self.postMessage({ type: 'result', id: data.id, result: summarizeBlinkResult(result, performance.now() - start) });
+    const summary = summarizeBlinkResult(result, performance.now() - start);
+    const buffers = summary.faces.flatMap(face => [face.landmarks.buffer, ...(face.matrix ? [face.matrix.buffer] : [])]);
+    self.postMessage({ type: 'result', id: data.id, result: summary }, buffers);
   } catch { self.postMessage({ type: 'error', id: data.id }); }
   finally { bitmap?.close(); }
 };
