@@ -16,7 +16,8 @@ export default function ForgotPassword() {
   const [email, setEmail] = useState(restored.email || '');
   const [recoveryKey, setRecoveryKey] = useState('');
   const [method, setMethod] = useState(restored.method || 'email'); // 'totp' | 'email' | 'key'
-  const [step, setStep] = useState(restored.step === 2 ? 2 : 1); // 1 = Request, 2 = Verify Code
+  const [step, setStep] = useState(restored.step === 2 ? 2 : 1);
+  const [challengeId, setChallengeId] = useState(restored.challengeId || null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [successMsg, setSuccessMsg] = useState(null);
@@ -267,7 +268,7 @@ export default function ForgotPassword() {
       const res = await fetch(`${API_BASE_URL}/api/auth/security/forgot-password`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: targetIdentifier, method: 'email' }),
+        body: JSON.stringify({ email: targetIdentifier, method: 'email', challengeId: isResend ? challengeId : undefined }),
       });
 
       const data = await res.json();
@@ -275,9 +276,19 @@ export default function ForgotPassword() {
         if (data.retry_after) {
           startCooldown(data.retry_after);
         }
+        if (data.code === 'CHALLENGE_EXPIRED') {
+          setChallengeId(null);
+          setExpiryTimer(0);
+          try {
+            const saved = JSON.parse(sessionStorage.getItem('cpoint_forgot_pwd_session') || '{}');
+            sessionStorage.setItem('cpoint_forgot_pwd_session', JSON.stringify({ ...saved, challengeId: null }));
+            sessionStorage.removeItem(`cpoint_forgot_exp_${email.trim().toLowerCase()}`);
+          } catch { /* Retry remains available without browser storage. */ }
+        }
         throw new Error(data.error || 'Failed to dispatch security instructions.');
       }
 
+      if (data.challengeId) setChallengeId(data.challengeId);
       startCooldown(data.cooldown || 60);
 
       const activeSeconds = data.expiresIn || 300;
@@ -302,6 +313,7 @@ export default function ForgotPassword() {
           method: 'email',
           maskedPhone: resolvedMasked,
           previewCode: resolvedPreview,
+          challengeId: data.challengeId || challengeId,
           step: 2
         }));
       } catch { /* Retain the existing fallback when optional browser state is unavailable. */ }
@@ -436,7 +448,8 @@ export default function ForgotPassword() {
         body: JSON.stringify({ 
           email: email.trim().toLowerCase(), 
           otp: code,
-          method
+          method,
+          challengeId
         }),
       });
 
@@ -490,7 +503,7 @@ export default function ForgotPassword() {
 
         {/* Global Error Banner */}
         {error && (
-          <div className="mb-4 p-2.5 bg-danger-subtle border border-danger/20 rounded-md text-xs text-danger-ink font-medium leading-relaxed">
+          <div role="alert" className="mb-4 p-2.5 bg-danger-subtle border border-danger/20 rounded-md text-xs text-danger-ink font-medium leading-relaxed">
             {error}
           </div>
         )}
@@ -910,24 +923,35 @@ export default function ForgotPassword() {
                   <span>Updates every 30s • Offline</span>
                 </div>
               ) : (
-                <div className="flex items-center gap-1.5 text-slate-400 font-medium text-xs">
-                  <span>
-                    Expires in{' '}
-                    <strong className="text-slate-700 font-mono">
-                      {expiryTimer > 0
-                        ? `${Math.floor(expiryTimer / 60)}:${String(expiryTimer % 60).padStart(2, '0')}`
-                        : '0:00'}
-                    </strong>
-                  </span>
-                  <span>•</span>
-                  <button
-                    type="button"
-                    onClick={() => handleRequestReset(null, true, 'email')}
-                    disabled={cooldown > 0 || loading}
-                    className="text-slate-700 hover:text-slate-900 hover:underline font-semibold disabled:text-slate-400 disabled:no-underline cursor-pointer"
-                  >
-                    {cooldown > 0 ? `Resend (${cooldown}s)` : 'Resend code'}
-                  </button>
+                <div className="flex items-center gap-1.5 text-slate-500 font-medium text-xs">
+                  {expiryTimer > 0 ? (
+                    <>
+                      <span>Didn't receive the email?</span>
+                      <button
+                        type="button"
+                        onClick={() => handleRequestReset(null, true, 'email')}
+                        disabled={cooldown > 0 || loading}
+                        style={{ pointerEvents: (cooldown > 0 || loading) ? 'none' : 'auto' }}
+                        className="text-slate-700 hover:text-slate-900 hover:underline font-semibold disabled:text-slate-400 disabled:no-underline disabled:cursor-not-allowed cursor-pointer transition-colors"
+                      >
+                        {loading ? 'Sending...' : cooldown > 0 ? `Resend in ${cooldown}s` : 'Resend code'}
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <span className="text-danger-ink font-semibold">Code expired.</span>
+                      <span className="text-slate-300">•</span>
+                      <button
+                        type="button"
+                        onClick={() => handleRequestReset(null, true, 'email')}
+                        disabled={loading}
+                        style={{ pointerEvents: loading ? 'none' : 'auto' }}
+                        className="text-slate-700 hover:text-slate-900 hover:underline font-semibold cursor-pointer transition-colors"
+                      >
+                        {loading ? 'Sending...' : 'Request a new code'}
+                      </button>
+                    </>
+                  )}
                 </div>
               )}
             </div>

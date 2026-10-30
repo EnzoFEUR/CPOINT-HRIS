@@ -1,7 +1,20 @@
 import express from 'express';
+import crypto from 'node:crypto';
 import { postgrestLikeValue } from '../middleware/requestValidation.js';
-import { otpTestMode } from '../services/otpService.js';
-import { generateOtpCode, storeOtp, verifyOtpCode, deleteOtp, sendEmailOtp, sendSmsOtp, checkOtpCooldown, recordOtpDispatch, getOrGenerateOtp, getActiveOtp, acquireOtpLock, releaseOtpLock } from '../services/otpService.js';
+import {
+    otpTestMode,
+    isProduction,
+    verifyOtpCode,
+    sendEmailOtp,
+    sendSmsOtp,
+    OTP_RESEND_COOLDOWN_MS,
+    checkOtpCooldown,
+    getOrGenerateOtp,
+    getActiveOtp,
+    acquireOtpLock,
+    releaseOtpLock,
+    reserveAccountChallengeCreation
+} from '../services/otpService.js';
 import { authenticatorService } from '../services/authenticatorService.js';
 import { disciplinaryService } from '../services/disciplinaryService.js';
 import { publishCommittedDisciplinary } from '../services/disciplinaryEvents.js';
@@ -17,68 +30,36 @@ const getOtpStatus = async (req, res) => {
     try {
         const { identifier, email, phone, purpose = 'login_2fa' } = req.method === 'POST' ? req.body : req.query;
         const rawTarget = (identifier || email || phone || '').trim().toLowerCase();
-        let targetEmail = rawTarget;
-        let empRecord = null;
+        // Identity middleware already resolved and bound this account.
+        const empRecord = req.user;
+        const targetEmail = (empRecord.email || rawTarget).toLowerCase().trim();
         let hasTotp = false;
-
-        if (rawTarget) {
-            const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(rawTarget);
-            let authUser = null;
-
-            if (isUuid) {
-                const { data: authData, error: authError } = await supabase.auth.admin.getUserById(rawTarget);
-                if (authError && authError.status !== 404) throw authError;
-                if (authData?.user) {
-                    authUser = authData.user;
-                    targetEmail = (authUser.email || targetEmail).toLowerCase().trim();
-                }
-            }
-
-            let empQuery = supabase
-                .from('employees')
-                .select('id, auth_user_id, email, company_id');
-
-            if (isUuid) {
-                empQuery = empQuery.or(`id.eq.${rawTarget},auth_user_id.eq.${rawTarget}`);
-            } else {
-                empQuery = empQuery.or(`email.ilike.${postgrestLikeValue(rawTarget)},company_id.ilike.${postgrestLikeValue(rawTarget)}`);
-            }
-
-            const { data: emp, error: employeeError } = await empQuery.maybeSingle();
-            if (employeeError) throw employeeError;
-            if (emp) {
-                empRecord = emp;
-                targetEmail = (emp.email || targetEmail).toLowerCase().trim();
-                const targetId = emp.auth_user_id || emp.id;
-                if (!authUser && targetId) {
-                    const { data: authData, error: authError } = await supabase.auth.admin.getUserById(targetId);
-                    if (authError && authError.status !== 404) throw authError;
-                    if (authData?.user) authUser = authData.user;
-                }
-            }
-
-            if (authUser) {
-                try { hasTotp = (await authenticatorService.status(authUser.id)).enabled; }
-                catch { hasTotp = false; }
-            }
+        const authId = empRecord._auth_user_id || empRecord.auth_user_id || empRecord.id;
+        if (authId) {
+            try { hasTotp = (await authenticatorService.status(authId)).enabled; }
+            catch { /* Email remains available if authenticator storage is unavailable. */ }
         }
 
         const candidateKeys = new Set();
         if (targetEmail) {
             candidateKeys.add(`${purpose}_${targetEmail}`);
+            candidateKeys.add(targetEmail);
         }
         if (rawTarget) {
             candidateKeys.add(`${purpose}_${rawTarget}`);
+            candidateKeys.add(rawTarget);
         }
         if (empRecord?.id) {
             candidateKeys.add(`${purpose}_${empRecord.id.toLowerCase().trim()}`);
+            candidateKeys.add(empRecord.id.toLowerCase().trim());
         }
         if (empRecord?.auth_user_id) {
             candidateKeys.add(`${purpose}_${empRecord.auth_user_id.toLowerCase().trim()}`);
+            candidateKeys.add(empRecord.auth_user_id.toLowerCase().trim());
         }
 
         const candidateList = Array.from(candidateKeys);
-        const active = getActiveOtp(candidateList);
+        const active = getActiveOtp(candidateList, purpose);
 
         const cooldownKeys = [
             `${purpose}_${targetEmail}`,
@@ -100,6 +81,7 @@ const getOtpStatus = async (req, res) => {
         res.json({
             success: true,
             hasActiveOtp: Boolean(active),
+            challengeId: active?.challengeId || null,
             method: active?.method || null,
             remainingSeconds: active?.remainingSeconds || 0,
             isCooldown: !cooldown.allowed,
@@ -110,6 +92,7 @@ const getOtpStatus = async (req, res) => {
         res.json({
             success: false,
             hasActiveOtp: false,
+            challengeId: null,
             method: null,
             remainingSeconds: 0,
             isCooldown: false,
@@ -123,13 +106,20 @@ router.post('/status', getOtpStatus);
 
 // POST /api/auth/otp/send - Generate and dispatch 6-digit OTP
 router.post('/send', async (req, res) => {
+    const requestId = crypto.randomUUID();
+    res.set('X-Request-ID', requestId);
+    console.info('[OTP_SEND_REQUESTED]', { requestId, purpose: req.body?.purpose || 'login_2fa', method: ['email', 'sms'].includes(req.body?.method || 'email') ? req.body?.method || 'email' : 'unknown' });
     if ((req.body?.mock || req.body?.is_mock) && !otpTestMode()) {
+        console.warn('[OTP_SEND_BLOCKED]', { requestId, reason: 'test_mode_disabled', providerCalled: false });
         return res.status(403).json({ success: false, code: 'OTP_TEST_MODE_DISABLED', error: 'Mock verification is disabled on this server.' });
     }
     try {
-        const { email, phone, user_id, method = 'email', purpose = 'login_2fa' } = req.body;
-        
+        const { email, phone, user_id, method = 'email', purpose = 'login_2fa', challengeId, challenge_id } = req.body;
+        const targetChallengeId = challengeId || challenge_id;
+        const clientIp = req.ip || req.headers['x-forwarded-for'] || req.socket?.remoteAddress || 'unknown';
+
         if (!email && !phone && !user_id) {
+            console.warn('[OTP_SEND_BLOCKED]', { requestId, reason: 'missing_identifier', providerCalled: false });
             return res.status(400).json({ success: false, error: 'Missing user identifier (email, phone, or user_id)' });
         }
 
@@ -147,7 +137,8 @@ router.post('/send', async (req, res) => {
                 query = query.or(`email.ilike.${postgrestLikeValue(email.trim().toLowerCase())}`);
             }
 
-            const { data: emp } = await query.maybeSingle();
+            const { data: emp, error: employeeError } = await query.maybeSingle();
+            if (employeeError) throw Object.assign(new Error('Account verification is temporarily unavailable. Please retry shortly.'), { status: 503, code: 'OTP_ACCOUNT_UNAVAILABLE' });
 
             if (emp) {
                 empRecord = emp;
@@ -182,37 +173,40 @@ router.post('/send', async (req, res) => {
         }
 
         const baseIdentifier = (method === 'sms' ? targetPhone : targetEmail) || email || user_id;
-        if (!baseIdentifier) {
-            return res.status(400).json({ 
-                success: false, 
-                error: `No registered ${method === 'sms' ? 'phone number' : 'email'} found for this account.` 
-            });
+
+        // This authenticated route must not claim delivery for an unresolved employee.
+        if (!empRecord) {
+            console.warn('[OTP_SEND_BLOCKED]', { requestId, reason: 'account_unavailable', providerCalled: false });
+            return res.status(403).json({ success: false, code: 'ACCOUNT_UNAVAILABLE', error: 'Your employee account could not be verified. Sign in again or contact HR.' });
         }
 
         // Build comprehensive candidate alias keys scoped strictly to current purpose
         const aliasKeys = new Set();
         if (targetEmail) {
             aliasKeys.add(`${purpose}_${targetEmail}`);
+            aliasKeys.add(targetEmail);
         }
         if (email) {
             const e = email.trim().toLowerCase();
             aliasKeys.add(`${purpose}_${e}`);
+            aliasKeys.add(e);
         }
         if (user_id) {
             const uid = String(user_id).trim().toLowerCase();
             aliasKeys.add(`${purpose}_${uid}`);
+            aliasKeys.add(uid);
         }
         if (empRecord?.id) {
             const eid = empRecord.id.toLowerCase().trim();
             aliasKeys.add(`${purpose}_${eid}`);
+            aliasKeys.add(eid);
         }
         if (empRecord?.auth_user_id) {
             const auid = empRecord.auth_user_id.toLowerCase().trim();
             aliasKeys.add(`${purpose}_${auid}`);
+            aliasKeys.add(auid);
         }
-        if (targetPhone) {
-            aliasKeys.add(`${purpose}_${targetPhone}`);
-        }
+        // A contact phone can be shared by employees; it is not an account identity.
 
         const aliasList = Array.from(aliasKeys);
 
@@ -221,13 +215,14 @@ router.post('/send', async (req, res) => {
             `${purpose}_${baseIdentifier.toLowerCase().trim()}`,
             `dest_email_${purpose}_${targetEmail}`
         ].filter(Boolean);
-        if (targetPhone) {
+        if (method === 'sms' && targetPhone) {
             lockKeys.push(`dest_phone_${purpose}_${targetPhone}`);
         }
 
         // Enterprise Atomic Lock & Cooldown Check
         const lock = acquireOtpLock(lockKeys);
         if (!lock.acquired) {
+            console.warn('[OTP_SEND_BLOCKED]', { requestId, purpose, reason: lock.reason, retryAfterSeconds: lock.remainingSeconds, providerCalled: false });
             const errorMsg = lock.reason === 'in_flight'
                 ? 'A verification code is already being dispatched to your account. Please wait a moment.'
                 : `Please wait ${lock.remainingSeconds}s before requesting a new verification code.`;
@@ -238,11 +233,19 @@ router.post('/send', async (req, res) => {
             });
         }
 
+        let sendSucceeded = false;
+        let creationReservation;
         try {
-            // Enterprise Standard: Reuse active code across all aliases if still valid (< 5 mins)
-            const otpInfo = getOrGenerateOtp(aliasList);
+            // Strict Single-Token Rotation with send-failure ordering:
+            // Do NOT commit the new code into storage until Brevo call succeeds.
+            const otpInfo = getOrGenerateOtp(aliasList, {
+                challengeId: targetChallengeId,
+                purpose,
+                method,
+                accountExists: true
+            });
+            if (!otpInfo.isRotated) creationReservation = reserveAccountChallengeCreation(baseIdentifier, clientIp);
             const code = otpInfo.code;
-            storeOtp(aliasList, code, method);
 
             let dispatchResult;
             const isMock = Boolean(req.body.mock || req.body.is_mock);
@@ -251,72 +254,92 @@ router.post('/send', async (req, res) => {
             } else if (method === 'sms') {
                 dispatchResult = await sendSmsOtp(targetPhone, code);
             } else {
-                dispatchResult = await sendEmailOtp(targetEmail, code, targetName);
+                dispatchResult = await sendEmailOtp(targetEmail, code, targetName, { requestId, purpose });
             }
 
-            // Release in-flight lock and stamp successful cooldown
-            releaseOtpLock(lockKeys, true);
+            // Brevo call succeeded! Now commit code rotation / creation
+            if (typeof otpInfo.commit === 'function') {
+                otpInfo.commit();
+            }
+            sendSucceeded = true;
 
             const isSimulated = Boolean(dispatchResult?.simulated);
-            const previewCode = otpTestMode() && (isMock || isSimulated) ? code : undefined;
+            const previewCode = (!isProduction() && otpTestMode() && (isMock || isSimulated)) ? code : undefined;
+            const delivery = { status: isSimulated ? 'simulated' : 'accepted_by_provider', provider: dispatchResult?.provider || 'mock', messageId: dispatchResult?.messageId || null };
+            console.info('[OTP_CHALLENGE_READY]', { requestId, purpose, ...delivery, expiresIn: otpInfo.remainingSeconds });
 
             return res.json({
                 success: true,
+                delivery,
                 message: isMock
                     ? 'Mock verification code generated (Brevo email skipped)'
                     : `Verification code sent via ${method === 'sms' ? 'SMS' : 'Email'}`,
+                challengeId: otpInfo.challengeId,
                 method,
                 purpose,
-                cooldown: checkOtpCooldown(`${purpose}_${baseIdentifier.toLowerCase().trim()}`).remainingSeconds,
-                isMock,
-                simulated: isSimulated,
+                cooldown: Math.ceil(OTP_RESEND_COOLDOWN_MS / 1000),
+                isMock: !isProduction() && isMock,
+                simulated: !isProduction() && isSimulated,
                 previewCode,
                 reusedExisting: otpInfo.isExisting,
                 expiresIn: otpInfo.remainingSeconds
             });
         } catch (dispatchErr) {
-            releaseOtpLock(lockKeys, false);
+            // Send failed or timed out: previous code remains completely valid!
             throw dispatchErr;
+        } finally {
+            // In-flight lock must ALWAYS be released in a finally block (Requirement 6)
+            if (!sendSucceeded) creationReservation?.release();
+            releaseOtpLock(lockKeys, sendSucceeded);
         }
 
     } catch (err) {
-        console.error('[OTP_SEND_ERROR]', err.message);
-        res.status(err.status || 500).json({ success: false, code: err.code, error: err.message });
+        console.error('[OTP_SEND_ERROR]', { requestId, code: err.code || 'OTP_SEND_FAILED' });
+        if (err.retryAfter || err.status === 503) res.set('Retry-After', String(err.retryAfter || 5));
+        res.status(err.status || 500).json({ success: false, code: err.code, retry_after: err.retryAfter, error: err.message });
     }
 });
 
 // POST /api/auth/otp/verify - Validate 6-digit OTP code
 router.post('/verify', async (req, res) => {
     try {
-        const { identifier, email, phone, user_id, otp, purpose = 'login_2fa' } = req.body;
+        const { identifier, email, phone, user_id, otp, purpose = 'login_2fa', challengeId, challenge_id } = req.body;
         const rawTarget = (identifier || email || phone || user_id || '').trim().toLowerCase();
+        const targetChallengeId = challengeId || challenge_id;
+        const cleanOtp = String(otp || '').trim();
 
-        if (!rawTarget || !otp) {
+        if (!rawTarget || !cleanOtp) {
             return res.status(400).json({ success: false, error: 'Missing identifier or OTP code' });
         }
 
         // 1. Build initial candidate keys strictly scoped to current purpose
         const candidateKeys = new Set();
         candidateKeys.add(`${purpose}_${rawTarget}`);
+        candidateKeys.add(rawTarget);
         if (email) {
             const cleanEmail = email.trim().toLowerCase();
             candidateKeys.add(`${purpose}_${cleanEmail}`);
+            candidateKeys.add(cleanEmail);
         }
         if (user_id) {
             const cleanUid = String(user_id).trim().toLowerCase();
             candidateKeys.add(`${purpose}_${cleanUid}`);
+            candidateKeys.add(cleanUid);
         }
 
-        // 2. High-speed in-memory lookup across all candidate keys
         let candidateList = Array.from(candidateKeys);
-        let activeChallenge = getActiveOtp(candidateList);
-        const hadActiveOtp = Boolean(activeChallenge);
-        let result = verifyOtpCode(candidateList, otp);
+
+        // 2. High-speed verify across candidate keys or challenge ID
+        let result = verifyOtpCode(candidateList, cleanOtp, {
+            challengeId: targetChallengeId,
+            purpose,
+            identifier: rawTarget
+        });
 
         let targetAuthUserId = null;
 
         // 3. If memory lookup missed, resolve employee record from database to gather full aliases
-        if (!result.valid) {
+        if (!result.valid && result.notFound) {
             try {
                 const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(rawTarget);
                 let empQuery = supabase.from('employees').select('id, auth_user_id, email, company_id');
@@ -332,49 +355,53 @@ router.post('/verify', async (req, res) => {
                     if (emp.email) {
                         const em = emp.email.toLowerCase().trim();
                         candidateKeys.add(`${purpose}_${em}`);
+                        candidateKeys.add(em);
                     }
                     if (emp.id) {
                         const eid = emp.id.toLowerCase().trim();
                         candidateKeys.add(`${purpose}_${eid}`);
+                        candidateKeys.add(eid);
                     }
                     if (emp.auth_user_id) {
                         const auid = emp.auth_user_id.toLowerCase().trim();
                         candidateKeys.add(`${purpose}_${auid}`);
+                        candidateKeys.add(auid);
                     }
 
                     candidateList = Array.from(candidateKeys);
-                    if (!hadActiveOtp) {
-                        activeChallenge = getActiveOtp(candidateList);
-                        result = verifyOtpCode(candidateList, otp);
-                    }
+                    result = verifyOtpCode(candidateList, cleanOtp, {
+                        challengeId: targetChallengeId,
+                        purpose,
+                        identifier: rawTarget
+                    });
                 }
             } catch (dbErr) {
                 console.error('[OTP_VERIFY_DB_LOOKUP_ERR]', dbErr.message);
             }
         }
 
-        // 5. TOTP / Google Authenticator / Backup code fallback
+        // 4. TOTP / Google Authenticator / Backup code fallback
         if (!result.valid && targetAuthUserId) {
             try {
-                const proof = await authenticatorService.verify(targetAuthUserId, otp);
+                const proof = await authenticatorService.verify(targetAuthUserId, cleanOtp);
                 if (proof.valid) result = { valid: true, via: proof.verifiedVia };
-                else if (proof.retryAfterSeconds) return res.set('Retry-After', String(proof.retryAfterSeconds)).status(429).json({ success: false, error: proof.error });
+                else if (proof.retryAfterSeconds) {
+                    return res.set('Retry-After', String(proof.retryAfterSeconds)).status(429).json({ success: false, error: proof.error });
+                }
             } catch {
-                // A failed private-store lookup must never recover proof from Auth metadata.
+                // Ignore fallback error
             }
         }
 
         if (!result.valid) {
-            return res.status(400).json({ success: false, error: result.error || 'Invalid or expired verification code' });
+            const status = result.rateLimited ? 429 : 400;
+            return res.status(status).json({ success: false, error: result.error || 'Invalid or expired verification code' });
         }
-
-        // Email challenges are server-only; client-readable Auth metadata is not a trusted OTP store.
-        deleteOtp(candidateList);
 
         let verifiedUntil;
         if (purpose === 'login_2fa') {
             const via = String(result.via || '').toUpperCase();
-            const method = via.includes('BACKUP') ? 'BACKUP_CODE' : via.includes('TOTP') || via.includes('AUTHENTICATOR') ? 'TOTP' : activeChallenge?.method === 'sms' ? 'SMS_OTP' : 'EMAIL_OTP';
+            const method = via.includes('BACKUP') ? 'BACKUP_CODE' : via.includes('TOTP') || via.includes('AUTHENTICATOR') ? 'TOTP' : 'EMAIL_OTP';
             verifiedUntil = await loginSessionService.markVerified(req, method);
         }
 

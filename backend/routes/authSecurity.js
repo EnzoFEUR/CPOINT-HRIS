@@ -3,7 +3,7 @@ import { postgrestLikeValue } from '../middleware/requestValidation.js';
 import { otpTestMode } from '../services/otpService.js';
 import crypto from 'crypto';
 import { supabase } from '../supabaseClient.js';
-import { generateOtpCode, storeOtp, verifyOtpCode, sendEmailOtp, sendSmsOtp, checkOtpCooldown, recordOtpDispatch, getOrGenerateOtp, acquireOtpLock, releaseOtpLock, expireOtpForTesting } from '../services/otpService.js';
+import { verifyOtpCode, sendEmailOtp, sendSmsOtp, getOrGenerateOtp, acquireOtpLock, releaseOtpLock, expireOtpForTesting, createChallenge, reserveAccountChallengeCreation, isProduction } from '../services/otpService.js';
 import { authenticatorService } from '../services/authenticatorService.js';
 import { createAuditLog } from './auditLogs.js';
 import { invalidateAuthUser, verifyToken, verifyIdentityToken } from '../middleware/authMiddleware.js';
@@ -193,6 +193,8 @@ router.post('/verify-workplace-account', async (req, res) => {
  * Initiates enterprise recovery (Rate-Limited, Strict Account & Email Verification, Dual-Factor SMS or Email)
  */
 router.post('/forgot-password', async (req, res) => {
+    const requestId = crypto.randomUUID();
+    res.set('X-Request-ID', requestId);
     const startTime = Date.now();
     try {
         const { email, method = 'sms' } = req.body;
@@ -222,10 +224,17 @@ router.post('/forgot-password', async (req, res) => {
             .maybeSingle();
 
         // 3. Strict Workplace Verification: Account MUST exist and have an active registered workplace email
-        if (empErr || !emp) {
-            return res.status(404).json({
-                success: false,
-                error: 'No registered workplace account found with this email. You can only reset your password if you have a registered workplace account.'
+        if (empErr) throw Object.assign(new Error('Account verification is temporarily unavailable. Please retry shortly.'), { status: 503, code: 'OTP_ACCOUNT_UNAVAILABLE' });
+        if (!emp) {
+            const dummy = createChallenge({ accountId: normalizedEmail, purpose: 'pwd_reset', method, accountExists: false });
+            return res.json({
+                success: true,
+                method: 'email',
+                email: normalizedEmail,
+                message: `6-digit security code dispatched to your email inbox: ${normalizedEmail}`,
+                challengeId: dummy.challengeId,
+                cooldown: 60,
+                expiresIn: dummy.expiresIn
             });
         }
 
@@ -261,7 +270,7 @@ router.post('/forgot-password', async (req, res) => {
 
         // Retrieve registered mobile phone from Supabase Auth identity store
         let userPhone = null;
-        if (emp.id) {
+        if (method === 'sms' && emp.id) {
             try {
                 const { data: authUserData } = await supabase.auth.admin.getUserById(emp.id);
                 userPhone = authUserData?.user?.user_metadata?.phone || authUserData?.user?.phone || null;
@@ -298,17 +307,23 @@ router.post('/forgot-password', async (req, res) => {
                 });
             }
 
+            let smsSucceeded = false;
+            let creationReservation;
             try {
                 const otpStorageKey = `pwd_reset_${targetEmail}`;
-                const otpInfo = getOrGenerateOtp(otpStorageKey);
+                const otpInfo = getOrGenerateOtp(otpStorageKey, {
+                    challengeId: req.body.challengeId || req.body.challenge_id,
+                    purpose: 'pwd_reset',
+                    method: 'sms'
+                });
+                if (!otpInfo.isRotated) creationReservation = reserveAccountChallengeCreation(targetEmail, clientIp);
                 const code = otpInfo.code;
-                storeOtp(otpStorageKey, code);
 
                 const smsResult = await sendSmsOtp(userPhone, code);
+                otpInfo.commit();
+                smsSucceeded = true;
                 const isSimulated = Boolean(smsResult?.simulated);
                 const previewCode = otpTestMode() && isSimulated ? code : undefined;
-
-                releaseOtpLock(lockKeys, true);
 
                 await createAuditLog({
                     log_name: 'security',
@@ -330,6 +345,7 @@ router.post('/forgot-password', async (req, res) => {
                 return res.json({
                     success: true,
                     method: 'sms',
+                    challengeId: otpInfo.challengeId,
                     email: targetEmail,
                     maskedPhone: maskPhone(userPhone),
                     message: `6-digit security code sent to ${maskPhone(userPhone)}`,
@@ -339,20 +355,30 @@ router.post('/forgot-password', async (req, res) => {
                     reusedExisting: otpInfo.isExisting,
                     expiresIn: otpInfo.remainingSeconds
                 });
-            } catch (smsErr) {
-                releaseOtpLock(lockKeys, false);
-                throw smsErr;
+            } finally {
+                if (!smsSucceeded) creationReservation?.release();
+                releaseOtpLock(lockKeys, smsSucceeded);
             }
         }
 
         // 6. Method B: Real Email OTP Dispatch (Delivered to User Inbox via Brevo API)
+        let sendSucceeded = false;
+        let creationReservation;
         try {
-            const emailOtpInfo = getOrGenerateOtp(`pwd_reset_${targetEmail}`);
+            const emailOtpInfo = getOrGenerateOtp([`pwd_reset_${targetEmail}`, targetEmail], {
+                challengeId: req.body.challengeId || req.body.challenge_id,
+                purpose: 'pwd_reset',
+                method: 'email',
+                accountExists: true
+            });
+            if (!emailOtpInfo.isRotated) creationReservation = reserveAccountChallengeCreation(targetEmail, clientIp);
             const emailCode = emailOtpInfo.code;
-            storeOtp(`pwd_reset_${targetEmail}`, emailCode);
-            const emailResult = await sendEmailOtp(targetEmail, emailCode, userName);
+            const emailResult = await sendEmailOtp(targetEmail, emailCode, userName, { requestId, purpose: 'pwd_reset' });
 
-            releaseOtpLock(lockKeys, true);
+            if (typeof emailOtpInfo.commit === 'function') {
+                emailOtpInfo.commit();
+            }
+            sendSucceeded = true;
 
             await createAuditLog({
                 log_name: 'security',
@@ -370,27 +396,31 @@ router.post('/forgot-password', async (req, res) => {
                 }
             });
 
-        // Production requires delivery; previews are restricted to explicit development simulations.
-        const isSimulated = Boolean(emailResult?.simulated);
-        const previewCode = otpTestMode() && isSimulated ? emailCode : undefined;
+            const isSimulated = Boolean(emailResult?.simulated);
+            const previewCode = (!isProduction() && otpTestMode() && isSimulated) ? emailCode : undefined;
 
             return res.json({
                 success: true,
                 method: 'email',
                 email: targetEmail,
+                challengeId: emailOtpInfo.challengeId,
                 message: `6-digit security code dispatched to your email inbox: ${targetEmail}`,
                 cooldown: 60,
-                simulated: isSimulated,
+                expiresIn: emailOtpInfo.remainingSeconds,
+                simulated: !isProduction() && isSimulated,
                 previewCode
             });
         } catch (emailErr) {
-            releaseOtpLock(lockKeys, false);
             throw emailErr;
+        } finally {
+            if (!sendSucceeded) creationReservation?.release();
+            releaseOtpLock(lockKeys, sendSucceeded);
         }
 
     } catch (err) {
-        console.error('[AUTH_SECURITY_FORGOT_ERROR]', err);
-        return res.status(500).json({ success: false, error: 'Internal security protocol error. Please try again later.' });
+        console.error('[AUTH_SECURITY_FORGOT_ERROR]', { requestId, code: err.code || 'OTP_SEND_FAILED' });
+        if (err.retryAfter || err.status === 503) res.set('Retry-After', String(err.retryAfter || 5));
+        return res.status(err.status || 500).json({ success: false, code: err.code, retry_after: err.retryAfter, error: err.status ? err.message : 'Internal security protocol error. Please try again later.' });
     }
 });
 
@@ -452,8 +482,13 @@ router.post('/verify-reset-otp', async (req, res) => {
             }
         } else {
             // PATH B: Standard SMS/Email OTP verification
-            const otpStorageKey = `pwd_reset_${normalizedEmail}`;
-            const verifyResult = verifyOtpCode(otpStorageKey, otp);
+            const targetChallengeId = req.body.challengeId || req.body.challenge_id;
+            const verifyResult = verifyOtpCode({
+                challengeId: targetChallengeId,
+                identifier: `pwd_reset_${normalizedEmail}`,
+                code: otp,
+                purpose: 'pwd_reset'
+            });
             if (verifyResult.valid) {
                 isValid = true;
                 verifiedVia = 'SMS_OR_EMAIL_OTP';

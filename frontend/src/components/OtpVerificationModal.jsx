@@ -49,6 +49,7 @@ function OtpVerificationContent({
     const [method, setMethod] = useState(initialMethod || (hasTotp ? 'totp' : 'email'));
     const [digits, setDigits] = useState(['', '', '', '', '', '']);
     const [isSending, setIsSending] = useState(false);
+    const [challengeId, setChallengeId] = useState(null);
     const [isVerifying, setIsVerifying] = useState(false);
     const [errorMessage, setErrorMessage] = useState('');
     const [backupMode, setBackupMode] = useState(false);
@@ -89,6 +90,7 @@ function OtpVerificationContent({
                 if (res.ok) {
                     const data = await res.json();
                     if (!isMounted || !data.success) return;
+                    if (data.challengeId) setChallengeId(data.challengeId);
                     if (typeof data.hasTotp === 'boolean') {
                         setHasTotp(data.hasTotp);
                     }
@@ -187,7 +189,8 @@ function OtpVerificationContent({
                     method: 'email',
                     email: email || sessionUser?.email,
                     purpose,
-                    mock: isMock
+                    mock: isMock,
+                    challengeId: isResend ? challengeId : undefined
                 })
             });
 
@@ -199,9 +202,16 @@ function OtpVerificationContent({
                 if (data.retry_after) {
                     startCooldown(data.retry_after);
                 }
+                if (data.code === 'CHALLENGE_EXPIRED') {
+                    setChallengeId(null);
+                    setExpiryTimer(0);
+                    try { sessionStorage.removeItem(`cpoint_modal_exp_${cooldownKey}`); }
+                    catch { /* Retry remains available without browser storage. */ }
+                }
                 throw new Error(data.error || 'Failed to dispatch email verification code.');
             }
 
+            if (data.challengeId) setChallengeId(data.challengeId);
             startCooldown(data.cooldown || 60);
 
             // Persist code expiration timestamp
@@ -298,6 +308,7 @@ function OtpVerificationContent({
                         email: email || sessionUser?.email,
                         identifier: email || sessionUser?.email,
                         otp: targetCode,
+                        challengeId,
                         purpose
                     })
                 });
@@ -332,7 +343,7 @@ function OtpVerificationContent({
             verifyLockRef.current = false;
             setIsVerifying(false);
         }
-    }, [digits, email, method, backupMode, backupCode, sessionUser, cooldownKey, onSuccess, onClose, purpose, isVerifying]);
+    }, [digits, email, method, backupMode, backupCode, sessionUser, cooldownKey, onSuccess, onClose, purpose, isVerifying, challengeId]);
 
     const handleInputChange = (index, value) => {
         const cleanVal = value.replace(/\D/g, '');
@@ -414,8 +425,8 @@ function OtpVerificationContent({
                                 <div className="flex items-center justify-between mb-1">
                                     <span className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
                                     </span>
-                                    <span className="text-[11px] font-mono font-bold text-accent bg-accent-subtle/80 px-2 py-0.5 rounded">
-                                        {Math.floor(expiryTimer / 60)}:{String(expiryTimer % 60).padStart(2, '0')}
+                                    <span className="text-[10px] font-semibold text-accent bg-accent-subtle/80 px-2 py-0.5 rounded">
+                                        Active
                                     </span>
                                 </div>
                                 <p className="text-[11px] text-slate-500 mb-2 leading-relaxed">
@@ -496,8 +507,8 @@ function OtpVerificationContent({
                                         <div className="flex items-center justify-between">
                                             <h4 className="text-xs font-bold text-slate-800">Send via Email</h4>
                                             {expiryTimer > 0 && (
-                                                <span className="text-[10px] font-mono font-bold text-accent bg-accent-subtle border border-accent/20 px-1.5 py-0.5 rounded">
-                                                    Active ({Math.floor(expiryTimer / 60)}:{String(expiryTimer % 60).padStart(2, '0')})
+                                                <span className="text-[10px] font-semibold text-accent bg-accent-subtle border border-accent/20 px-1.5 py-0.5 rounded">
+                                                    Active
                                                 </span>
                                             )}
                                         </div>
@@ -551,7 +562,7 @@ function OtpVerificationContent({
                                 </div>
 
                                 {errorMessage && (
-                                    <p className="text-xs text-danger-ink font-semibold flex items-center justify-center gap-1 text-center">
+                                    <p role="alert" className="text-xs text-danger-ink font-semibold flex items-center justify-center gap-1 text-center">
                                         <i className="ti ti-alert-circle text-sm shrink-0" />
                                         <span>{errorMessage}</span>
                                     </p>
@@ -677,7 +688,7 @@ function OtpVerificationContent({
                                     )}
 
                                     {errorMessage && (
-                                        <p className="text-xs text-danger-ink font-semibold flex items-center justify-center gap-1 pt-1 text-center">
+                                        <p role="alert" className="text-xs text-danger-ink font-semibold flex items-center justify-center gap-1 pt-1 text-center">
                                             <i className="ti ti-alert-circle text-sm shrink-0" />
                                             <span>{errorMessage}</span>
                                         </p>
@@ -719,26 +730,34 @@ function OtpVerificationContent({
                                     </div>
                                 ) : (
                                     <div className="text-xs text-slate-500 font-medium flex items-center justify-center gap-1.5 pt-1">
-                                        <span>
-                                            Code expires in{' '}
-                                            <strong className="text-slate-700 font-mono">
-                                                {expiryTimer > 0
-                                                    ? `${Math.floor(expiryTimer / 60)}:${(expiryTimer % 60)
-                                                          .toString()
-                                                          .padStart(2, '0')}`
-                                                    : '0:00'}
-                                            </strong>
-                                        </span>
-                                        <span>•</span>
-                                        <button
-                                            type="button"
-                                            onClick={() => handleSendEmailOtp(true)}
-                                            disabled={isCooldown || isSending || isVerifying}
-                                            style={{ pointerEvents: (isCooldown || isSending || isVerifying) ? 'none' : 'auto' }}
-                                            className="text-accent hover:text-accent font-bold disabled:text-slate-400 disabled:cursor-not-allowed cursor-pointer transition-colors"
-                                        >
-                                            {isSending ? 'Sending...' : isCooldown ? `Resend (${cooldown}s)` : 'Resend'}
-                                        </button>
+                                        {expiryTimer > 0 ? (
+                                            <>
+                                                <span>Didn't receive the email?</span>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleSendEmailOtp(true)}
+                                                    disabled={isCooldown || isSending || isVerifying}
+                                                    style={{ pointerEvents: (isCooldown || isSending || isVerifying) ? 'none' : 'auto' }}
+                                                    className="text-accent hover:text-accent font-semibold disabled:text-slate-400 disabled:no-underline disabled:cursor-not-allowed cursor-pointer transition-colors hover:underline"
+                                                >
+                                                    {isSending ? 'Sending...' : isCooldown ? `Resend in ${cooldown}s` : 'Resend code'}
+                                                </button>
+                                            </>
+                                        ) : (
+                                            <>
+                                                <span className="text-danger-ink font-semibold">Code expired.</span>
+                                                <span className="text-slate-300">•</span>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleSendEmailOtp(true)}
+                                                    disabled={isSending || isVerifying}
+                                                    style={{ pointerEvents: (isSending || isVerifying) ? 'none' : 'auto' }}
+                                                    className="text-accent hover:text-accent font-semibold cursor-pointer transition-colors hover:underline"
+                                                >
+                                                    {isSending ? 'Sending...' : 'Request a new code'}
+                                                </button>
+                                            </>
+                                        )}
                                     </div>
                                 )}
 

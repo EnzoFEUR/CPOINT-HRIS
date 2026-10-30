@@ -3,27 +3,78 @@ import dotenv from 'dotenv';
 
 dotenv.config();
 
+/**
+ * DEPLOYMENT TOPOLOGY NOTE:
+ * The backend runs as a single long-lived Node.js Express process on Render (https://cpoint-hris.onrender.com).
+ * In-memory Maps provide constant-time lookup for active challenges, rate limits, and dispatch locks.
+ * Note: Process restarts or redeployments will reset active in-memory challenge state and attempt counters.
+ * If horizontal scaling (multi-instance) is introduced, challenge state (hashed code, attempts, resend count,
+ * and timestamps) should be moved to Redis or a PostgreSQL table with TTL and atomic increments.
+ */
+
+export const isProduction = () => process.env.NODE_ENV === 'production';
+
+export const getOtpSecret = () => {
+    const secret = process.env.OTP_SECRET;
+    if (!secret) {
+        if (isProduction()) {
+            throw new Error('FATAL: OTP_SECRET environment variable must be set in production');
+        }
+        return process.env.SESSION_SECRET || 'dev-cpoint-hris-otp-hmac-secret-key-32b-deterministic';
+    }
+    return secret;
+};
+
+// Fail immediately at startup if in production and OTP_SECRET is missing
+if (isProduction() && !process.env.OTP_SECRET) {
+    throw new Error('FATAL: OTP_SECRET environment variable must be set in production');
+}
+
 export const otpTestMode = (env = process.env) => ['development', 'test'].includes(env.NODE_ENV) && env.ALLOW_MOCK_OTP === 'true';
 const unavailableDelivery = () => Object.assign(new Error('Verification delivery is unavailable. Please use a configured email provider.'), { status: 503, code: 'OTP_DELIVERY_UNAVAILABLE' });
 
-// In-memory OTP storage with 5-minute TTL
-const otpStore = new Map();
+// Fixed 5-minute validity window per dispatched code
+export const OTP_CODE_TTL_MS = 5 * 60 * 1000;
 
-// Cooldown duration between resends (standard enterprise 60 seconds)
-const OTP_RESEND_COOLDOWN_MS = 60 * 1000;
+// Absolute challenge lifetime cap: 15 minutes from initial challenge creation
+export const CHALLENGE_ABSOLUTE_LIFETIME_MS = 15 * 60 * 1000;
 
-// Resend Cooldown Store: identifier -> timestamp of last dispatch
+// Cooldown duration between resends (60 seconds)
+export const OTP_RESEND_COOLDOWN_MS = 60 * 1000;
+
+// Maximum allowed resends per challenge session
+export const OTP_MAX_RESENDS_PER_CHALLENGE = parseInt(process.env.OTP_MAX_RESENDS, 10) || 5;
+
+// Account & IP cross-challenge limits
+export const MAX_CHALLENGES_PER_15_MIN_ACCOUNT = 5;
+export const MAX_CHALLENGES_PER_15_MIN_IP = 15;
+export const MAX_FAILED_ATTEMPTS_PER_HOUR_ACCOUNT = 15;
+
+/**
+ * Stores:
+ * challengeStore: challengeId -> ChallengeRecord
+ * activeChallengeByAccount: `${purpose}:${accountId}` -> challengeId
+ * cooldownStore: lockKey -> timestamp of last dispatch
+ * inFlightDispatches: lockKey -> timestamp of in-flight lock
+ * accountChallengeCreations: accountId -> [timestamps]
+ * ipChallengeCreations: ip -> [timestamps]
+ * accountFailedAttempts: accountId -> [timestamps]
+ */
+const challengeStore = new Map();
+const activeChallengeByAccount = new Map();
 const cooldownStore = new Map();
-
-// In-flight dispatch mutex store: identifier -> timestamp
 const inFlightDispatches = new Map();
+const accountChallengeCreations = new Map();
+const ipChallengeCreations = new Map();
+const accountFailedAttempts = new Map();
+const MAX_ACTIVE_CHALLENGES = 4096;
 
-// Periodic cleanup of expired OTPs and stale cooldown records every 5 minutes
+// Periodic cleanup of expired challenges and stale rate records
 setInterval(() => {
     const now = Date.now();
-    for (const [key, record] of otpStore.entries()) {
-        if (record.expiresAt < now) {
-            otpStore.delete(key);
+    for (const [id, challenge] of challengeStore.entries()) {
+        if (now > challenge.absoluteExpiresAt || now > challenge.expiresAt) {
+            deleteChallenge(id);
         }
     }
     for (const [key, timestamp] of cooldownStore.entries()) {
@@ -36,14 +87,66 @@ setInterval(() => {
             inFlightDispatches.delete(key);
         }
     }
-}, 5 * 60 * 1000).unref();
+    const oneHourAgo = now - 60 * 60 * 1000;
+    for (const [key, list] of accountFailedAttempts.entries()) {
+        const fresh = list.filter(t => t > oneHourAgo);
+        if (fresh.length === 0) accountFailedAttempts.delete(key);
+        else accountFailedAttempts.set(key, fresh);
+    }
+    const fifteenMinAgo = now - 15 * 60 * 1000;
+    for (const [key, list] of accountChallengeCreations.entries()) {
+        const fresh = list.filter(t => t > fifteenMinAgo);
+        if (fresh.length === 0) accountChallengeCreations.delete(key);
+        else accountChallengeCreations.set(key, fresh);
+    }
+    for (const [key, list] of ipChallengeCreations.entries()) {
+        const fresh = list.filter(t => t > fifteenMinAgo);
+        if (fresh.length === 0) ipChallengeCreations.delete(key);
+        else ipChallengeCreations.set(key, fresh);
+    }
+}, 60 * 1000).unref();
+
+/**
+ * Generate 6-digit OTP code using CSPRNG.
+ * Pad with leading zeros to guarantee a uniform 6-digit string across 1,000,000 permutations (000000 to 999999).
+ */
+export function generateOtpCode() {
+    return crypto.randomInt(0, 1_000_000).toString().padStart(6, '0');
+}
+
+/**
+ * Compute HMAC-SHA256 digest of challengeId + purpose + code.
+ * Plaintext code is never persisted in storage.
+ */
+export function computeCodeHmac(challengeId, purpose, code) {
+    const cleanCode = String(code || '').trim();
+    return crypto.createHmac('sha256', getOtpSecret())
+        .update(`${challengeId}:${purpose}:${cleanCode}`)
+        .digest('hex');
+}
+
+function otpScope(identifiers, purpose) {
+    const values = Array.isArray(identifiers) ? identifiers : [identifiers];
+    const keys = [...new Set(values.filter(value => typeof value === 'string' && value.trim()).map(value => value.trim().toLowerCase()))];
+    const purposes = ['login_2fa', 'pwd_reset', 'change_password', 'modal_stepup', 'authenticator_manage'];
+    return { keys, purpose: purpose || purposes.find(value => keys.some(key => key.startsWith(value + '_'))) || 'login_2fa' };
+}
+
+const matchesScope = (record, scope) => record && record.purpose === scope.purpose && scope.keys.some(key => record.linkedKeys.includes(key));
+const challengeError = (message, status = 400, code = 'INVALID_CHALLENGE') => Object.assign(new Error(message), { status, code });
+
+function requireChallenge(id, scope) {
+    const record = typeof id === 'string' && /^[a-f0-9]{32}$/.test(id) ? challengeStore.get(id) : null;
+    if (!record) throw challengeError('Verification challenge expired. Request a new code.', 410, 'CHALLENGE_EXPIRED');
+    if (!matchesScope(record, scope)) throw challengeError('Verification challenge does not match this account and purpose.');
+    return record;
+}
 
 // Check if an identifier is currently in active cooldown
 export function checkOtpCooldown(identifier, cooldownMs = OTP_RESEND_COOLDOWN_MS) {
     if (!identifier) return { allowed: true, remainingSeconds: 0 };
     const key = identifier.toLowerCase().trim();
 
-    // In-flight mutex check (< 15 seconds)
     const inFlight = inFlightDispatches.get(key);
     if (inFlight && (Date.now() - inFlight < 15 * 1000)) {
         return { allowed: false, remainingSeconds: 15, inFlight: true };
@@ -60,7 +163,6 @@ export function checkOtpCooldown(identifier, cooldownMs = OTP_RESEND_COOLDOWN_MS
     return { allowed: true, remainingSeconds: 0 };
 }
 
-// Record successful OTP dispatch timestamp to enforce cooldown
 export function recordOtpDispatch(identifier) {
     if (!identifier) return;
     const key = identifier.toLowerCase().trim();
@@ -69,15 +171,12 @@ export function recordOtpDispatch(identifier) {
 
 /**
  * Atomically acquire OTP dispatch lock across multiple alias keys.
- * Completely eliminates async race conditions caused by rapid double-clicking.
  */
 export function acquireOtpLock(identifiers, cooldownMs = OTP_RESEND_COOLDOWN_MS) {
     const rawKeys = Array.isArray(identifiers) ? identifiers : [identifiers];
     const keys = rawKeys.filter(Boolean).map(id => String(id).toLowerCase().trim());
-
     const now = Date.now();
 
-    // 1. Verify none of the keys are in-flight or in cooldown
     for (const key of keys) {
         const inFlight = inFlightDispatches.get(key);
         if (inFlight && (now - inFlight < 15 * 1000)) {
@@ -99,10 +198,9 @@ export function acquireOtpLock(identifiers, cooldownMs = OTP_RESEND_COOLDOWN_MS)
         }
     }
 
-    // 2. Atomically lock all keys immediately
     for (const key of keys) {
         inFlightDispatches.set(key, now);
-        cooldownStore.set(key, now); // Optimistic cooldown stamp prevents race conditions
+        cooldownStore.set(key, now);
     }
 
     return { acquired: true };
@@ -114,8 +212,8 @@ export function acquireOtpLock(identifiers, cooldownMs = OTP_RESEND_COOLDOWN_MS)
 export function releaseOtpLock(identifiers, success = true) {
     const rawKeys = Array.isArray(identifiers) ? identifiers : [identifiers];
     const keys = rawKeys.filter(Boolean).map(id => String(id).toLowerCase().trim());
-
     const now = Date.now();
+
     for (const key of keys) {
         inFlightDispatches.delete(key);
         if (success) {
@@ -126,203 +224,524 @@ export function releaseOtpLock(identifiers, success = true) {
     }
 }
 
-// Generate 6-digit cryptographic OTP code
-export function generateOtpCode() {
-    return crypto.randomInt(100000, 999999).toString();
-}
-
 /**
- * Retrieve active unexpired OTP code or generate a new one.
- * Enterprise standard: If an unexpired code exists (< 5 minutes) and attempts < 5 across ANY alias,
- * we reuse the active code so that resends and retries deliver the exact same code.
+ * Account & IP Rate Limit Checks
  */
-export function getOrGenerateOtp(identifiers) {
-    const rawKeys = Array.isArray(identifiers) ? identifiers : [identifiers];
-    const keys = rawKeys.filter(Boolean).map(id => String(id).toLowerCase().trim());
-
-    if (keys.length === 0) {
-        return { code: generateOtpCode(), isExisting: false, remainingSeconds: 300 };
-    }
-
+export function checkAccountChallengeCreationAllowed(accountKey, ip) {
     const now = Date.now();
+    const fifteenMinAgo = now - 15 * 60 * 1000;
 
-    for (const key of keys) {
-        const existing = otpStore.get(key);
-        if (existing && existing.expiresAt > now && existing.attempts < 5 && existing.code) {
-            return {
-                code: existing.code,
-                isExisting: true,
-                expiresAt: existing.expiresAt,
-                remainingSeconds: Math.ceil((existing.expiresAt - now) / 1000)
-            };
+    if (accountKey) {
+        const cleanAcc = String(accountKey).toLowerCase().trim();
+        const accHistory = (accountChallengeCreations.get(cleanAcc) || []).filter(t => t > fifteenMinAgo);
+        accountChallengeCreations.set(cleanAcc, accHistory);
+        if (accHistory.length >= MAX_CHALLENGES_PER_15_MIN_ACCOUNT) {
+            const oldest = accHistory[0];
+            const retryAfter = Math.max(1, Math.ceil((oldest + 15 * 60 * 1000 - now) / 1000));
+            return { allowed: false, reason: 'account_limit', retryAfter };
         }
     }
 
-    const newCode = generateOtpCode();
+    if (ip) {
+        const cleanIp = String(ip).trim();
+        const ipHistory = (ipChallengeCreations.get(cleanIp) || []).filter(t => t > fifteenMinAgo);
+        ipChallengeCreations.set(cleanIp, ipHistory);
+        if (ipHistory.length >= MAX_CHALLENGES_PER_15_MIN_IP) {
+            const oldest = ipHistory[0];
+            const retryAfter = Math.max(1, Math.ceil((oldest + 15 * 60 * 1000 - now) / 1000));
+            return { allowed: false, reason: 'ip_limit', retryAfter };
+        }
+    }
+
+    return { allowed: true };
+}
+
+export function recordAccountChallengeCreation(accountKey, ip) {
+    const now = Date.now();
+    if (accountKey) {
+        const cleanAcc = String(accountKey).toLowerCase().trim();
+        const list = accountChallengeCreations.get(cleanAcc) || [];
+        list.push(now);
+        accountChallengeCreations.set(cleanAcc, list);
+    }
+    if (ip) {
+        const cleanIp = String(ip).trim();
+        const list = ipChallengeCreations.get(cleanIp) || [];
+        list.push(now);
+        ipChallengeCreations.set(cleanIp, list);
+    }
+    return now;
+}
+
+// Reserve before awaiting delivery so concurrent accounts cannot overrun an IP's budget.
+export function reserveAccountChallengeCreation(accountKey, ip) {
+    const limit = checkAccountChallengeCreationAllowed(accountKey, ip);
+    if (!limit.allowed) throw Object.assign(new Error('Too many verification challenges requested. Please wait before requesting another code.'), { status: 429, code: 'OTP_RATE_LIMITED', retryAfter: limit.retryAfter });
+    const at = recordAccountChallengeCreation(accountKey, ip);
+    let released = false;
     return {
-        code: newCode,
-        isExisting: false,
-        expiresAt: now + 5 * 60 * 1000,
-        remainingSeconds: 300
+        allowed: true,
+        release() {
+            if (released) return;
+            released = true;
+            for (const [store, key] of [[accountChallengeCreations, String(accountKey || '').toLowerCase().trim()], [ipChallengeCreations, String(ip || '').trim()]]) {
+                const list = store.get(key);
+                const index = list?.lastIndexOf(at) ?? -1;
+                if (index >= 0) list.splice(index, 1);
+                if (list?.length === 0) store.delete(key);
+            }
+        }
+    };
+}
+
+export function checkAccountFailedAttemptsExceeded(accountKey) {
+    if (!accountKey) return false;
+    const now = Date.now();
+    const oneHourAgo = now - 60 * 60 * 1000;
+    const cleanAcc = String(accountKey).toLowerCase().trim();
+    const list = (accountFailedAttempts.get(cleanAcc) || []).filter(t => t > oneHourAgo);
+    accountFailedAttempts.set(cleanAcc, list);
+    return list.length >= MAX_FAILED_ATTEMPTS_PER_HOUR_ACCOUNT;
+}
+
+export function recordAccountFailedAttempt(accountKey) {
+    if (!accountKey) return;
+    const now = Date.now();
+    const cleanAcc = String(accountKey).toLowerCase().trim();
+    const list = accountFailedAttempts.get(cleanAcc) || [];
+    list.push(now);
+    accountFailedAttempts.set(cleanAcc, list);
+}
+
+/**
+ * Create a new challenge keyed by unguessable challengeId.
+ * Plaintext code exists only in returned object for dispatch and is immediately hashed.
+ */
+export function createChallenge({ accountId, purpose = 'login_2fa', code, method = 'email', linkedKeys = [], accountExists = true, deferred = false }) {
+    if (challengeStore.size >= MAX_ACTIVE_CHALLENGES) {
+        for (const [id, record] of challengeStore) if (Date.now() >= Math.min(record.expiresAt, record.absoluteExpiresAt)) deleteChallenge(id);
+        if (challengeStore.size >= MAX_ACTIVE_CHALLENGES) throw challengeError('Verification service is busy. Please retry shortly.', 503, 'OTP_SERVICE_BUSY');
+    }
+    const challengeId = crypto.randomBytes(16).toString('hex');
+    const now = Date.now();
+    const cleanCode = String(code || generateOtpCode()).trim();
+    const codeHmac = computeCodeHmac(challengeId, purpose, cleanCode);
+
+    const rawKeys = Array.isArray(linkedKeys) ? linkedKeys : [linkedKeys];
+    const keys = rawKeys.filter(Boolean).map(k => String(k).toLowerCase().trim());
+    if (accountId) {
+        keys.push(String(accountId).toLowerCase().trim());
+    }
+
+    const record = {
+        challengeId,
+        accountId: accountId ? String(accountId).toLowerCase().trim() : 'anonymous',
+        purpose,
+        method,
+        codeHmac,
+        createdAt: now,
+        expiresAt: now + OTP_CODE_TTL_MS,
+        absoluteExpiresAt: now + CHALLENGE_ABSOLUTE_LIFETIME_MS,
+        attempts: 0,
+        resendCount: 0,
+        accountExists: Boolean(accountExists),
+        linkedKeys: Array.from(new Set(keys))
+    };
+
+    const previousAliases = record.linkedKeys.map(key => activeChallengeByAccount.get(`${purpose}:${key}`));
+    let committed = false;
+    const commit = () => {
+        if (committed) return;
+        const at = Date.now();
+        if (at >= record.absoluteExpiresAt) throw challengeError('Verification challenge expired. Request a new code.', 410, 'CHALLENGE_EXPIRED');
+        for (const [index, key] of record.linkedKeys.entries()) {
+            const current = activeChallengeByAccount.get(`${purpose}:${key}`);
+            if (current && current !== previousAliases[index] && challengeStore.has(current)) throw challengeError('Verification changed. Request a new code.', 409, 'CHALLENGE_CONFLICT');
+        }
+        record.expiresAt = Math.min(at + OTP_CODE_TTL_MS, record.absoluteExpiresAt);
+        if (challengeStore.size >= MAX_ACTIVE_CHALLENGES) throw challengeError('Verification service is busy. Please retry shortly.', 503, 'OTP_SERVICE_BUSY');
+        challengeStore.set(challengeId, record);
+        for (const key of record.linkedKeys) activeChallengeByAccount.set(`${purpose}:${key}`, challengeId);
+        committed = true;
+    };
+    if (!deferred) commit();
+
+    return {
+        challengeId,
+        code: cleanCode,
+        expiresIn: Math.ceil(OTP_CODE_TTL_MS / 1000),
+        absoluteExpiresIn: Math.ceil(CHALLENGE_ABSOLUTE_LIFETIME_MS / 1000),
+        get expiresAt() { return record.expiresAt; },
+        commit
     };
 }
 
 /**
- * Store OTP in memory across one or more alias keys with a 5-minute expiration.
- * Retains previous valid codes so delayed SMS/emails can still be verified.
+ * Retrieve active unexpired challenge or prepare a rotation / new challenge.
+ * Returns commit() callback to swap in the new HMAC code only after successful transport delivery.
  */
-export function storeOtp(identifiers, code, method = 'email', options = {}) {
-    const rawKeys = Array.isArray(identifiers) ? identifiers : [identifiers];
-    const keys = rawKeys.filter(Boolean).map(id => String(id).toLowerCase().trim());
-    if (keys.length === 0) return;
-
+export function getOrGenerateOtp(identifiers, options = {}) {
+    const scope = otpScope(identifiers, options.purpose);
+    const { keys, purpose } = scope;
     const now = Date.now();
-    const expiresAt = options.expiresAt || (now + 5 * 60 * 1000);
-    const activeRecords = keys.map(key => otpStore.get(key)).filter(record => record?.code === code && record.expiresAt > now);
-    const attempts = Math.max(0, ...activeRecords.map(record => record.attempts));
-    const challengeExpiry = activeRecords.length ? Math.min(...activeRecords.map(record => record.expiresAt)) : expiresAt;
 
-    for (const key of keys) {
-        const existing = otpStore.get(key);
-        const previousCodes = [];
-        if (existing && existing.expiresAt > now && existing.attempts < 5) {
-            if (existing.code && existing.code !== code) {
-                previousCodes.push(existing.code);
-            }
-            if (Array.isArray(existing.previousCodes)) {
-                for (const prev of existing.previousCodes) {
-                    if (prev && prev !== code && !previousCodes.includes(prev)) {
-                        previousCodes.push(prev);
-                    }
+    let existingRecord = null;
+    if (options.challengeId) {
+        existingRecord = requireChallenge(options.challengeId, scope);
+    }
+    if (!existingRecord && keys.length > 0) {
+        for (const key of keys) {
+            const cid = activeChallengeByAccount.get(`${purpose}:${key}`);
+            if (cid) {
+                const rec = challengeStore.get(cid);
+                if (rec && now < rec.absoluteExpiresAt && now < rec.expiresAt) {
+                    existingRecord = rec;
+                    break;
                 }
             }
         }
-
-        otpStore.set(key, {
-            code,
-            method: method || existing?.method || 'email',
-            previousCodes: previousCodes.slice(0, 5),
-            expiresAt: challengeExpiry,
-            attempts,
-            linkedKeys: keys
-        });
     }
+
+    if (existingRecord) {
+        if (now >= existingRecord.absoluteExpiresAt) {
+            deleteChallenge(existingRecord.challengeId);
+            const err = new Error('Verification challenge has expired (15-minute lifetime limit). Please start over.');
+            err.status = 410;
+            err.code = 'CHALLENGE_EXPIRED';
+            throw err;
+        }
+
+        if (existingRecord.attempts >= 5) {
+            const err = new Error('Too many incorrect attempts. This verification challenge is locked.');
+            err.status = 429;
+            err.code = 'TOO_MANY_ATTEMPTS';
+            throw err;
+        }
+
+        const resendCount = (existingRecord.resendCount || 0) + 1;
+        if (resendCount > OTP_MAX_RESENDS_PER_CHALLENGE) {
+            const err = new Error(`Maximum resend limit of ${OTP_MAX_RESENDS_PER_CHALLENGE} codes reached for this session. Please wait before requesting another code.`);
+            err.status = 429;
+            err.code = 'RESEND_LIMIT_EXCEEDED';
+            throw err;
+        }
+
+        let newCode, candidateHmac;
+        do {
+            newCode = generateOtpCode();
+            candidateHmac = computeCodeHmac(existingRecord.challengeId, purpose, newCode);
+        } while (candidateHmac === existingRecord.codeHmac);
+        const previousHmac = existingRecord.codeHmac;
+        let committed = false;
+
+        return {
+            challengeId: existingRecord.challengeId,
+            code: newCode,
+            candidateHmac,
+            isExisting: false,
+            isRotated: true,
+            get expiresAt() { return committed ? existingRecord.expiresAt : Math.min(Date.now() + OTP_CODE_TTL_MS, existingRecord.absoluteExpiresAt); },
+            get remainingSeconds() { return Math.max(0, Math.ceil(((committed ? existingRecord.expiresAt : Math.min(Date.now() + OTP_CODE_TTL_MS, existingRecord.absoluteExpiresAt)) - Date.now()) / 1000)); },
+            attempts: existingRecord.attempts,
+            resendCount,
+            commit: () => {
+                if (committed) return;
+                if (challengeStore.get(existingRecord.challengeId) !== existingRecord || existingRecord.codeHmac !== previousHmac || existingRecord.attempts >= 5) {
+                    throw challengeError('Verification changed. Request a new code.', 409, 'CHALLENGE_CONFLICT');
+                }
+                if (Date.now() >= existingRecord.absoluteExpiresAt) throw challengeError('Verification challenge expired. Request a new code.', 410, 'CHALLENGE_EXPIRED');
+                existingRecord.codeHmac = candidateHmac;
+                existingRecord.resendCount = resendCount;
+                existingRecord.expiresAt = Math.min(Date.now() + OTP_CODE_TTL_MS, existingRecord.absoluteExpiresAt);
+                committed = true;
+            }
+        };
+    }
+
+    // Generate new challenge
+    const newCode = generateOtpCode();
+    const challenge = createChallenge({
+        accountId: options.accountId || (keys[0]?.startsWith(purpose + '_') ? keys[0].slice(purpose.length + 1) : keys[0]) || 'anonymous',
+        purpose,
+        code: newCode,
+        method: options.method || 'email',
+        linkedKeys: keys,
+        accountExists: options.accountExists !== false,
+        deferred: true
+    });
+
+    return {
+        challengeId: challenge.challengeId,
+        code: challenge.code,
+        candidateHmac: computeCodeHmac(challenge.challengeId, purpose, challenge.code),
+        isExisting: false,
+        isRotated: false,
+        get expiresAt() { return challenge.expiresAt; },
+        remainingSeconds: Math.ceil(OTP_CODE_TTL_MS / 1000),
+        attempts: 0,
+        resendCount: 0,
+        commit: challenge.commit
+    };
 }
 
 /**
- * Purge OTP records across all alias keys.
+ * Store OTP in challenge store using hashed HMAC representation.
  */
-export function deleteOtp(identifiers) {
-    const rawKeys = Array.isArray(identifiers) ? identifiers : [identifiers];
-    const keys = rawKeys.filter(Boolean).map(id => String(id).toLowerCase().trim());
-    const allKeysToDelete = new Set(keys);
-    for (const key of keys) {
-        const record = otpStore.get(key);
-        if (record?.linkedKeys) {
-            for (const k of record.linkedKeys) allKeysToDelete.add(k);
+export function storeOtp(identifiers, code, method = 'email', options = {}) {
+    const scope = otpScope(identifiers, options.purpose);
+    const { keys, purpose } = scope;
+    const now = Date.now();
+
+    let targetChallenge = null;
+    if (options.challengeId) {
+        targetChallenge = requireChallenge(options.challengeId, scope);
+    }
+    if (!targetChallenge && keys.length > 0) {
+        for (const k of keys) {
+            const cid = activeChallengeByAccount.get(`${purpose}:${k}`);
+            if (cid && challengeStore.has(cid)) {
+                targetChallenge = challengeStore.get(cid);
+                break;
+            }
         }
     }
-    for (const key of allKeysToDelete) {
-        otpStore.delete(key);
+
+    if (targetChallenge) {
+        targetChallenge.codeHmac = computeCodeHmac(targetChallenge.challengeId, targetChallenge.purpose, code);
+        targetChallenge.expiresAt = Math.min(options.expiresAt || (now + OTP_CODE_TTL_MS), targetChallenge.absoluteExpiresAt);
+        if (options.attempts !== undefined) targetChallenge.attempts = Math.max(targetChallenge.attempts, options.attempts);
+        if (options.resendCount !== undefined) targetChallenge.resendCount = Math.max(targetChallenge.resendCount, options.resendCount);
+        for (const k of keys) {
+            if (!targetChallenge.linkedKeys.includes(k)) targetChallenge.linkedKeys.push(k);
+            activeChallengeByAccount.set(`${purpose}:${k}`, targetChallenge.challengeId);
+        }
+        return targetChallenge.challengeId;
+    }
+
+    const created = createChallenge({
+        accountId: (keys[0]?.startsWith(purpose + '_') ? keys[0].slice(purpose.length + 1) : keys[0]) || 'anonymous',
+        purpose,
+        code,
+        method,
+        linkedKeys: keys,
+        accountExists: options.accountExists !== false
+    });
+    const rec = challengeStore.get(created.challengeId);
+    if (options.expiresAt) rec.expiresAt = Math.min(options.expiresAt, rec.absoluteExpiresAt);
+    if (options.attempts !== undefined) rec.attempts = options.attempts;
+    if (options.resendCount !== undefined) rec.resendCount = options.resendCount;
+    return created.challengeId;
+}
+
+/**
+ * Delete challenge and all linked account aliases.
+ */
+export function deleteChallenge(challengeId) {
+    if (!challengeId) return;
+    const record = challengeStore.get(challengeId);
+    if (record) {
+        for (const key of record.linkedKeys) {
+            const scoped = `${record.purpose}:${key}`;
+            if (activeChallengeByAccount.get(scoped) === challengeId) activeChallengeByAccount.delete(scoped);
+        }
+        challengeStore.delete(challengeId);
     }
 }
 
-// Get active unexpired OTP status across any candidate alias key
-export function getActiveOtp(identifiers) {
-    const rawKeys = Array.isArray(identifiers) ? identifiers : [identifiers];
-    const keys = rawKeys.filter(Boolean).map(id => String(id).toLowerCase().trim());
+export function deleteOtp(identifiers, requestedPurpose) {
+    const { keys, purpose } = otpScope(identifiers, requestedPurpose);
+    for (const key of keys) {
+        const cid = activeChallengeByAccount.get(`${purpose}:${key}`);
+        if (cid) {
+            deleteChallenge(cid);
+        }
+    }
+}
+
+// Get active unexpired OTP status
+export function getActiveOtp(identifiers, requestedPurpose) {
+    const { keys, purpose } = otpScope(identifiers, requestedPurpose);
     if (keys.length === 0) return null;
 
     const now = Date.now();
     for (const key of keys) {
-        const record = otpStore.get(key);
-        if (record && record.expiresAt > now) {
-            return {
-                code: record.code,
-                method: record.method || 'email',
-                expiresAt: record.expiresAt,
-                remainingSeconds: Math.ceil((record.expiresAt - now) / 1000)
-            };
+        const cid = activeChallengeByAccount.get(`${purpose}:${key}`);
+        if (cid) {
+            const record = challengeStore.get(cid);
+            if (record && now < record.absoluteExpiresAt && now < record.expiresAt) {
+                return {
+                    challengeId: record.challengeId,
+                    method: record.method || 'email',
+                    expiresAt: record.expiresAt,
+                    remainingSeconds: Math.ceil((record.expiresAt - now) / 1000),
+                    attempts: record.attempts,
+                    resendCount: record.resendCount
+                };
+            }
         }
     }
     return null;
 }
 
-// Verify OTP against memory store across all candidate alias keys
-export function verifyOtpCode(identifiers, code) {
-    const rawKeys = Array.isArray(identifiers) ? identifiers : [identifiers];
-    const keys = rawKeys.filter(Boolean).map(id => String(id).toLowerCase().trim());
+/**
+ * Verify OTP against memory challenge store using constant-time comparison on HMAC digests.
+ */
+export function verifyOtpCode(target, code, options = {}) {
+    const now = Date.now();
+    let challengeId = null;
+    let enteredCode = null;
+    let purpose = null;
+    let identifiers = [];
 
-    if (keys.length === 0 || !code) {
+    if (typeof target === 'object' && target !== null && !Array.isArray(target)) {
+        challengeId = target.challengeId || target.challenge_id;
+        enteredCode = target.code || target.otp || code;
+        purpose = target.purpose;
+        if (target.identifier) identifiers.push(target.identifier);
+        if (target.email) identifiers.push(target.email);
+    } else {
+        enteredCode = code;
+        if (typeof target === 'string') {
+            if (challengeStore.has(target)) {
+                challengeId = target;
+            } else {
+                identifiers.push(target);
+            }
+        } else if (Array.isArray(target)) {
+            identifiers = target;
+        }
+        challengeId = challengeId || options.challengeId || options.challenge_id;
+        purpose = options.purpose;
+    }
+
+    enteredCode = String(enteredCode || '').trim();
+    if (!enteredCode) {
         return { valid: false, error: 'Missing identifier or code' };
     }
 
-    const now = Date.now();
-    let foundRecord = null;
-    let matchingKey = null;
-
-    for (const key of keys) {
-        const record = otpStore.get(key);
-        if (record) {
-            foundRecord = record;
-            matchingKey = key;
-            break;
+    const scope = otpScope(identifiers, purpose);
+    purpose = scope.purpose;
+    let record = null;
+    if (challengeId) {
+        record = challengeStore.get(challengeId);
+    } else if (identifiers.length > 0) {
+        for (const id of identifiers) {
+            const cleanId = String(id).toLowerCase().trim();
+            const cid = activeChallengeByAccount.get(`${purpose}:${cleanId}`);
+            if (cid && challengeStore.has(cid)) {
+                record = challengeStore.get(cid);
+                challengeId = cid;
+                break;
+            }
         }
     }
 
-    if (!foundRecord) {
-        return { valid: false, error: 'No active OTP found or code expired. Please request a new one.' };
+    if (!record) {
+        return { valid: false, notFound: true, error: 'No active OTP found or code expired. Please request a new one.' };
     }
 
-    const allLinkedKeys = new Set([...keys, ...(foundRecord.linkedKeys || [])]);
-
-    if (now > foundRecord.expiresAt) {
-        for (const key of allLinkedKeys) otpStore.delete(key);
-        return { valid: false, error: 'Verification code has expired. Please request a new one.' };
+    if (!matchesScope(record, scope)) {
+        return { valid: false, error: 'Invalid verification purpose or expired challenge for this account.' };
     }
 
-    if (foundRecord.attempts >= 5) {
-        for (const key of allLinkedKeys) otpStore.delete(key);
+    // Account-level failed attempts check across all challenges within 1 hour
+    const accountKey = record.accountId;
+    if (checkAccountFailedAttemptsExceeded(accountKey)) {
+        return {
+            valid: false,
+            error: 'Too many failed verification attempts for this account. Please wait 1 hour before trying again.',
+            rateLimited: true
+        };
+    }
+
+    // Check 15-minute absolute lifetime cap
+    if (now >= record.absoluteExpiresAt) {
+        deleteChallenge(record.challengeId);
+        return { valid: false, error: 'Verification challenge has expired. Please request a new one.', expired: true };
+    }
+
+    // Check fixed 5-minute per-code expiry
+    if (now >= record.expiresAt) {
+        deleteChallenge(record.challengeId);
+        return { valid: false, error: 'Verification code has expired. Please request a new one.', expired: true };
+    }
+
+    // Check cumulative attempt budget (max 5)
+    if (record.attempts >= 5) {
+        deleteChallenge(record.challengeId);
         return { valid: false, error: 'Too many incorrect attempts. Please request a new code.' };
     }
 
-    const enteredCode = String(code).trim();
-    const matchesCurrent = foundRecord.code === enteredCode;
-    const matchesPrevious = Array.isArray(foundRecord.previousCodes) && foundRecord.previousCodes.includes(enteredCode);
+    // Compute HMAC digest of entered code and compare constant-time
+    const candidateHmac = computeCodeHmac(record.challengeId, record.purpose, enteredCode);
+    const expectedBuf = Buffer.from(record.codeHmac, 'hex');
+    const enteredBuf = Buffer.from(candidateHmac, 'hex');
 
-    if (!matchesCurrent && !matchesPrevious) {
-        foundRecord.attempts++;
-        for (const key of allLinkedKeys) {
-            const linked = otpStore.get(key);
-            if (linked?.code === foundRecord.code) linked.attempts = foundRecord.attempts;
+    let matchesCurrent = false;
+    if (expectedBuf.length === enteredBuf.length && expectedBuf.length > 0) {
+        matchesCurrent = crypto.timingSafeEqual(expectedBuf, enteredBuf);
+    }
+
+    if (!matchesCurrent || !record.accountExists) {
+        record.attempts++;
+        recordAccountFailedAttempt(accountKey);
+
+        const remaining = Math.max(0, 5 - record.attempts);
+        if (record.attempts >= 5) {
+            deleteChallenge(record.challengeId);
+            return { valid: false, error: 'Too many incorrect attempts. Please request a new code.' };
         }
-        return { valid: false, error: `Invalid code. ${5 - foundRecord.attempts} attempts remaining.` };
+        return { valid: false, error: `Invalid code. ${remaining} attempts remaining.` };
     }
 
-    // Burn token across ALL linked aliases after successful verification (single-use)
-    for (const key of allLinkedKeys) {
-        otpStore.delete(key);
-    }
+    // Burn token on successful verify (single-use)
+    deleteChallenge(record.challengeId);
     return { valid: true };
 }
 
 // Testing helper to simulate deadline expiry
-export function expireOtpForTesting(identifier) {
-    if (!otpTestMode()) return false;
-    const key = String(identifier).toLowerCase().trim();
-    const record = otpStore.get(key);
+export function expireOtpForTesting(identifier, options = {}) {
+    if (isProduction()) return false; if (!otpTestMode() && process.env.NODE_ENV !== 'test') return false;
+    const now = Date.now();
+    let record = null;
+    if (challengeStore.has(identifier)) {
+        record = challengeStore.get(identifier);
+    } else {
+        const p = otpScope([identifier], options.purpose).purpose;
+        const key = String(identifier).toLowerCase().trim();
+        const cid = activeChallengeByAccount.get(`${p}:${key}`);
+        if (cid) record = challengeStore.get(cid);
+    }
     if (record) {
-        record.expiresAt = Date.now() - 1000;
+        if (options.absolute) {
+            record.absoluteExpiresAt = now - 1000;
+        } else {
+            record.expiresAt = now - 1000;
+        }
         return true;
     }
     return false;
 }
 
-// Send OTP email through Brevo with explicit development simulation for test domains.
-export async function sendEmailOtp(email, code, userName = 'Employee') {
+export function isTestDomainEmail(email) {
+    if (isProduction()) return false;
+    const clean = String(email || '').toLowerCase().trim();
+    return /\.(?:test|example|invalid)$/.test(clean);
+}
+
+// Send OTP email through Brevo with development simulation for test domains
+export async function sendEmailOtp(email, code, userName = 'Employee', context = {}) {
+    const startedAt = performance.now();
+    const domain = String(email || '').trim().toLowerCase().split('@')[1] || '';
+    const diagnostic = {
+        requestId: context.requestId || crypto.randomUUID(),
+        purpose: context.purpose || 'login_2fa',
+        recipientDomain: /^[a-z0-9.-]+$/.test(domain) ? domain : 'unknown'
+    };
     const appBaseUrl = (process.env.APP_URL || process.env.FRONTEND_URL || 'https://cpointhris.vercel.app').replace(/\/+$/, '');
     const logoUrl = process.env.OTP_LOGO_URL || `${appBaseUrl}/logo-crop.png`;
 
+    const safeName = String(userName ?? 'Employee').replace(/[&<>"']/g, character => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[character]);
     const htmlContent = `
     <!DOCTYPE html>
     <html lang="en">
@@ -369,9 +788,7 @@ export async function sendEmailOtp(email, code, userName = 'Employee') {
         </style>
     </head>
     <body>
-        <div style="display:none;visibility:hidden;opacity:0;color:transparent;height:0;width:0;overflow:hidden;mso-hide:all;">
-            Your C-Point verification code is ready — it expires in 5 minutes.
-        </div>
+
         <div class="canvas">
             <div class="card">
                 <div class="header">
@@ -388,7 +805,7 @@ export async function sendEmailOtp(email, code, userName = 'Employee') {
                 </div>
                 <div class="content">
                     <p class="heading">Verify it's you</p>
-                    <p class="lede">Hi <strong>${userName}</strong>, enter this code to finish signing in.</p>
+                    <p class="lede">Hi <strong>${safeName}</strong>, enter this code to finish signing in.</p>
                     <div class="code">${String(code).replace(/(\d{3})(\d{3})/, '$1 $2')}</div>
                     <p class="expiry">This code expires in 5 minutes.</p>
                     <p class="expiry">For your security, don't share it with anyone.</p>
@@ -403,15 +820,17 @@ export async function sendEmailOtp(email, code, userName = 'Employee') {
     </html>
     `;
 
-    // Reserved test domains cannot receive email; real mailboxes always use Brevo.
     const normalizedEmail = (email || '').trim().toLowerCase();
-    if (otpTestMode() && /\.(?:test|example|invalid)$/.test(normalizedEmail)) {
-        console.info('[OTP_EMAIL_SIMULATED] Synthetic test recipient; no email was sent.');
+
+    // In production, synthetic simulation is strictly forbidden.
+    if (!isProduction() && otpTestMode() && isTestDomainEmail(normalizedEmail)) {
+        console.info('[OTP_EMAIL_SIMULATED]', { ...diagnostic, status: 'simulated', providerCalled: false });
         return { success: true, simulated: true, code };
     }
 
-    // 1. Primary dispatcher: Brevo REST API v3
+    // Primary dispatcher: Brevo REST API v3
     if (process.env.BREVO_API_KEY) {
+        console.info('[OTP_EMAIL_STARTED]', { ...diagnostic, provider: 'brevo' });
         try {
             const senderEmail = process.env.BREVO_SENDER_EMAIL || 'marikinahris2026@gmail.com';
             const senderName = process.env.BREVO_SENDER_NAME || 'C-Point HRIS Security';
@@ -433,23 +852,39 @@ export async function sendEmailOtp(email, code, userName = 'Employee') {
                 })
             });
 
-            const data = await res.json();
-            if (res.ok && typeof data.messageId === 'string' && data.messageId.trim()) {
-                console.info('[OTP_BREVO_SUCCESS] Verification email accepted by provider.');
+            const data = await res.json().catch(() => ({}));
+            if (res.ok && typeof data?.messageId === 'string' && data.messageId.trim()) {
+                console.info('[OTP_BREVO_SUCCESS]', { ...diagnostic, status: 'accepted_by_provider', httpStatus: res.status,
+                    messageId: data.messageId, durationMs: Math.round(performance.now() - startedAt) });
                 return { success: true, provider: 'brevo', messageId: data.messageId };
             }
-        } catch {
-            console.warn('[OTP_BREVO_ERROR] Verification email delivery failed.');
+            const reason = res.ok ? 'missing_message_id'
+                : res.status === 429 ? 'rate_limited'
+                : [401, 403].includes(res.status) ? 'provider_auth_rejected'
+                : data?.code === 'not_enough_credits' ? 'credits_exhausted'
+                : res.status >= 500 ? 'provider_unavailable' : 'provider_rejected';
+            const knownCodes = ['invalid_parameter', 'missing_parameter', 'unauthorized', 'permission_denied', 'not_enough_credits', 'too_many_requests', 'bad_request'];
+            console.warn('[OTP_BREVO_ERROR]', { ...diagnostic, status: 'failed', reason, httpStatus: res.status,
+                providerCode: knownCodes.includes(data?.code) ? data.code : 'unknown',
+                durationMs: Math.round(performance.now() - startedAt) });
+            throw unavailableDelivery();
+        } catch (error) {
+            if (error?.code !== 'OTP_DELIVERY_UNAVAILABLE') {
+                const reason = error?.name === 'TimeoutError' ? 'timeout' : error?.name === 'AbortError' ? 'aborted' : 'network_error';
+                console.warn('[OTP_BREVO_ERROR]', { ...diagnostic, status: 'failed', reason,
+                    durationMs: Math.round(performance.now() - startedAt) });
+            }
             throw unavailableDelivery();
         }
     }
 
+    console.warn('[OTP_BREVO_ERROR]', { ...diagnostic, status: 'failed', reason: 'not_configured', providerCalled: false });
     throw unavailableDelivery();
 }
 
 // Send OTP via SMS (Decommissioned - SMS Gateway Removed)
 export async function sendSmsOtp(phoneNumber, code) {
-    if (!otpTestMode()) throw unavailableDelivery();
+    if (!otpTestMode() || isProduction()) throw unavailableDelivery();
     console.info('[OTP_SMS_SIMULATED] Explicit development simulation is enabled; no SMS was sent.');
     return { success: true, simulated: true, code };
 }

@@ -83,6 +83,7 @@ export default function Login() {
     const [otpCode, setOtpCode] = useState(['', '', '', '', '', '']);
     const [otpMethod, setOtpMethod] = useState(savedSession?.otpMethod || '');
     const [, setGeneratedOtp] = useState(savedSession?.generatedOtp || null);
+    const [challengeId, setChallengeId] = useState(savedSession?.challengeId || null);
     const [expiresAt, setExpiresAt] = useState(() => savedSession?.expiresAt || null);
     const [hasTotp, setHasTotp] = useState(() => {
         return Boolean(
@@ -111,7 +112,6 @@ export default function Login() {
     };
 
     const [timer, setTimer] = useState(() => getSecondsRemaining(savedSession?.expiresAt));
-    const formattedTimer = `${Math.floor(timer / 60)}:${String(timer % 60).padStart(2, '0')}`;
 
     // Dynamic document title alignment
     useEffect(() => {
@@ -225,6 +225,7 @@ export default function Login() {
 
                 if (data.hasActiveOtp && data.remainingSeconds > 0) {
                     const newExpiresAt = Date.now() + (data.remainingSeconds * 1000);
+                    setChallengeId(data.challengeId || null);
                     setExpiresAt(newExpiresAt);
                     setTimer(data.remainingSeconds);
                     if (data.method) {
@@ -235,6 +236,7 @@ export default function Login() {
                         const s = raw ? JSON.parse(raw) : {};
                         writeLoginSession(sessionStorage, {
                             ...s,
+                            challengeId: data.challengeId || null,
                             expiresAt: newExpiresAt,
                             otpMethod: data.method || s.otpMethod || 'email'
                         });
@@ -430,7 +432,8 @@ export default function Login() {
                     user_id: employeeData?.id,
                     method: 'email',
                     purpose: 'login_2fa',
-                    mock: isMock
+                    mock: isMock,
+                    challengeId: isResend ? challengeId : undefined
                 })
             });
 
@@ -439,9 +442,19 @@ export default function Login() {
                 if (data.retry_after) {
                     startCooldown(data.retry_after);
                 }
+                if (data.code === 'CHALLENGE_EXPIRED') {
+                    setChallengeId(null);
+                    setExpiresAt(null);
+                    setTimer(0);
+                    try {
+                        const saved = JSON.parse(sessionStorage.getItem('cpoint_login_2fa_session') || '{}');
+                        writeLoginSession(sessionStorage, { ...saved, challengeId: null, expiresAt: null });
+                    } catch { /* Retry remains available without browser storage. */ }
+                }
                 throw new Error(data.error || 'Failed to dispatch verification code');
             }
 
+            if (data.challengeId) setChallengeId(data.challengeId);
             startCooldown(data.cooldown || 60);
 
             // Ensure generatedOtp is null so it never renders in the OTP enter screen
@@ -472,6 +485,7 @@ export default function Login() {
                     employeeData,
                     step: 3,
                     otpMethod: method,
+                    challengeId: data.challengeId || challengeId,
                     generatedOtp: null,
                     expiresAt: codeExpiresAt
                 });
@@ -507,7 +521,8 @@ export default function Login() {
                     email: sanitizedEmail,
                     identifier: sanitizedEmail,
                     otp: enteredOtp,
-                    purpose: 'login_2fa'
+                    purpose: 'login_2fa',
+                    challengeId
                 })
             });
 
@@ -898,12 +913,12 @@ export default function Login() {
                                         <span className="text-xs font-semibold text-slate-900 flex items-center gap-2">
                                             <span>Code active via Email</span>
                                         </span>
-                                        <span className="text-[11px] font-mono font-medium text-slate-700 bg-slate-200/80 px-1.5 py-0.5 rounded-sm">
-                                            {formattedTimer}
+                                        <span className="text-[10px] font-semibold text-slate-700 bg-slate-200/80 px-1.5 py-0.5 rounded-sm">
+                                            Active
                                         </span>
                                     </div>
                                     <p className="text-[11px] text-slate-500 mb-2.5 leading-relaxed">
-                                        Your 6-digit code remains valid for {formattedTimer}. You can enter the code already sent to your email.
+                                        Your 6-digit code is active. You can enter the code already sent to your email.
                                     </p>
                                     <button
                                         type="button"
@@ -979,8 +994,8 @@ export default function Login() {
                                         <div className="flex items-center justify-between">
                                             <p className="font-semibold text-xs text-slate-900">Send via Email</p>
                                             {otpMethod === 'email' && timer > 0 && (
-                                                <span className="text-[10px] font-mono font-medium text-slate-700 bg-slate-100 px-1.5 py-0.5 rounded-sm border border-slate-200">
-                                                    Active ({formattedTimer})
+                                                <span className="text-[10px] font-semibold text-slate-700 bg-slate-100 px-1.5 py-0.5 rounded-sm border border-slate-200">
+                                                    Active
                                                 </span>
                                             )}
                                         </div>
@@ -1098,23 +1113,35 @@ export default function Login() {
                                 </p>
                             ) : (
                                 <div className="mt-3.5 flex flex-col items-center gap-1.5">
-                                    <p className="text-xs text-slate-500 flex items-center justify-center gap-1">
+                                    <div className="text-xs text-slate-500 flex items-center justify-center gap-1.5">
                                         {timer > 0 ? (
-                                            <span>Code expires in <strong className="font-mono text-slate-700">{formattedTimer}</strong></span>
+                                            <>
+                                                <span>Didn't receive the email?</span>
+                                                <button
+                                                    type="button"
+                                                    disabled={loading || isCooldown}
+                                                    style={{ pointerEvents: (loading || isCooldown) ? 'none' : 'auto' }}
+                                                    onClick={() => sendOtp(otpMethod, true)}
+                                                    className="text-accent hover:underline font-semibold disabled:text-slate-400 disabled:no-underline disabled:cursor-not-allowed cursor-pointer transition-colors"
+                                                >
+                                                    {isCooldown ? `Resend in ${cooldown}s` : 'Resend code'}
+                                                </button>
+                                            </>
                                         ) : (
-                                            <span className="text-danger-ink font-semibold">Code expired.</span>
+                                            <>
+                                                <span className="text-danger-ink font-semibold">Code expired.</span>
+                                                <span className="text-slate-300">•</span>
+                                                <button
+                                                    type="button"
+                                                    disabled={loading}
+                                                    onClick={() => sendOtp(otpMethod, true)}
+                                                    className="text-accent hover:underline font-semibold cursor-pointer transition-colors"
+                                                >
+                                                    Request a new code
+                                                </button>
+                                            </>
                                         )}
-                                        <span className="mx-1 text-slate-300">•</span>
-                                        <button
-                                            type="button"
-                                            disabled={loading || isCooldown}
-                                            style={{ pointerEvents: (loading || isCooldown) ? 'none' : 'auto' }}
-                                            onClick={() => sendOtp(otpMethod, true)}
-                                            className="text-accent hover:underline font-semibold disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer transition-colors"
-                                        >
-                                            {isCooldown ? `Resend (${cooldown}s)` : 'Resend Code'}
-                                        </button>
-                                    </p>
+                                    </div>
                                     {import.meta.env.DEV && <button
                                         type="button"
                                         disabled={loading}
