@@ -118,6 +118,7 @@ router.get('/', cacheResponse(15), async (req, res) => {
         if (view !== undefined && !['directory', 'roster'].includes(view)) return res.status(400).json({ error: 'Invalid employee list view.' });
         const filters = view ? parseListQuery(req.query) : null;
         if (view && !hasVerifiedManagerRole(req.user)) return res.status(403).json({ error: 'Administrative access is required.' });
+        const employeeId = hasVerifiedManagerRole(req.user) ? req.query.employee_id : req.user.id;
         const makeQuery = () => {
             let query = supabase
                 .from('employees')
@@ -133,8 +134,8 @@ router.get('/', cacheResponse(15), async (req, res) => {
                 .order('last_name', { ascending: true })
                 .order('first_name', { ascending: true });
 
-            if (req.query.employee_id) {
-                query = query.eq('id', req.query.employee_id);
+            if (employeeId) {
+                query = query.eq('id', employeeId);
             }
             return view ? query.order('id', { ascending: true }) : query;
         };
@@ -196,6 +197,7 @@ router.get('/', cacheResponse(15), async (req, res) => {
 // Real-time email uniqueness and conflict verification endpoint
 router.get('/check-email', async (req, res) => {
     try {
+        if (!hasVerifiedManagerRole(req.user)) return res.status(403).json({ error: 'Administrative access is required.' });
         const rawEmail = String(req.query.email || '').trim().toLowerCase();
         const excludeId = req.query.exclude_id ? String(req.query.exclude_id).trim() : null;
 

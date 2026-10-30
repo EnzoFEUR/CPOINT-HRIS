@@ -34,7 +34,7 @@ import { mountOfflineAttendance } from './routes/mountOfflineAttendance.js';
 import { register, telemetryMiddleware, getTelemetrySummary, getPrometheusMetrics } from './utils/telemetry.js';
 import { securityHeaders, removeExposedHeaders, apiRateLimiter, authRateLimiter, createCorsOptions, createAdmissionControl, createHeavyWorkAdmissionControl, createClassificationAdmissionControl } from './middleware/securityMiddleware.js';
 import { createHealthRouter } from './routes/health.js';
-import { validateApiInput } from './middleware/requestValidation.js';
+import { rejectReadRequestBody, validateApiInput } from './middleware/requestValidation.js';
 import { protectApiResponses, apiNotFound, apiErrorHandler } from './middleware/errorMiddleware.js';
 import { verifyToken as verifyIdentityToken, checkRole, checkVerifiedManagerOrOwnership } from './middleware/authMiddleware.js';
 import { startCronJobs } from './utils/cronJobs.js';
@@ -62,14 +62,14 @@ app.use(compression({
 }));
 
 // Core Middleware
+app.use('/api', rejectReadRequestBody);
 app.use('/api', createHeavyWorkAdmissionControl(), createClassificationAdmissionControl());
 app.use('/api', createAdmissionControl({ maxInFlight: Number(process.env.MAX_API_IN_FLIGHT || 64) }));
 app.use('/api', apiRateLimiter({ windowMs: API_RATE_POLICY.windowMs, max: API_RATE_POLICY.anonymousRequestsPerIp, releaseVerified: true }));
-app.use('/api/auth', authRateLimiter());
-app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ extended: false, limit: '10mb', parameterLimit: 1000 }));
 app.use('/api', validateApiInput);
 app.use('/api', createHealthRouter(supabase));
+app.use('/api/auth', authRateLimiter(), express.json({ limit: '32kb' }),
+    express.urlencoded({ extended: false, limit: '32kb', parameterLimit: 100 }), validateApiInput);
 
 // Static brand and email assets (zero-latency WebP caching)
 app.use(express.static(path.join(__dirname, 'public'), { maxAge: '30d', immutable: true }));
@@ -80,7 +80,9 @@ startCronJobs();
 
 // Mount Authenticated Routes
 const verifiedUserLimiter = apiRateLimiter({ windowMs: API_RATE_POLICY.windowMs, max: API_RATE_POLICY.verifiedRequestsPerEmployee, byVerifiedEmployee: true });
-const verifyToken = (req, res, next) => verifyIdentityToken(req, res, () => verifiedUserLimiter(req, res, next));
+// Authenticate before allocating JSON/form bodies; retain existing batch and biometric limits.
+const verifyToken = [verifyIdentityToken, verifiedUserLimiter, express.json({ limit: '10mb' }),
+    express.urlencoded({ extended: false, limit: '10mb', parameterLimit: 1000 }), validateApiInput];
 await mountOfflineAttendance(app, verifyToken);
 app.use('/api/documents', verifyToken, documentRouter);
 app.use('/api/storage', verifyToken, storageRoutes);

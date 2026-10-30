@@ -251,19 +251,17 @@ const checkOwnership = (req, res, next) => {
         'policy', 'conversion-settings', 'obligations', 'payment-employees',
         'cash-out-requests', 'history', 'decision', '13th-month-report'
     ]);
-    if (segments.length > 0 && !nonIdKeywords.has(segments[0])) {
+    if (!req.params?.id && segments.length > 0 && !nonIdKeywords.has(segments[0])) {
         pathId = segments[0];
     }
 
-    const targetId = req.params?.id || pathId || req.query?.employee_id || req.body?.employee_id;
-    const matchesSelf = targetId && (
-        targetId === req.user?.id || 
-        targetId === req.user?.company_id ||
-        targetId === req.user?.auth_user_id
-    );
+    const isRead = req.method === 'GET' || req.method === 'HEAD';
+    const targets = [req.params?.id, pathId, req.query?.employee_id, ...(isRead ? [] : [req.body?.employee_id])]
+        .filter(value => value !== undefined && value !== null);
+    const ownIds = [req.user?.id, req.user?.company_id, req.user?.auth_user_id].filter(Boolean);
     
-    if (!targetId || !matchesSelf) {
-        console.warn(`[RBAC BLOCK] User ${req.user?.id} attempted to access data for ${targetId || 'entire company'}`);
+    if (!targets.length || targets.some(target => !ownIds.includes(target))) {
+        console.warn(`[RBAC BLOCK] User ${req.user?.id} attempted access outside their employee scope`);
         return res.status(403).json({ error: 'UNAUTHORIZED: You can only access your own records.' });
     }
     
