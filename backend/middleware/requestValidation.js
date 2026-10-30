@@ -15,6 +15,15 @@ function invalid(message) {
   throw Object.assign(new Error(message), { status: 400, code: 'INVALID_INPUT', expose: true });
 }
 
+export function rejectReadRequestBody(req, res, next) {
+  if ((req.method === 'GET' || req.method === 'HEAD') &&
+      (Number(req.headers['content-length'] || 0) > 0 || req.headers['transfer-encoding'])) {
+    res.setHeader('Connection', 'close');
+    return next(Object.assign(new Error('GET and HEAD requests must not include a body.'), { status: 400, code: 'INVALID_INPUT', expose: true }));
+  }
+  next();
+}
+
 function validateField(key, value, validDates, validatePersonnel = false, payrollLimits = null, validateAuth = false) {
   if (validatePersonnel && ['first_name', 'last_name'].includes(key) && !isValidPersonnelText(value, key)) invalid(`${key.replaceAll('_', ' ')} must use Latin letters (including accents) and permitted name punctuation, up to ${MAX_PERSONNEL_NAME_LENGTH} characters.`);
   if (payrollLimits && Object.hasOwn(payrollLimits, key) && !isBoundedDecimalInput(value, payrollLimits[key], value === '')) invalid(`${key.replaceAll('_', ' ')} must be between 0 and ${payrollLimits[key]}, with at most two decimal places.`);

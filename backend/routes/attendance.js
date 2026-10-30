@@ -351,7 +351,8 @@ router.get(
   },
   asyncHandler(async (req, res) => {
     const { reqId } = req;
-    const { employee_id, start_date, end_date, date, department, roster, page = '1', limit = '100' } = req.query;
+    const { start_date, end_date, date, department, roster, page = '1', limit = '100' } = req.query;
+    const employee_id = hasVerifiedManagerRole(req.user) ? req.query.employee_id : req.user.id;
 
     // Validate pagination
     const pageNum = Math.max(1, parseInt(page, 10) || 1);

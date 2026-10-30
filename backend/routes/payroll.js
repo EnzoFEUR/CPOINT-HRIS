@@ -1313,8 +1313,9 @@ router.get('/', (req, res, next) => {
         }
         let query = supabase.from('payrolls').select('*, employees:employee_id(*)', compact ? { count: 'exact' } : undefined).order('created_at', { ascending: false });
 
-        if (req.query.employee_id) {
-            query = query.eq('employee_id', req.query.employee_id);
+        const employeeId = hasVerifiedManagerRole(req.user) ? req.query.employee_id : req.user.id;
+        if (employeeId) {
+            query = query.eq('employee_id', employeeId);
         }
 
         if (compact && (req.query.month || req.query.year)) {
@@ -2120,7 +2121,7 @@ router.post('/batch', requirePayrollManager, async (req, res) => {
 // 7. Factory Production & Piece-Rate Logs (Enterprise Database Persistence)
 // ==============================================================================
 
-router.get('/factory-logs', async (req, res) => {
+router.get('/factory-logs', requirePayrollManager, async (req, res) => {
     try {
         const { group_name, production_group_id, period_start, period_end } = req.query;
 
