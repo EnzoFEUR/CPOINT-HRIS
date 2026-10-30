@@ -1,4 +1,5 @@
-import React, { useState, useMemo, useEffect, useCallback } from 'react';
+import { getArchiveReviewDaysRemaining } from '../../../../../shared/employmentExit.mjs';
+import { useState, useMemo, useEffect, useCallback } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -18,18 +19,11 @@ function formatDate(dateString) {
 
 // Terminated employees stay visible in the directory under "Pending Termination" for this
 // many days (counted from when the termination was recorded) before moving to the Archive.
-const PENDING_TERMINATION_DAYS = 14;
 
-function getTerminationTimestamp(emp) {
-    return emp?.archived_at || emp?.separation_date || emp?.updated_at || null;
-}
 
-function getDaysUntilArchive(emp) {
-    const ts = getTerminationTimestamp(emp);
-    if (!ts) return null;
-    const elapsedDays = (Date.now() - new Date(ts).getTime()) / (1000 * 60 * 60 * 24);
-    return Math.max(0, Math.ceil(PENDING_TERMINATION_DAYS - elapsedDays));
-}
+
+
+function getDaysUntilArchive(emp) { return getArchiveReviewDaysRemaining(emp); }
 
 /**
  * Responsive Enterprise Employee Card
@@ -314,6 +308,12 @@ export default function EmployeesIndex() {
     const location = useLocation();
     const navigate = useNavigate();
     const queryClient = useQueryClient();
+    useEffect(() => {
+        const channel = supabase.channel('employment-exit-hr', { config: { private: true } })
+            .on('broadcast', { event: 'EXIT_CHANGED' }, () => queryClient.invalidateQueries({ queryKey: ['adminEmployees'] }))
+            .subscribe(status => { if (status === 'SUBSCRIBED') queryClient.invalidateQueries({ queryKey: ['adminEmployees'] }); });
+        return () => { supabase.removeChannel(channel); };
+    }, [queryClient]);
     
     // UI State
     const [searchQuery, setSearchQuery] = useState('');
@@ -354,20 +354,22 @@ export default function EmployeesIndex() {
                 navigate('/admin/archive');
                 return;
             }
-        } catch {}
+        } catch { /* Optional browser capability or storage is unavailable. */ }
         setIsSecurityModalOpen(true); 
     };
 
-    useEffect(() => {
-        if (location.state?.temp_password) {
+    const [credentialNavigation, setCredentialNavigation] = useState(null);
+    if (location.state?.temp_password && credentialNavigation !== location.state) {
+            setCredentialNavigation(location.state);
             setTempCreds({
                 company_id: location.state.company_id,
                 temp_password: location.state.temp_password,
                 email: location.state.email,
                 name: location.state.name
             });
-            navigate(location.pathname, { replace: true, state: {} });
-        }
+    }
+    useEffect(() => {
+        if (location.state?.temp_password) navigate(location.pathname, { replace: true, state: {} });
     }, [location.state, location.pathname, navigate]);
 
     const copyToClipboard = useCallback((text, fieldName) => {
@@ -508,8 +510,9 @@ export default function EmployeesIndex() {
             {/* Header */}
             <PageHeader
                 breadcrumbs={['Admin', 'Employees', 'Directory']}
+                className="[&>div]:flex-wrap"
                 actions={
-                    <div className="flex flex-wrap sm:flex-nowrap items-center gap-2 w-full sm:w-auto">
+                    <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
                         <button
                             type="button"
                             onClick={handleArchiveAccessClick}
@@ -518,6 +521,14 @@ export default function EmployeesIndex() {
                             <i className="ti ti-archive text-slate-500 text-sm shrink-0" />
                             <span className="whitespace-nowrap">Archive</span>
                         </button>
+
+                        <Link
+                            to="/admin/employment-exit"
+                            className="h-9 flex-1 sm:flex-initial px-3.5 bg-white hover:bg-slate-50 text-slate-700 hover:text-slate-900 rounded-md font-medium text-sm transition-colors duration-100 flex items-center justify-center gap-1.5 border border-slate-200 shadow-2xs focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-slate-950"
+                        >
+                            <i className="ti ti-door-exit text-slate-500 text-sm shrink-0" aria-hidden="true" />
+                            <span className="whitespace-nowrap">Employment Exit</span>
+                        </Link>
 
                         <Link
                             to="/admin/employees/provision-admin"
@@ -567,47 +578,58 @@ export default function EmployeesIndex() {
                             )}
                         </div>
 
-                        {/* Status filter tabs & View switcher: rigid h-9 */}
-                        <div className="flex items-center gap-2 justify-between lg:justify-end overflow-x-auto">
-                            <div className="h-9 flex items-center gap-1 bg-slate-100 p-1 rounded-md border border-slate-200/60 shrink-0">
-                                {[
-                                    { id: 'Active', label: 'Active', count: counts.active },
-                                    { id: 'All', label: 'All', count: counts.all },
-                                    ...(counts.pendingDocs > 0 ? [
-                                        { id: 'Docs Awaiting Review', label: 'Docs Submitted', count: counts.pendingDocs, alert: true }
-                                    ] : []),
-                                    { id: 'Suspended', label: 'Suspended', count: counts.suspended, alert: counts.suspended > 0 },
-                                    ...(counts.pendingTermination > 0 ? [
-                                        { id: 'Pending Termination', label: 'Separated', count: counts.pendingTermination, alert: true }
-                                    ] : []),
-                                    { id: 'Salaried', label: 'Salaried', count: counts.salaried },
-                                    { id: 'Piece-Rate', label: 'Piece-Rate', count: counts.pieceRate }
-                                ].map(tab => (
-                                    <button
-                                        key={tab.id}
-                                        type="button"
-                                        onClick={() => { setFilterStatus(tab.id); setCurrentPage(1); }}
-                                        className={`h-7 px-2.5 rounded text-xs font-medium transition-colors duration-100 flex items-center gap-1.5 whitespace-nowrap cursor-pointer focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-slate-950 ${
-                                            filterStatus === tab.id
-                                                ? 'bg-white text-slate-950 shadow-2xs font-semibold'
-                                                : 'text-slate-600 hover:text-slate-950 hover:bg-slate-200/60'
-                                        }`}
-                                    >
-                                        <span>{tab.label}</span>
-                                        <span className={`text-[10px] font-mono px-1 py-0.2 rounded-xs border ${
-                                            filterStatus === tab.id 
-                                                ? 'bg-slate-100 text-slate-900 border-slate-200' 
-                                                : tab.alert 
-                                                    ? 'bg-warning-subtle text-warning-ink border-warning/20 font-semibold'
-                                                    : 'bg-slate-200/60 text-slate-500 border-transparent'
-                                        }`}>
-                                            {tab.count}
-                                        </span>
-                                    </button>
-                                ))}
+                        {/* Status filter tabs & View switcher: dynamic responsive bar */}
+                        <div className="flex items-center gap-2 min-w-0">
+                            {/* Horizontally scrollable status filter tabs with touch momentum and auto-centering */}
+                            <div className="flex-1 min-w-0 overflow-x-auto touch-scroll no-scrollbar py-0.5">
+                                <div className="h-9 inline-flex items-center gap-1 bg-slate-100 p-1 rounded-md border border-slate-200/60">
+                                    {[
+                                        { id: 'Active', label: 'Active', count: counts.active },
+                                        { id: 'All', label: 'All', count: counts.all },
+                                        ...(counts.pendingDocs > 0 ? [
+                                            { id: 'Docs Awaiting Review', label: 'Docs Submitted', count: counts.pendingDocs, alert: true }
+                                        ] : []),
+                                        { id: 'Suspended', label: 'Suspended', count: counts.suspended, alert: counts.suspended > 0 },
+                                        ...(counts.pendingTermination > 0 ? [
+                                            { id: 'Pending Termination', label: 'Separated', count: counts.pendingTermination, alert: true }
+                                        ] : []),
+                                        { id: 'Salaried', label: 'Salaried', count: counts.salaried },
+                                        { id: 'Piece-Rate', label: 'Piece-Rate', count: counts.pieceRate }
+                                    ].map(tab => (
+                                        <button
+                                            key={tab.id}
+                                            type="button"
+                                            onClick={(e) => {
+                                                setFilterStatus(tab.id);
+                                                setCurrentPage(1);
+                                                try {
+                                                    e.currentTarget.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+                                                } catch {
+                                                    // Fallback for environments lacking scrollIntoView options
+                                                }
+                                            }}
+                                            className={`h-7 px-2.5 rounded text-xs font-medium transition-colors duration-100 flex items-center gap-1.5 whitespace-nowrap shrink-0 cursor-pointer focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-slate-950 ${
+                                                filterStatus === tab.id
+                                                    ? 'bg-white text-slate-950 shadow-2xs font-semibold'
+                                                    : 'text-slate-600 hover:text-slate-950 hover:bg-slate-200/60'
+                                            }`}
+                                        >
+                                            <span>{tab.label}</span>
+                                            <span className={`text-[10px] font-mono px-1 py-0.2 rounded-xs border ${
+                                                filterStatus === tab.id 
+                                                    ? 'bg-slate-100 text-slate-900 border-slate-200' 
+                                                    : tab.alert 
+                                                        ? 'bg-warning-subtle text-warning-ink border-warning/20 font-semibold'
+                                                        : 'bg-slate-200/60 text-slate-500 border-transparent'
+                                            }`}>
+                                                {tab.count}
+                                            </span>
+                                        </button>
+                                    ))}
+                                </div>
                             </div>
 
-                            {/* View Switcher: Icon-only h-9 w-9 square pair */}
+                            {/* View Switcher: pinned outside horizontal scroll track, always visible */}
                             <div className="h-9 flex items-center gap-0.5 bg-slate-100 p-1 rounded-md border border-slate-200/60 shrink-0">
                                 <button
                                     type="button"
@@ -616,6 +638,7 @@ export default function EmployeesIndex() {
                                         viewMode === 'grid' ? 'bg-white text-slate-950 shadow-2xs' : 'text-slate-500 hover:text-slate-950'
                                     }`}
                                     title="Card Grid View"
+                                    aria-label="Card Grid View"
                                 >
                                     <i className="ti ti-layout-grid text-sm" />
                                 </button>
@@ -626,6 +649,7 @@ export default function EmployeesIndex() {
                                         viewMode === 'table' ? 'bg-white text-slate-950 shadow-2xs' : 'text-slate-500 hover:text-slate-950'
                                     }`}
                                     title="Stacked List View"
+                                    aria-label="Stacked List View"
                                 >
                                     <i className="ti ti-list text-sm" />
                                 </button>
@@ -1133,7 +1157,7 @@ export default function EmployeesIndex() {
                     const unlockKey = `cpoint_employee_module_unlocked_${currentUser?.id || currentUser?.email || 'admin'}`;
                     try {
                         sessionStorage.setItem(unlockKey, 'true');
-                    } catch {}
+                    } catch { /* Optional browser capability or storage is unavailable. */ }
                     navigate('/admin/archive');
                 }}
                 email={currentUser?.email}

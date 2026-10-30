@@ -1,5 +1,6 @@
 import { fetchWithAuth } from './api';
 import toast from 'react-hot-toast';
+import { revokeBrowserPush } from './devicePush.mjs';
 
 const DEFAULT_VAPID_PUBLIC_KEY = import.meta.env.VITE_VAPID_PUBLIC_KEY || '';
 
@@ -73,7 +74,7 @@ export const subscribeUserToPush = async (userId, silent = false) => {
                 const keyData = await keyRes.json();
                 if (keyData.publicKey) vapidPublicKey = keyData.publicKey;
             }
-        } catch (e) {
+        } catch {
             console.warn('[PUSH] Using default public key fallback');
         }
 
@@ -109,6 +110,7 @@ export const subscribeUserToPush = async (userId, silent = false) => {
             if (!silent) toast.success('Phone lock-screen notifications enabled!', { duration: 4000 });
             return { success: true, subscription };
         } else {
+            if (res.status === 403) await revokeBrowserPush(subscription);
             if (!silent) toast.error(data.error || 'Failed to register subscription.');
             return { success: false, error: data.error };
         }
@@ -117,6 +119,24 @@ export const subscribeUserToPush = async (userId, silent = false) => {
         if (!silent) toast.error('Failed to enable push notifications: ' + err.message);
         return { success: false, error: err.message };
     }
+};
+
+export const unsubscribeDevicePush = async () => {
+    const registration = await navigator.serviceWorker?.getRegistration();
+    const subscription = await registration?.pushManager?.getSubscription();
+    if (!subscription) return;
+    await revokeBrowserPush(subscription);
+    const controller = new AbortController();
+    let timer;
+    try {
+        await Promise.race([
+            fetchWithAuth('/api/push/unsubscribe', {
+                method: 'POST', body: JSON.stringify({ endpoint: subscription.endpoint }), signal: controller.signal
+            }),
+            new Promise(resolve => { timer = setTimeout(() => { controller.abort(); resolve(); }, 2000); })
+        ]);
+    } catch { /* The provider is already revoked; backend cleanup is best effort. */ }
+    finally { clearTimeout(timer); }
 };
 
 /**

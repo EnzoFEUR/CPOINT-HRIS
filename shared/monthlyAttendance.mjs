@@ -1,3 +1,4 @@
+import { getActiveMedicalGrace } from './medicalGrace.mjs';
 import { getEmployeeRestDays, getChargeableLateMinutes, getManilaWorkDate } from './workPolicy.mjs';
 import { getLeaveOverlapDays, isLeaveDate } from './leaveCredits.mjs';
 
@@ -25,11 +26,7 @@ export function reconcileMonthlyAttendance({ employee, attendances = [], leaves 
     const hireDate = String(employee.date_hired || employee.created_at || '').slice(0, 10);
     const timekeepingStartDate = String(employee.timekeeping_effective_date || employee.created_at || employee.date_hired || '').slice(0, 10);
     if (hireDate && !isLeaveDate(hireDate)) throw new Error('Invalid employee commencement date. HR must reconcile the schedule.');
-    let medical = null;
-    try {
-        medical = typeof employee.medical_record_url === 'string' ? JSON.parse(employee.medical_record_url) : employee.medical_record_url;
-    } catch { /* An unreadable record cannot grant an exemption. */ }
-    const medicalGrace = Boolean(medical?.exempt && (!medical.valid_until || medical.valid_until >= today));
+    const medicalGrace = Boolean(getActiveMedicalGrace(employee, today));
     const attendanceMap = new Map();
     for (const record of attendances) {
         if (record.employee_id && record.employee_id !== employee.id) throw new Error('Attendance belongs to a different employee.');

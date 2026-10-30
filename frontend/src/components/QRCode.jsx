@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import QRCodeLib from 'qrcode';
 import logoIconDark from '../assets/logo-icon-dark.png';
 
@@ -16,19 +16,12 @@ export default function QRCode({
   className = '' 
 }) {
   const cacheKey = `${value}_${size}_${fgColor}_${bgColor}_${level}_${margin}`;
-  const [dataUrl, setDataUrl] = useState(() => qrCache.get(cacheKey) || '');
+  const [generated, setGenerated] = useState(null);
+  const dataUrl = !value ? '' : generated?.key === cacheKey ? generated.url : qrCache.get(cacheKey) || '';
 
   useEffect(() => {
     let isMounted = true;
-    if (!value) {
-      setDataUrl('');
-      return;
-    }
-
-    if (qrCache.has(cacheKey)) {
-      setDataUrl(qrCache.get(cacheKey));
-      return;
-    }
+    if (!value || qrCache.has(cacheKey)) return;
 
     QRCodeLib.toDataURL(String(value), {
       width: size * 2, // 2x supersampling for high optical scanner clarity
@@ -41,7 +34,7 @@ export default function QRCode({
     })
       .then(url => {
         qrCache.set(cacheKey, url);
-        if (isMounted) setDataUrl(url);
+        if (isMounted) setGenerated({ key: cacheKey, url });
       })
       .catch(err => {
         console.error('QR code generation failed:', err);
@@ -58,8 +51,8 @@ export default function QRCode({
 
   return (
     <div 
-      style={{ width: `${size}px`, height: `${size}px` }} 
-      className={`inline-flex items-center justify-center relative select-none ${className}`}
+      style={{ width: `${size}px`, height: `${size}px`, maxWidth: '100%', maxHeight: '100%' }} 
+      className={`inline-flex items-center justify-center relative select-none max-w-full aspect-square ${className}`}
     >
       {dataUrl ? (
         <>
@@ -68,8 +61,8 @@ export default function QRCode({
             alt={`QR Code for ${value}`} 
             width={size} 
             height={size} 
-            className="w-full h-full object-contain select-none" 
-            style={{ width: `${size}px`, height: `${size}px` }}
+            className="w-full h-full object-contain select-none max-w-full" 
+            style={{ width: `${size}px`, height: `${size}px`, maxWidth: '100%', maxHeight: '100%' }}
           />
           {showLogo && (
             <div 

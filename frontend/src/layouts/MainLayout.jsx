@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, Suspense } from 'react';
+import { useState, useEffect, useCallback, Suspense } from 'react';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import Sidebar from './Sidebar';
@@ -19,29 +19,13 @@ export const MainLayout = ({ children }) => {
   // PWA Install State & Platform Detection
   const [deferredPrompt, setDeferredPrompt] = useState(null);
   const [showInstallGuide, setShowInstallGuide] = useState(false);
-  const [isStandalone, setIsStandalone] = useState(false);
-  const [browserType, setBrowserType] = useState('desktop');
+  const [isStandalone, setIsStandalone] = useState(() => typeof window !== 'undefined' && Boolean(window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true || document.referrer.includes('android-app://')));
+  const [browserType, setBrowserType] = useState(() => {
+    const ua = typeof navigator === 'undefined' ? '' : navigator.userAgent.toLowerCase();
+    return /iphone|ipad|ipod/.test(ua) ? 'ios' : /samsungbrowser/.test(ua) ? 'samsung' : /android/.test(ua) && /chrome/.test(ua) ? 'chrome_android' : 'desktop';
+  });
 
   useEffect(() => {
-    // Check if app is already running in standalone mode (PWA installed)
-    const isStandaloneMode =
-      window.matchMedia('(display-mode: standalone)').matches ||
-      window.navigator.standalone === true ||
-      document.referrer.includes('android-app://');
-    setIsStandalone(Boolean(isStandaloneMode));
-
-    // Detect browser / OS platform
-    const ua = window.navigator.userAgent.toLowerCase();
-    if (/iphone|ipad|ipod/.test(ua)) {
-      setBrowserType('ios');
-    } else if (/samsungbrowser/.test(ua)) {
-      setBrowserType('samsung');
-    } else if (/android/.test(ua) && /chrome/.test(ua)) {
-      setBrowserType('chrome_android');
-    } else {
-      setBrowserType('desktop');
-    }
-
     const handleBeforeInstall = (e) => {
       e.preventDefault();
       setDeferredPrompt(e);
@@ -77,9 +61,13 @@ export const MainLayout = ({ children }) => {
     }
   }, []);
 
-  // Scroll to top and close navigation on route transition
-  useEffect(() => {
+  const [sidebarPath, setSidebarPath] = useState(location.pathname);
+  if (sidebarPath !== location.pathname) {
+    setSidebarPath(location.pathname);
     setSidebarOpen(false);
+  }
+  // Scroll the browser after the route transition.
+  useEffect(() => {
     window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
   }, [location.pathname]);
 

@@ -70,7 +70,7 @@ const ThirteenthMonthModal = ({ onClose }) => {
                     </button>
                 </div>
 
-                <div className="overflow-auto flex-1">
+                <div className="overflow-auto touch-scroll flex-1">
                     {isLoading ? (
                         <p className="p-10 text-center text-xs font-semibold text-slate-400">Loading 13th month report&hellip;</p>
                     ) : isError ? (
@@ -78,7 +78,7 @@ const ThirteenthMonthModal = ({ onClose }) => {
                     ) : rows.length === 0 ? (
                         <p className="p-10 text-center text-xs font-semibold text-slate-400">No payslips found for {year}.</p>
                     ) : (
-                        <table className="w-full text-left text-xs">
+                        <table className="w-full text-left text-xs min-w-[620px]">
                             <thead className="sticky top-0 bg-slate-50 text-[10px] uppercase tracking-wider text-slate-400 font-bold">
                                 <tr>
                                     <th className="p-3">Employee</th>

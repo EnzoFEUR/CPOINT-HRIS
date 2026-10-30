@@ -1,5 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { notifAvatarCache } from '../../utils/notificationHelpers';
+import ProtectedImage from '../ProtectedImage';
+import { privateMediaKey } from '../../utils/privateMedia';
 
 export const NotificationAvatar = ({
   avatarSrc,
@@ -10,27 +12,19 @@ export const NotificationAvatar = ({
   badgeClass = 'h-4 w-4 text-[9px] -bottom-1 -right-1',
   ringClass = 'ring-1 ring-slate-900'
 }) => {
-  const initialStatus = avatarSrc ? notifAvatarCache.get(avatarSrc) : null;
-  const [status, setStatus] = useState(() => initialStatus || 'loading');
-
-  useEffect(() => {
-    if (!avatarSrc) {
-      setStatus('failed');
-      return;
-    }
-    const cached = notifAvatarCache.get(avatarSrc);
-    if (cached) setStatus(cached);
-    else setStatus('loading');
-  }, [avatarSrc]);
+  const [imageResult, setImageResult] = useState(null);
+  const protectedMedia = privateMediaKey(avatarSrc) !== undefined;
+  const status = !avatarSrc ? 'failed' : imageResult?.src === avatarSrc
+    ? imageResult.status : (!protectedMedia && notifAvatarCache.get(avatarSrc)) || 'loading';
 
   const handleLoad = () => {
-    if (avatarSrc) notifAvatarCache.set(avatarSrc, 'loaded');
-    setStatus('loaded');
+    if (avatarSrc && !protectedMedia) notifAvatarCache.set(avatarSrc, 'loaded');
+    setImageResult({ src: avatarSrc, status: 'loaded' });
   };
 
   const handleError = () => {
-    if (avatarSrc) notifAvatarCache.set(avatarSrc, 'failed');
-    setStatus('failed');
+    if (avatarSrc && !protectedMedia) notifAvatarCache.set(avatarSrc, 'failed');
+    setImageResult({ src: avatarSrc, status: 'failed' });
   };
 
   const isLoaded = status === 'loaded';
@@ -41,8 +35,8 @@ export const NotificationAvatar = ({
       <div className={`w-full h-full rounded-md flex items-center justify-center font-black ${textClass} shadow-inner select-none ${visuals.bg}`}>
         <bdi dir="auto">{initials}</bdi>
       </div>
-      {avatarSrc && !isFailed && (
-        <img
+      {avatarSrc && (!isFailed || protectedMedia) && (
+        <ProtectedImage
           src={avatarSrc}
           onLoad={handleLoad}
           onError={handleError}

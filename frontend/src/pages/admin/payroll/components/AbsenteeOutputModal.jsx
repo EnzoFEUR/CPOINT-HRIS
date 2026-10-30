@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import { useMemo } from 'react';
 import EmployeeAvatar from '../../../../components/EmployeeAvatar';
 const AbsenteeOutputModal = ({
     isOpen,

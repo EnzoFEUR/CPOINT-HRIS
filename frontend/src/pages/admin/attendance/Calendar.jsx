@@ -1,9 +1,10 @@
-import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../../../supabaseClient';
 import { fetchWithAuth } from '../../../utils/api';
 import PageHeader from '../../../components/ui/PageHeader';
-import Badge from '../../../components/ui/Badge';
+import ProtectedImage from '../../../components/ProtectedImage';
+
 
 const formatDateKey = (dateObj) => {
     const year = dateObj.getFullYear();
@@ -12,35 +13,24 @@ const formatDateKey = (dateObj) => {
     return `${year}-${month}-${day}`;
 };
 
-const timelinePhotoCache = new Map();
-
 const TimelinePhoto = ({ photoPath, employeeName }) => {
-    const photoUrl = photoPath ? `https://lzqshktnrvtlattdiwxf.supabase.co/storage/v1/object/public/public-bucket/${photoPath}` : null;
-    const initialStatus = photoUrl ? timelinePhotoCache.get(photoUrl) : null;
-    const [status, setStatus] = useState(() => initialStatus || 'loading');
-
-    useEffect(() => {
-        if (!photoUrl) {
-            setStatus('failed');
-            return;
-        }
-        const cached = timelinePhotoCache.get(photoUrl);
-        if (cached) setStatus(cached);
-        else setStatus('loading');
-    }, [photoUrl]);
+    const photoUrl = photoPath || null;
+    const [status, setStatus] = useState(() => photoUrl ? 'loading' : 'failed');
+    const [previousPhotoUrl, setPreviousPhotoUrl] = useState(photoUrl);
+    if (previousPhotoUrl !== photoUrl) {
+        setPreviousPhotoUrl(photoUrl);
+        setStatus(photoUrl ? 'loading' : 'failed');
+    }
 
     const handleLoad = () => {
-        if (photoUrl) timelinePhotoCache.set(photoUrl, 'loaded');
         setStatus('loaded');
     };
 
     const handleError = () => {
-        if (photoUrl) timelinePhotoCache.set(photoUrl, 'failed');
         setStatus('failed');
     };
 
     const isLoaded = status === 'loaded';
-    const isFailed = status === 'failed';
 
     return (
         <div 
@@ -56,8 +46,8 @@ const TimelinePhoto = ({ photoPath, employeeName }) => {
                 <circle cx="50" cy="38" r="18" />
                 <path d="M 0 100 L 0 92 C 12 72, 30 64, 50 64 C 70 64, 88 72, 100 92 L 100 100 Z" />
             </svg>
-            {photoUrl && !isFailed && (
-                <img
+            {photoUrl && (
+                <ProtectedImage
                     src={photoUrl}
                     onLoad={handleLoad}
                     onError={handleError}
@@ -76,8 +66,8 @@ const TimelinePhoto = ({ photoPath, employeeName }) => {
 const Calendar = () => {
     const queryClient = useQueryClient();
     const [selectedDate, setSelectedDate] = useState(() => new Date());
-    const hasUserPicked = useRef(Boolean(sessionStorage.getItem('calendar_user_picked')));
-    const hasAutoNavigated = useRef(false);
+    const [hasUserPicked, setHasUserPicked] = useState(() => Boolean(sessionStorage.getItem('calendar_user_picked')));
+    const [hasAutoNavigated, setHasAutoNavigated] = useState(false);
 
     const dateStr = useMemo(() => formatDateKey(selectedDate), [selectedDate]);
 
@@ -94,18 +84,16 @@ const Calendar = () => {
     });
 
     // Auto-focus latest active date on initial load if current day has no records
-    useEffect(() => {
-        if (!hasUserPicked.current && !hasAutoNavigated.current && calendarData) {
+        if (!hasUserPicked && !hasAutoNavigated && calendarData) {
             const logs = calendarData.dailyLogs || [];
             const dates = calendarData.activeDates || [];
             if (logs.length === 0 && dates.length > 0) {
-                hasAutoNavigated.current = true;
+                setHasAutoNavigated(true);
                 const latestDateStr = dates[dates.length - 1];
                 const [y, m, d] = latestDateStr.split('-');
                 setSelectedDate(new Date(Number(y), Number(m) - 1, Number(d)));
             }
         }
-    }, [calendarData]);
 
     const activeDateSet = useMemo(() => {
         const dates = calendarData?.activeDates || [];
@@ -130,19 +118,19 @@ const Calendar = () => {
     }, [queryClient]);
 
     const onPrevMonth = () => {
-        hasUserPicked.current = true;
+        setHasUserPicked(true);
         sessionStorage.setItem('calendar_user_picked', '1');
         setSelectedDate(prev => new Date(prev.getFullYear(), prev.getMonth() - 1, 1));
     };
 
     const onNextMonth = () => {
-        hasUserPicked.current = true;
+        setHasUserPicked(true);
         sessionStorage.setItem('calendar_user_picked', '1');
         setSelectedDate(prev => new Date(prev.getFullYear(), prev.getMonth() + 1, 1));
     };
 
     const onSelectDay = useCallback((day) => {
-        hasUserPicked.current = true;
+        setHasUserPicked(true);
         sessionStorage.setItem('calendar_user_picked', '1');
         setSelectedDate(current => new Date(current.getFullYear(), current.getMonth(), day));
     }, []);
@@ -241,6 +229,9 @@ const Calendar = () => {
         <div className="max-w-7xl mx-auto pb-24 lg:pb-8 px-4 sm:px-6 lg:px-8 font-sans">
             <PageHeader
                 breadcrumbs={['Admin', 'Attendance', 'Workforce Timeline']}
+                showBack
+                backFallback="/admin/attendance"
+                backLabel="Back to Logs"
             />
 
             <div className="grid grid-cols-1 xl:grid-cols-3 gap-4 sm:gap-6">

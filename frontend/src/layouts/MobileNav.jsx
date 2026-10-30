@@ -342,6 +342,16 @@ export const MobileNav = ({
                     </div>
                   </Link>
 
+                  {[
+                    { to: '/employee/documents', icon: 'ti-folders', label: 'Personnel Documents', description: 'Files and HR document requests' },
+                    { to: '/employee/policy-reports', icon: 'ti-scale', label: 'Policy & Incident Reports', description: 'Notices and report history' },
+                  ].map(item => (
+                    <Link key={item.to} to={item.to} onClick={() => setSidebarOpen(false)} className="p-3 bg-slate-900 hover:bg-slate-800 rounded-md border border-slate-800 flex items-center gap-2.5 transition-colors duration-100">
+                      <div className="w-8 h-8 rounded-md bg-accent/20 text-accent-on-dark flex items-center justify-center shrink-0"><i className={`ti ${item.icon} text-lg`} aria-hidden="true" /></div>
+                      <div className="min-w-0"><p className="text-xs font-semibold text-white">{item.label}</p><p className="text-[9px] text-slate-400">{item.description}</p></div>
+                    </Link>
+                  ))}
+
                   <Link
                     to="/employee/profile"
                     onClick={() => setSidebarOpen(false)}

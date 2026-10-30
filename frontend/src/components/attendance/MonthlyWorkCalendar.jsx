@@ -1,3 +1,4 @@
+import ProtectedImage from '../ProtectedImage';
 import { getManilaWorkDate } from '../../../../shared/workPolicy.mjs';
 import { getAttendanceMonthRange, reconcileMonthlyAttendance } from '../../../../shared/monthlyAttendance.mjs';
 import { useState, useMemo, useEffect, useRef } from 'react';
@@ -16,7 +17,7 @@ export default function MonthlyWorkCalendar(props) {
     return <EmployeeMonthlyWorkCalendar key={props.employeeId} {...props} />;
 }
 
-function EmployeeMonthlyWorkCalendar({ employeeId, employeeName = '', className = '', isEmployeeView = false }) {
+function EmployeeMonthlyWorkCalendar({ employeeId, className = '', isEmployeeView = false }) {
     const queryClient = useQueryClient();
     const todayMonthStr = getManilaWorkDate().slice(0, 7);
     const urlParams = new URLSearchParams(typeof window !== 'undefined' ? window.location.search : '');
@@ -33,13 +34,17 @@ function EmployeeMonthlyWorkCalendar({ employeeId, employeeName = '', className 
     const hasCheckedActiveMonth = useRef(Boolean(validUrlMonth));
     const dayDialog = useRef(null);
     const rootRef = useRef(null);
+    const [previousUrl, setPreviousUrl] = useState({ month: validUrlMonth, filter: validUrlFilter });
+    if (previousUrl.month !== validUrlMonth || previousUrl.filter !== validUrlFilter) {
+        setPreviousUrl({ month: validUrlMonth, filter: validUrlFilter });
+        if (validUrlMonth) setSelectedMonth(validUrlMonth);
+        if (validUrlFilter) setStatusFilter(validUrlFilter);
+    }
 
     useEffect(() => {
         if (validUrlMonth) {
             hasCheckedActiveMonth.current = true;
-            setSelectedMonth(validUrlMonth);
         }
-        if (validUrlFilter) setStatusFilter(validUrlFilter);
         if (validUrlFilter || validUrlMonth) {
             const t = setTimeout(() => rootRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 350);
             return () => clearTimeout(t);
@@ -126,7 +131,7 @@ function EmployeeMonthlyWorkCalendar({ employeeId, employeeName = '', className 
     };
 
     // The backend and direct fallback use the same employee schedule reconciliation.
-    const { data: monthlyData, isLoading: isMonthlyLoading, isFetching, error: queryError } = useQuery({
+    const { data: monthlyData, isLoading: isMonthlyLoading, error: queryError } = useQuery({
         queryKey: ['employeeMonthlyAttendance', activeEmpId, selectedMonth],
         queryFn: async ({ signal }) => {
             try {
@@ -232,7 +237,6 @@ function EmployeeMonthlyWorkCalendar({ employeeId, employeeName = '', className 
         document.addEventListener('keydown', onKeyDown);
         return () => { document.removeEventListener('keydown', onKeyDown); if (opener?.isConnected) opener.focus(); };
     }, [selectedDayDate]);
-    const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
     const leaveHolidayStatuses = ['APPROVED_LEAVE', 'FUTURE_LEAVE', 'HOLIDAY', 'FUTURE_HOLIDAY'];
     const leaveHolidayCount = allDays.filter(day => leaveHolidayStatuses.includes(day.status)).length;
 
@@ -1084,8 +1088,8 @@ function EmployeeMonthlyWorkCalendar({ employeeId, employeeName = '', className 
                                         Biometric Kiosk Time-In Proof
                                     </span>
                                     <div className="rounded-md overflow-hidden border border-slate-200 bg-slate-100 max-h-48 flex items-center justify-center">
-                                        <img
-                                            src={`https://lzqshktnrvtlattdiwxf.supabase.co/storage/v1/object/public/public-bucket/${selectedDayDetail.time_in_photo}`}
+                                        <ProtectedImage
+                                            src={selectedDayDetail.time_in_photo}
                                             alt="Biometric punch proof"
                                             className="w-full h-full object-cover max-h-48"
                                             onError={(e) => {

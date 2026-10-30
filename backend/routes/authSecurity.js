@@ -6,11 +6,18 @@ import { supabase } from '../supabaseClient.js';
 import { generateOtpCode, storeOtp, verifyOtpCode, sendEmailOtp, sendSmsOtp, checkOtpCooldown, recordOtpDispatch, getOrGenerateOtp, acquireOtpLock, releaseOtpLock, expireOtpForTesting } from '../services/otpService.js';
 import { authenticatorService } from '../services/authenticatorService.js';
 import { createAuditLog } from './auditLogs.js';
-import { invalidateAuthUser } from '../middleware/authMiddleware.js';
+import { invalidateAuthUser, verifyToken, verifyIdentityToken } from '../middleware/authMiddleware.js';
 import { resetVerifiedPassword } from '../services/passwordService.js';
 import { isPasswordReuseError, PASSWORD_REUSE_MESSAGE } from '../../shared/passwordPolicy.mjs';
+import { createEmploymentStatusHandler } from '../services/employmentStatus.js';
 
 const router = express.Router();
+router.post('/refresh-employment-status', verifyToken, createEmploymentStatusHandler());
+router.get('/login-context', verifyIdentityToken, (req, res) => {
+    res.set('Cache-Control', 'no-store');
+    const { id, email, requires_password_change } = req.user;
+    return res.json({ success: true, data: { id, email, requires_password_change } });
+});
 
 // In-memory rate limiting store: key -> { count, firstAttempt, lastAttempt }
 const rateLimitStore = new Map();
@@ -510,15 +517,28 @@ router.post('/verify-reset-otp', async (req, res) => {
  */
 router.post('/verify-emergency-key', async (req, res) => {
     try {
-        const { email, recoveryKey } = req.body;
-        if (!email || !recoveryKey) {
+        const { email, recoveryKey } = req.body || {};
+        if (typeof email !== 'string' || !email.trim() || email.length > 255 ||
+            typeof recoveryKey !== 'string' || !recoveryKey.trim() || recoveryKey.length > 1024) {
             return res.status(400).json({ success: false, error: 'Workplace email and Master Recovery Key are required.' });
         }
 
         const normalizedEmail = email.trim().toLowerCase();
-        const configuredMasterKey = process.env.MASTER_RECOVERY_KEY || 'CPOINT-RECOVERY-2026';
+        const clientIp = req.ip || req.socket?.remoteAddress || 'unknown';
+        const limitCheck = checkRateLimit(`emergency_${clientIp}`);
+        if (!limitCheck.allowed) {
+            return res.status(429).json({ success: false, error: `Too many emergency recovery attempts. Please retry in ${limitCheck.resetMinutes} minute(s).` });
+        }
 
-        if (recoveryKey.trim() !== configuredMasterKey) {
+        const configuredMasterKey = process.env.MASTER_RECOVERY_KEY;
+        if (typeof configuredMasterKey !== 'string' || configuredMasterKey.length < 32 ||
+            configuredMasterKey.length > 1024 || configuredMasterKey !== configuredMasterKey.trim()) {
+            return res.status(503).json({ success: false, error: 'Emergency recovery is unavailable. Please use another recovery method or contact your administrator.' });
+        }
+
+        const submittedDigest = crypto.createHash('sha256').update(recoveryKey.trim()).digest();
+        const configuredDigest = crypto.createHash('sha256').update(configuredMasterKey).digest();
+        if (!crypto.timingSafeEqual(submittedDigest, configuredDigest)) {
             return res.status(401).json({ success: false, error: 'Invalid Master Recovery Key. Please check the credentials.' });
         }
 

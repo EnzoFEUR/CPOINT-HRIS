@@ -652,18 +652,19 @@ export const GlobalSearch = ({ user }) => {
     };
   }, [isOpen]);
 
-  // Start clean every time the palette closes.
+  const [paletteContext, setPaletteContext] = useState({ isOpen, aiData, pathname: location.pathname });
+  if (paletteContext.isOpen !== isOpen || paletteContext.aiData !== aiData || paletteContext.pathname !== location.pathname) {
+    setPaletteContext({ isOpen, aiData, pathname: location.pathname });
+    if (!isOpen) setSearchQuery('');
+    if (!isOpen || paletteContext.aiData !== aiData) setSelectedIndex(0);
+    if (paletteContext.pathname !== location.pathname) setIsOpen(false);
+  }
+
+  // Cancel outstanding AI work when the palette closes.
   useEffect(() => {
     if (isOpen) return;
-    setSearchQuery('');
-    setSelectedIndex(0);
     resetAi();
   }, [isOpen, resetAi]);
-
-  // New AI results restart selection at the top.
-  useEffect(() => {
-    setSelectedIndex(0);
-  }, [aiData]);
 
   // Keep the keyboard-selected row visible. Pointer hover never scrolls.
   useEffect(() => {
@@ -675,11 +676,6 @@ export const GlobalSearch = ({ user }) => {
     }
     document.getElementById(optionId(activeIndex))?.scrollIntoView({ block: 'nearest' });
   }, [isOpen, activeIndex, optionId]);
-
-  // Close when the route changes.
-  useEffect(() => {
-    setIsOpen(false);
-  }, [location.pathname]);
 
   /* --------------------------------- Render --------------------------------- */
 

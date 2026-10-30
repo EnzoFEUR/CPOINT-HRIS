@@ -1,14 +1,15 @@
+import { useParams } from 'react-router-dom';
 import printStylesUrl from './QrPrint.print.css?url&no-inline';
-import React from 'react';
 import QRCode from '../../../components/QRCode';
+import BackButton from '../../../components/ui/BackButton';
 
 export default function QrPrint({ employee = {} }) {
+    const { id } = useParams();
+    const empId = employee.id || id;
+    const fallbackPath = empId ? `/admin/employees/${empId}` : '/admin/employees';
+
     const handlePrint = () => {
         window.print();
-    };
-
-    const handleClose = () => {
-        window.close();
     };
 
     return (
@@ -50,9 +51,7 @@ export default function QrPrint({ employee = {} }) {
                         <i className="ti ti-printer text-sm" /> Print ID Card
                     </button>
                     
-                    <button onClick={handleClose} className="w-full h-9 bg-slate-100 text-slate-600 font-semibold rounded-md hover:bg-slate-200 transition-colors duration-100 text-xs cursor-pointer shadow-2xs">
-                        Close Window
-                    </button>
+                    <BackButton fallback={fallbackPath} label="Back to Profile" className="w-full h-9 justify-center" />
                 </div>
             </div>
         </div>

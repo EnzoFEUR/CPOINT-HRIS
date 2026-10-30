@@ -24,17 +24,10 @@ function RequestedPayBadge({ leave }) {
 }
 
 export default function LeavesIndex() {
-    const [searchParams, setSearchParams] = useSearchParams();
+    const [searchParams, ] = useSearchParams();
     const rawTab = searchParams.get('tab') || 'requests';
     const activeTab = (rawTab === 'cashout' || rawTab === 'cashouts') ? 'cashouts' : rawTab;
-    const setActiveTab = (tab) => {
-        setSearchParams(prev => {
-            const next = new URLSearchParams(prev);
-            if (tab === 'requests') next.delete('tab');
-            else next.set('tab', tab);
-            return next;
-        }, { replace: true });
-    };
+
 
     const queryClient = useQueryClient();
     const actorId = getUser()?.id;
@@ -446,71 +439,139 @@ export default function LeavesIndex() {
                                     <p className="text-xs text-slate-500 mt-0.5">There are no requests matching the current status and date filters.</p>
                                 </div>
                             ) : (
-                                <div className="overflow-x-auto">
-                                    <table className="w-full text-left text-xs">
-                                        <thead>
-                                            <tr className="border-b border-slate-100 bg-slate-50/60 text-[10px] uppercase font-bold text-slate-400 tracking-wider">
-                                                <th className="py-3 px-4">Employee</th>
-                                                <th className="py-3 px-4">Requested Days</th>
-                                                <th className="py-3 px-4">Status</th>
-                                                <th className="py-3 px-4">Filed Date</th>
-                                                <th className="py-3 px-4 text-right">Action</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody className="divide-y divide-slate-100">
-                                            {cashQueue.data.data.map(item => (
-                                                <tr key={item.id} className="hover:bg-slate-50/60 transition-colors">
-                                                    <td className="py-3 px-4 font-semibold text-slate-800">
-                                                        {item.employees?.first_name} {item.employees?.last_name}
-                                                        <span className="block text-[10px] font-normal text-slate-400">
+                                <>
+                                    {/* Mobile Card View (md:hidden) */}
+                                    <div className="md:hidden divide-y divide-slate-100">
+                                        {cashQueue.data.data.map(item => (
+                                            <div key={item.id} className="p-3.5 space-y-2.5">
+                                                <div className="flex items-start justify-between gap-2">
+                                                    <div className="min-w-0 flex-1">
+                                                        <p className="font-semibold text-slate-800 text-xs truncate">
+                                                            {item.employees?.first_name} {item.employees?.last_name}
+                                                        </p>
+                                                        <p className="text-[10px] text-slate-400 font-medium">
                                                             {item.employees?.department || 'General'}
+                                                        </p>
+                                                    </div>
+                                                    <span className={`inline-flex px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider shrink-0 ${
+                                                        item.status === 'requested'
+                                                            ? 'bg-warning-subtle text-warning-ink border border-warning/20'
+                                                            : item.status === 'approved' || item.status === 'queued_for_payroll'
+                                                            ? 'bg-success-subtle text-success-ink border border-success/20'
+                                                            : item.status === 'rejected' || item.status === 'cancelled'
+                                                            ? 'bg-danger-subtle text-danger-ink border border-danger/20'
+                                                            : 'bg-slate-100 text-slate-700 border border-slate-200'
+                                                    }`}>
+                                                        {CASH_OUT_LABELS[item.status] || item.status}
+                                                    </span>
+                                                </div>
+
+                                                <div className="flex items-center justify-between text-xs bg-slate-50 p-2 rounded border border-slate-100">
+                                                    <div>
+                                                        <span className="text-[10px] text-slate-400 font-semibold uppercase block">Requested</span>
+                                                        <span className="font-bold text-slate-700">{Number(item.days)} days</span>
+                                                    </div>
+                                                    <div className="text-right">
+                                                        <span className="text-[10px] text-slate-400 font-semibold uppercase block">Filed Date</span>
+                                                        <span className="font-mono text-[11px] text-slate-500">
+                                                            {item.created_at ? new Date(item.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—'}
                                                         </span>
-                                                    </td>
-                                                    <td className="py-3 px-4 font-semibold text-slate-700">
-                                                        {Number(item.days)} days
-                                                    </td>
-                                                    <td className="py-3 px-4">
-                                                        <span className={`inline-flex px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${
-                                                            item.status === 'requested'
-                                                                ? 'bg-warning-subtle text-warning-ink border border-warning/20'
-                                                                : item.status === 'approved' || item.status === 'queued_for_payroll'
-                                                                ? 'bg-success-subtle text-success-ink border border-success/20'
-                                                                : item.status === 'rejected' || item.status === 'cancelled'
-                                                                ? 'bg-danger-subtle text-danger-ink border border-danger/20'
-                                                                : 'bg-slate-100 text-slate-700 border border-slate-200'
-                                                        }`}>
-                                                            {CASH_OUT_LABELS[item.status] || item.status}
+                                                    </div>
+                                                </div>
+
+                                                {item.status === 'rejected' && item.review_reason && (
+                                                    <div className="p-2 bg-danger-subtle/40 rounded border border-danger/20 text-[11px]">
+                                                        <span className="block text-danger-ink font-medium">
+                                                            Reason: {item.review_reason}
                                                         </span>
-                                                        {item.status === 'rejected' && item.review_reason && (
-                                                            <div className="mt-1 max-w-[220px]">
-                                                                <span className="block text-[11px] text-danger-ink font-medium truncate" title={item.review_reason}>
-                                                                    Reason: {item.review_reason}
-                                                                </span>
-                                                                {item.decided_at && (
-                                                                    <span className="block text-[10px] text-slate-400">
-                                                                        Rejected {new Date(item.decided_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
-                                                                    </span>
-                                                                )}
-                                                            </div>
+                                                        {item.decided_at && (
+                                                            <span className="block text-[10px] text-slate-400 mt-0.5">
+                                                                Rejected {new Date(item.decided_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                                                            </span>
                                                         )}
-                                                    </td>
-                                                    <td className="py-3 px-4 text-slate-500 font-mono text-[11px]">
-                                                        {item.created_at ? new Date(item.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—'}
-                                                    </td>
-                                                    <td className="py-3 px-4 text-right">
-                                                        <Link
-                                                            to={`/admin/employees/${item.employee_id}`}
-                                                            className="inline-flex items-center gap-1 text-xs font-semibold text-accent hover:text-accent-hover transition-colors"
-                                                        >
-                                                            <span>{item.status === 'requested' ? 'Review & Decide' : 'View History'}</span>
-                                                            <i className="ti ti-chevron-right text-xs" />
-                                                        </Link>
-                                                    </td>
+                                                    </div>
+                                                )}
+
+                                                <div className="pt-0.5">
+                                                    <Link
+                                                        to={`/admin/employees/${item.employee_id}`}
+                                                        className="w-full h-8 px-3 rounded-md bg-slate-100 hover:bg-accent-subtle hover:text-accent text-slate-700 font-semibold text-xs flex items-center justify-center gap-1.5 transition-colors border border-slate-200 touch-manipulation active:scale-[0.98]"
+                                                    >
+                                                        <span>{item.status === 'requested' ? 'Review & Decide' : 'View History'}</span>
+                                                        <i className="ti ti-chevron-right text-xs" />
+                                                    </Link>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+
+                                    {/* Desktop Table View (hidden md:block) */}
+                                    <div className="hidden md:block overflow-x-auto">
+                                        <table className="w-full text-left text-xs min-w-[640px]">
+                                            <thead>
+                                                <tr className="border-b border-slate-100 bg-slate-50/60 text-[10px] uppercase font-bold text-slate-400 tracking-wider">
+                                                    <th className="py-3 px-4">Employee</th>
+                                                    <th className="py-3 px-4">Requested Days</th>
+                                                    <th className="py-3 px-4">Status</th>
+                                                    <th className="py-3 px-4">Filed Date</th>
+                                                    <th className="py-3 px-4 text-right">Action</th>
                                                 </tr>
-                                            ))}
-                                        </tbody>
-                                    </table>
-                                </div>
+                                            </thead>
+                                            <tbody className="divide-y divide-slate-100">
+                                                {cashQueue.data.data.map(item => (
+                                                    <tr key={item.id} className="hover:bg-slate-50/60 transition-colors">
+                                                        <td className="py-3 px-4 font-semibold text-slate-800">
+                                                            {item.employees?.first_name} {item.employees?.last_name}
+                                                            <span className="block text-[10px] font-normal text-slate-400">
+                                                                {item.employees?.department || 'General'}
+                                                            </span>
+                                                        </td>
+                                                        <td className="py-3 px-4 font-semibold text-slate-700">
+                                                            {Number(item.days)} days
+                                                        </td>
+                                                        <td className="py-3 px-4">
+                                                            <span className={`inline-flex px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${
+                                                                item.status === 'requested'
+                                                                    ? 'bg-warning-subtle text-warning-ink border border-warning/20'
+                                                                    : item.status === 'approved' || item.status === 'queued_for_payroll'
+                                                                    ? 'bg-success-subtle text-success-ink border border-success/20'
+                                                                    : item.status === 'rejected' || item.status === 'cancelled'
+                                                                    ? 'bg-danger-subtle text-danger-ink border border-danger/20'
+                                                                    : 'bg-slate-100 text-slate-700 border border-slate-200'
+                                                            }`}>
+                                                                {CASH_OUT_LABELS[item.status] || item.status}
+                                                            </span>
+                                                            {item.status === 'rejected' && item.review_reason && (
+                                                                <div className="mt-1 max-w-[220px]">
+                                                                    <span className="block text-[11px] text-danger-ink font-medium truncate" title={item.review_reason}>
+                                                                        Reason: {item.review_reason}
+                                                                    </span>
+                                                                    {item.decided_at && (
+                                                                        <span className="block text-[10px] text-slate-400">
+                                                                            Rejected {new Date(item.decided_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                                                                        </span>
+                                                                    )}
+                                                                </div>
+                                                            )}
+                                                        </td>
+                                                        <td className="py-3 px-4 text-slate-500 font-mono text-[11px]">
+                                                            {item.created_at ? new Date(item.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—'}
+                                                        </td>
+                                                        <td className="py-3 px-4 text-right">
+                                                            <Link
+                                                                to={`/admin/employees/${item.employee_id}`}
+                                                                className="inline-flex items-center gap-1 text-xs font-semibold text-accent hover:text-accent-hover transition-colors"
+                                                            >
+                                                                <span>{item.status === 'requested' ? 'Review & Decide' : 'View History'}</span>
+                                                                <i className="ti ti-chevron-right text-xs" />
+                                                            </Link>
+                                                        </td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </>
                             )}
 
                             {(cashQueue.data?.count > 10 || cashPage > 1) && (

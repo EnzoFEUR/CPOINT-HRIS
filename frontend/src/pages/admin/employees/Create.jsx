@@ -1,17 +1,17 @@
 import { getManilaWorkDate } from '../../../../../shared/workPolicy.mjs';
-import React, { useState, useMemo, useEffect } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { useState, useMemo } from 'react';
+import { Link } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { fetchWithAuth } from '../../../utils/api';
-import { FACTORY_SHOE_ROLES, extractProductionLines } from '../../../utils/factoryRoles';
-import { formatPhPhone, validatePhPhone, cleanPhPhone } from '../../../utils/phoneUtils';
+import { FACTORY_SHOE_ROLES } from '../../../utils/factoryRoles';
+import { formatPhPhone, validatePhPhone } from '../../../utils/phoneUtils';
 import PhilippineAddressSelector from '../../../components/PhilippineAddressSelector';
 import EmailDomainWarning from '../../../components/EmailDomainWarning';
 import { sanitizePersonnelText, isPersonnelEmailInput, isValidPersonnelEmail, isEmployeePayInput, getEmployeePayError } from '../../../../../shared/personnelInput.mjs';
+import BackButton from '../../../components/ui/BackButton';
 
 export default function Create({ errors = [], defaultValues = {} }) {
-    const navigate = useNavigate();
     const queryClient = useQueryClient();
     const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -57,15 +57,13 @@ export default function Create({ errors = [], defaultValues = {} }) {
         return Array.isArray(productionGroupsData) ? productionGroupsData : [];
     }, [productionGroupsData]);
 
-    useEffect(() => {
-        if (!selectedGroupId && productionGroups.length > 0) {
-            const defaultLine = productionGroups.find(g => g.name === 'Line A') || productionGroups[0];
-            if (defaultLine) {
-                setSelectedGroupId(defaultLine.id);
-                setSelectedGroup(defaultLine.name);
-            }
+    if (!selectedGroupId && productionGroups.length > 0) {
+        const defaultLine = productionGroups.find(g => g.name === 'Line A') || productionGroups[0];
+        if (defaultLine) {
+            setSelectedGroupId(defaultLine.id);
+            setSelectedGroup(defaultLine.name);
         }
-    }, [productionGroups, selectedGroupId]);
+    }
 
     // Existing production lines from workforce cache (fallback)
     const { data: workforceData } = useQuery({
@@ -79,15 +77,6 @@ export default function Create({ errors = [], defaultValues = {} }) {
         staleTime: 60_000,
         gcTime: 300_000
     });
-
-    const existingLines = useMemo(() => {
-        const raw = Array.isArray(workforceData) ? workforceData : (workforceData?.data || []);
-        const lines = extractProductionLines(raw);
-        if (selectedGroup && !lines.includes(selectedGroup) && !isCustomLine) {
-            lines.push(selectedGroup);
-        }
-        return lines;
-    }, [workforceData, selectedGroup, isCustomLine]);
 
     // Real-time (0ms) duplicate name detection against workforce & archive
     const matchingArchivedEmployee = useMemo(() => {
@@ -357,7 +346,7 @@ export default function Create({ errors = [], defaultValues = {} }) {
                 toast.error(res.status >= 500 && requestId ? `${message} Reference: ${requestId}` : message);
                 setIsSubmitting(false);
             }
-        } catch (err) {
+        } catch {
             toast.error('Network error. Failed to create account.');
             setIsSubmitting(false);
         }
@@ -366,9 +355,7 @@ export default function Create({ errors = [], defaultValues = {} }) {
     return (
         <div className="max-w-4xl mx-auto space-y-4 sm:space-y-6 pb-24 lg:pb-6 px-4 sm:px-6 lg:px-8 font-sans relative">
             <div className="flex items-center justify-between">
-                <Link to="/admin/employees" className="h-8 px-3 bg-white text-slate-600 font-semibold text-xs rounded-md hover:bg-slate-50 hover:text-accent transition-colors duration-100 shadow-2xs border border-slate-200 flex items-center gap-1.5">
-                    <i className="ti ti-arrow-left text-sm" /> Back to Directory
-                </Link>
+                <BackButton fallback="/admin/employees" label="Back to Directory" />
             </div>
 
             {errors && errors.length > 0 && (

@@ -1,32 +1,45 @@
-import React, { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { supabase } from '../supabaseClient';
+
 import { API_BASE_URL } from '../utils/api';
 import { useOtpCooldown } from '../utils/useOtpCooldown';
 import toast from 'react-hot-toast';
 
 export default function ForgotPassword() {
-  const [email, setEmail] = useState('');
+  const [restored] = useState(() => {
+    try {
+      const parsed = JSON.parse(sessionStorage.getItem('cpoint_forgot_pwd_session') || '{}');
+      const expires = parsed.email && sessionStorage.getItem(`cpoint_forgot_exp_${parsed.email}`);
+      return { ...parsed, remaining: Math.max(0, Math.ceil((Number(expires) - Date.now()) / 1000)) || 0 };
+    } catch { return {}; }
+  });
+  const [email, setEmail] = useState(restored.email || '');
   const [recoveryKey, setRecoveryKey] = useState('');
-  const [method, setMethod] = useState('email'); // 'totp' | 'email' | 'key'
-  const [step, setStep] = useState(1); // 1 = Request, 2 = Verify Code
+  const [method, setMethod] = useState(restored.method || 'email'); // 'totp' | 'email' | 'key'
+  const [step, setStep] = useState(restored.step === 2 ? 2 : 1); // 1 = Request, 2 = Verify Code
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [successMsg, setSuccessMsg] = useState(null);
-  const [maskedPhone, setMaskedPhone] = useState('');
+  const [maskedPhone, setMaskedPhone] = useState(restored.maskedPhone || '');
   
   // OTP state (for SMS flow)
   const [otp, setOtp] = useState(['', '', '', '', '', '']);
-  const [previewCode, setPreviewCode] = useState(null);
+  const [previewCode, setPreviewCode] = useState(restored.previewCode || null);
   const otpInputsRef = useRef([]);
   const forgotSendLockRef = useRef(false);
   const lastForgotClickRef = useRef(0);
-  const hasUserSelectedMethodRef = useRef(false);
+  const hasUserSelectedMethodRef = useRef(Boolean(restored.method));
   const navigate = useNavigate();
 
   // Real-time workplace account verification
-  const [accountStatus, setAccountStatus] = useState(null); // null | 'checking' | 'verified' | 'not_found' | 'no_email' | 'inactive'
+  const [accountStatus, setAccountStatus] = useState(email.trim().length >= 3 ? 'checking' : null); // null | 'checking' | 'verified' | 'not_found' | 'no_email' | 'inactive'
   const [accountInfo, setAccountInfo] = useState(null);
+  const [lookupEmail, setLookupEmail] = useState(email);
+  if (lookupEmail !== email) {
+    setLookupEmail(email);
+    setAccountStatus(email.trim().length >= 3 ? 'checking' : null);
+    setAccountInfo(null);
+  }
 
   const { cooldown, isCooldown, startCooldown } = useOtpCooldown(
     'pwd_reset_dest_email_' + ((accountInfo?.email || email).trim().toLowerCase() || 'global'),
@@ -37,12 +50,9 @@ export default function ForgotPassword() {
   useEffect(() => {
     const query = email.trim();
     if (!query || query.length < 3) {
-      setAccountStatus(null);
-      setAccountInfo(null);
       return;
     }
 
-    setAccountStatus('checking');
     const controller = new AbortController();
 
     const timer = setTimeout(async () => {
@@ -114,31 +124,6 @@ export default function ForgotPassword() {
     return () => clearInterval(timer);
   }, [expiryTimer]);
 
-  // Restore active recovery step if page is refreshed or navigated back
-  useEffect(() => {
-    try {
-      const saved = sessionStorage.getItem('cpoint_forgot_pwd_session');
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (parsed.email) {
-          setEmail(parsed.email);
-          const exp = sessionStorage.getItem(`cpoint_forgot_exp_${parsed.email}`);
-          if (exp) {
-            const diff = Math.ceil((parseInt(exp, 10) - Date.now()) / 1000);
-            if (diff > 0) setExpiryTimer(diff);
-          }
-        }
-        if (parsed.method) {
-          setMethod(parsed.method);
-          hasUserSelectedMethodRef.current = true;
-        }
-        if (parsed.maskedPhone) setMaskedPhone(parsed.maskedPhone);
-        if (parsed.previewCode) setPreviewCode(parsed.previewCode);
-        if (parsed.step === 2) setStep(2);
-      }
-    } catch {}
-  }, []);
-
   // Handle Form Submission for Step 1 or Direct Dispatch
   const handleRequestReset = async (e, isResend = false, targetMethodOverride = null) => {
     if (e) e.preventDefault();
@@ -165,7 +150,7 @@ export default function ForgotPassword() {
           setStep(2);
           return;
         }
-      } catch {}
+      } catch { /* Retain the existing fallback when optional browser state is unavailable. */ }
       toast.error(`Please wait ${cooldown}s before requesting a new code, or enter your active code.`);
       return;
     }
@@ -209,7 +194,7 @@ export default function ForgotPassword() {
             method: 'totp',
             step: 2
           }));
-        } catch {}
+        } catch { /* Retain the existing fallback when optional browser state is unavailable. */ }
       } finally {
         forgotSendLockRef.current = false;
         setLoading(false);
@@ -299,7 +284,7 @@ export default function ForgotPassword() {
       const expTime = Date.now() + activeSeconds * 1000;
       try {
         sessionStorage.setItem(`cpoint_forgot_exp_${email.trim().toLowerCase()}`, String(expTime));
-      } catch {}
+      } catch { /* Retain the existing fallback when optional browser state is unavailable. */ }
       setExpiryTimer(activeSeconds);
 
       const resolvedMasked = accountInfo?.email || email.trim().toLowerCase();
@@ -319,7 +304,7 @@ export default function ForgotPassword() {
           previewCode: resolvedPreview,
           step: 2
         }));
-      } catch {}
+      } catch { /* Retain the existing fallback when optional browser state is unavailable. */ }
 
       toast.success(
         isResend
@@ -361,7 +346,7 @@ export default function ForgotPassword() {
           ...saved,
           method: 'email'
         }));
-      } catch {}
+      } catch { /* Retain the existing fallback when optional browser state is unavailable. */ }
       toast.success(`Switched to Email OTP. Enter the code sent to ${maskedPhone || accountInfo?.email || email}.`);
       setTimeout(() => otpInputsRef.current[0]?.focus(), 50);
       return;
@@ -388,7 +373,7 @@ export default function ForgotPassword() {
         ...saved,
         method: 'totp'
       }));
-    } catch {}
+    } catch { /* Retain the existing fallback when optional browser state is unavailable. */ }
     toast.success('Switched to Google Authenticator. Enter the 6-digit code from your app.');
     setTimeout(() => otpInputsRef.current[0]?.focus(), 50);
   };
@@ -464,7 +449,7 @@ export default function ForgotPassword() {
       try {
         sessionStorage.removeItem('cpoint_forgot_pwd_session');
         sessionStorage.removeItem(`cpoint_forgot_exp_${email.trim().toLowerCase()}`);
-      } catch {}
+      } catch { /* Retain the existing fallback when optional browser state is unavailable. */ }
       navigate('/reset-password', {
         replace: true,
         state: { resetTicket: data.resetTicket, email },
@@ -913,7 +898,7 @@ export default function ForgotPassword() {
                       ...saved,
                       step: 1
                     }));
-                  } catch {}
+                  } catch { /* Retain the existing fallback when optional browser state is unavailable. */ }
                 }}
                 className="text-slate-500 hover:text-slate-800 font-medium cursor-pointer"
               >

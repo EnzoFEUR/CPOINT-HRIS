@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo, useRef } from 'react';
+import { useEffect, useState, useMemo, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../supabaseClient';
@@ -219,7 +219,6 @@ export default function Dashboard() {
     // 2. Decoupled Asynchronous AI Briefing Query (Non-blocking background with enterprise lifecycle)
     const { 
         data: aiQueryData, 
-        isLoading: isAIQueryLoading, 
         isFetching: isAIFetching 
     } = useQuery({
         queryKey: ['adminDashboardAI'],
@@ -276,13 +275,16 @@ export default function Dashboard() {
         }
     });
 
+    if (aiQueryData?.briefing && localAIBriefing !== aiQueryData.briefing) {
+        setLocalAIBriefing(aiQueryData.briefing);
+    }
+
     // Save fresh AI data to localStorage whenever updated
     useEffect(() => {
         if (aiQueryData?.briefing) {
             try {
                 const today = getTodayManilaKey();
                 localStorage.setItem(`cpoint_ai_briefing_${today}`, JSON.stringify(aiQueryData.briefing));
-                setLocalAIBriefing(aiQueryData.briefing);
             } catch {
                 // Ignore storage quota limits
             }
@@ -299,7 +301,7 @@ export default function Dashboard() {
         const isPreShift = Boolean(dashboardData.isPreShift);
         const rate = total > 0 ? Math.round((present / total) * 100) : 0;
         
-        let punctGrade = 'A';
+        let punctGrade;
         if (rate >= 95 && late <= 2) punctGrade = 'A+';
         else if (rate >= 85) punctGrade = 'A';
         else if (rate >= 75) punctGrade = 'B+';
@@ -477,7 +479,7 @@ export default function Dashboard() {
             sampleSize: d.sampleSize,
             ...(GRADE_COLORS[d.grade] || GRADE_COLORS['B']),
         }));
-    }, [dashboardData?.deptPunctuality]);
+    }, [dashboardData]);
 
     // Anomaly Risk Flags (memoized)
     const riskFlags = useMemo(() => {

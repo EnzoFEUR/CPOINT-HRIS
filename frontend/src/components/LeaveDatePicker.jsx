@@ -30,9 +30,11 @@ export default function LeaveDatePicker({
     };
     const [month, setMonth] = useState(initialMonth);
 
-    useEffect(() => {
+    const [previousValue, setPreviousValue] = useState(value);
+    if (value !== previousValue) {
+        setPreviousValue(value);
         if (value) setMonth(value.slice(0, 7));
-    }, [value]);
+    }
 
     // Resilient fallback query if holidays prop is not provided directly
     const { data: fallbackHolidays = [] } = useQuery({

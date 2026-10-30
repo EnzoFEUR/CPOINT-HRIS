@@ -1,8 +1,10 @@
 import express from 'express';
+import { randomUUID } from 'node:crypto';
+import { getActiveMedicalGrace, hasRegisteredFace } from '../../shared/medicalGrace.mjs';
 import { postgrestLikeValue } from '../middleware/requestValidation.js';
 import { supabase } from '../supabaseClient.js';
 import { Brain } from '../services/geminiBrain.js';
-import { checkVerifiedManagerOrOwnership, hasVerifiedManagerRole, invalidateAuthUser } from '../middleware/authMiddleware.js';
+import { checkRole, checkVerifiedManagerOrOwnership, hasVerifiedManagerRole, invalidateAuthUser } from '../middleware/authMiddleware.js';
 import { cacheResponse, invalidateCache } from '../middleware/cacheMiddleware.js';
 import { isAttendanceExempt, isWorkforceEmployee, applyAttendanceWorkforceFilters } from '../utils/workforce.js';
 import { getEmployeeMonthlyAttendance } from '../utils/attendanceReconciliation.js';
@@ -34,7 +36,7 @@ const CONFIG = Object.freeze({
     SCAN_WINDOW_MS: parseInt(process.env.SCAN_RATE_WINDOW_MS, 10) || 60_000,
     SCAN_MAX_REQUESTS: parseInt(process.env.SCAN_RATE_MAX, 10) || 5,
     ENROLL_WINDOW_MS: parseInt(process.env.ENROLL_RATE_WINDOW_MS, 10) || 300_000,
-    ENROLL_MAX_REQUESTS: parseInt(process.env.ENROLL_RATE_MAX, 10) || 3,
+    ENROLL_MAX_REQUESTS: parseInt(process.env.ENROLL_RATE_MAX, 10) || 10,
   },
   STORAGE: {
     BUCKET: process.env.STORAGE_BUCKET || 'public-bucket',
@@ -60,7 +62,7 @@ const logger = {
 
 const auditLog = async (reqId, { employee_id, action, details, severity = 'info', ip_address }) => {
   try {
-    await supabase.from('audit_logs').insert({
+    const { error } = await supabase.from('audit_logs').insert({
       employee_id,
       action,
       details: typeof details === 'string' ? details : JSON.stringify(details),
@@ -68,6 +70,7 @@ const auditLog = async (reqId, { employee_id, action, details, severity = 'info'
       ip_address,
       created_at: new Date().toISOString(),
     });
+    if (error) throw error;
   } catch (err) {
     logger.error(reqId, 'Failed to write audit log', { error: err.message, action });
   }
@@ -150,19 +153,13 @@ const getGracePeriodDeadline = () => {
 // Verify face match and liveness
 const performBiometricVerification = async (reqId, base64Data, employee = null, isEnrollment = false, livenessData = null) => {
   // Validate client liveness challenge
-  if (!isEnrollment && livenessData) {
-    const { challenge_passed, challenge_type, client_timestamp, depth_variance, blink_count } = livenessData;
-
-    // Head turn challenge
-    if (!challenge_passed) {
-      logger.security(reqId, 'Biometric spoofing rejected: Active challenge failed', { livenessData });
-      return {
-        passed: false,
-        confidence: 0,
-        reason: 'Active 3D head-pose challenge incomplete or failed. Re-alignment required.',
-        spoof_type: 'FAILED_HEAD_CHALLENGE'
-      };
+  if (!isEnrollment) {
+    if (!livenessData || typeof livenessData !== 'object' ||
+        livenessData.challenge_passed !== true || !['TURN_LEFT', 'TURN_RIGHT'].includes(livenessData.challenge_type) ||
+        !Number.isFinite(livenessData.depth_variance) || !Number.isInteger(livenessData.blink_count)) {
+      return { passed: false, confidence: 0, reason: 'Incomplete or invalid liveness challenge. Please scan again.', spoof_type: 'INVALID_CHALLENGE' };
     }
+    const { client_timestamp, depth_variance, blink_count } = livenessData;
 
     // Payload freshness check (within 60s)
     const clientTime = new Date(client_timestamp).getTime();
@@ -204,28 +201,28 @@ const performBiometricVerification = async (reqId, base64Data, employee = null, 
     const cameraBuffer = Buffer.from(base64Data.replace(/^data:image\/\w+;base64,/, ''), 'base64');
 
     // Dual-image verification against baseline photo
-    if (!isEnrollment && employee?.biometric_baseline_path) {
-      try {
-        const { data: baselineBlob, error: dlErr } = await supabase.storage
-          .from(CONFIG.STORAGE.BUCKET)
-          .download(employee.biometric_baseline_path);
-
-        if (!dlErr && baselineBlob) {
-          const baselineBuffer = Buffer.from(await baselineBlob.arrayBuffer());
-          const dualResult = await Brain.Biometrics.verifyIdentityMatch(cameraBuffer, baselineBuffer);
-          logger.info(reqId, 'Dual-image biometric match evaluated', {
-            employee_id: employee.id,
-            is_same_person: dualResult.is_same_person,
-            match_confidence: dualResult.match_confidence,
-            liveness: dualResult.is_live_person,
-            similarity: dualResult.similarity_score_percent,
-            verdict: dualResult.verdict
-          });
-          return dualResult;
-        }
-      } catch (baselineErr) {
-        logger.warn(reqId, 'Baseline download note, falling back to single-image liveness', { error: baselineErr.message });
+    if (!isEnrollment) {
+      if (!employee?.biometric_baseline_path) {
+        return { passed: false, confidence: 0, reason: 'Registered face baseline is unavailable. Contact HR before scanning again.', error: true };
       }
+      const { data: baselineBlob, error: dlErr } = await supabase.storage
+        .from(CONFIG.STORAGE.BUCKET)
+        .download(employee.biometric_baseline_path);
+
+      if (!dlErr && baselineBlob) {
+        const baselineBuffer = Buffer.from(await baselineBlob.arrayBuffer());
+        const dualResult = await Brain.Biometrics.verifyIdentityMatch(cameraBuffer, baselineBuffer);
+        logger.info(reqId, 'Dual-image biometric match evaluated', {
+          employee_id: employee.id,
+          is_same_person: dualResult.is_same_person,
+          match_confidence: dualResult.match_confidence,
+          liveness: dualResult.is_live_person,
+          similarity: dualResult.similarity_score_percent,
+          verdict: dualResult.verdict
+        });
+        return dualResult;
+      }
+      return { passed: false, confidence: 0, reason: 'Registered face baseline could not be loaded. Please retry.', error: true };
     }
 
     // Single-image liveness verification
@@ -260,7 +257,8 @@ const uploadImage = async (reqId, base64Str, type, identifier) => {
       throw new ValidationError('Image exceeds 10MB limit.');
     }
 
-    const fileName = `${CONFIG.STORAGE.ATTENDANCE_PREFIX}/${type}-${identifier}-${Date.now()}.jpg`;
+    const safeIdentifier = String(identifier || 'unassigned').replace(/[^a-zA-Z0-9_\-]/g, '_');
+    const fileName = `${CONFIG.STORAGE.ATTENDANCE_PREFIX}/${safeIdentifier}/${type}-${Date.now()}.jpg`;
     const { data, error } = await supabase.storage
       .from(CONFIG.STORAGE.BUCKET)
       .upload(fileName, buffer, { contentType: 'image/jpeg', cacheControl: '3600' });
@@ -630,6 +628,7 @@ router.get(
 // 1.5 GET /api/attendance/verify-qr/:company_id
 router.get(
   '/verify-qr/:company_id',
+  checkRole('security', 'guard', 'security_guard', 'admin', 'hr', 'hr_manager'),
   asyncHandler(async (req, res) => {
     const { reqId } = req;
     let { company_id } = req.params;
@@ -710,37 +709,35 @@ router.get(
       }
     }
 
+    const scannerEmployee = {
+      id: employee.id,
+      first_name: employee.first_name,
+      last_name: employee.last_name,
+      company_id: employee.company_id,
+      is_active: employee.is_active,
+      status: employee.status,
+      has_registered_biometrics: hasRegisteredFace(employee),
+    };
+
     // System operators (Admins, HR, Security Guards) do not log attendance
     if (isAttendanceExempt(employee)) {
       logger.info(reqId, 'QR scan flagged exempt: Personnel is an attendance-exempt operator', { employee_id: employee.id, role: employee.role });
       return res.json({
         status: 'success',
         data: {
-          ...employee,
+          ...scannerEmployee,
           is_attendance_exempt: true,
           name: `${employee.first_name || ''} ${employee.last_name || ''}`.trim() || 'Staff'
         }
       });
     }
 
-    let isMedicalGrace = false;
-    let medicalExemption = null;
-    if (employee.medical_record_url) {
-      try {
-        const parsed = JSON.parse(employee.medical_record_url);
-        if (parsed?.exempt) {
-          const today = getTodayString();
-          if (!parsed.valid_until || parsed.valid_until >= today) {
-            isMedicalGrace = true;
-            medicalExemption = parsed;
-          }
-        }
-      } catch (_) {}
-    }
+    const medicalExemption = getActiveMedicalGrace(employee);
+    const isMedicalGrace = Boolean(medicalExemption);
 
     // Require biometric registration
-    const hasBiometrics = Boolean(employee.has_registered_biometrics || employee.biometric_baseline_path);
-    if (!hasBiometrics && !isMedicalGrace) {
+    const hasBiometrics = hasRegisteredFace(employee);
+    if (!hasBiometrics) {
       logger.warn(reqId, 'QR scan rejected: Unregistered face biometrics', { employee_id: employee.id, company_id: employee.company_id });
       throw new AuthorizationError('BIOMETRICS REQUIRED: Personnel has not completed face biometric registration. Access denied until facial profile is enrolled.');
     }
@@ -748,9 +745,10 @@ router.get(
     res.json({
       status: 'success',
       data: {
-        ...employee,
+        ...scannerEmployee,
+        ...(isMedicalGrace ? {} : { biometric_baseline_path: employee.biometric_baseline_path }),
         is_medical_exempt: isMedicalGrace,
-        medical_exemption: medicalExemption,
+        medical_exemption: medicalExemption ? { valid_until: medicalExemption.valid_until } : null,
         name: `${employee.first_name || ''} ${employee.last_name || ''}`.trim() || 'Employee'
       }
     });
@@ -760,6 +758,7 @@ router.get(
 // 2. POST /api/attendance/scan
 router.post(
   '/scan',
+  checkRole('security', 'guard', 'security_guard', 'admin', 'hr', 'hr_manager'),
   rateLimiter({
     windowMs: CONFIG.RATE_LIMITS.SCAN_WINDOW_MS,
     maxRequests: CONFIG.RATE_LIMITS.SCAN_MAX_REQUESTS,
@@ -854,24 +853,12 @@ router.post(
     }
 
     // Check for active medical exemption
-    let isMedicalGrace = false;
-    let medicalExemption = null;
-    if (employee.medical_record_url) {
-      try {
-        const parsed = JSON.parse(employee.medical_record_url);
-        if (parsed?.exempt) {
-          const today = getTodayString();
-          if (!parsed.valid_until || parsed.valid_until >= today) {
-            isMedicalGrace = true;
-            medicalExemption = parsed;
-          }
-        }
-      } catch (_) {}
-    }
+    const medicalExemption = getActiveMedicalGrace(employee);
+    const isMedicalGrace = Boolean(medicalExemption);
 
     // Require biometric registration
-    const hasBiometrics = Boolean(employee.has_registered_biometrics || employee.biometric_baseline_path);
-    if (!hasBiometrics && !isMedicalGrace) {
+    const hasBiometrics = hasRegisteredFace(employee);
+    if (!hasBiometrics) {
       await logSecurityViolation(reqId, employee_id, 'Unregistered Biometrics', 'Turnstile clock-in rejected: Facial biometrics not registered.', req.ip);
       throw new AuthorizationError('ACCESS DENIED: Facial biometric registration required before turnstile scanning.');
     }
@@ -919,8 +906,8 @@ router.post(
     }
 
     // Liveness verification
-    let livenessPassed = isMedicalGrace ? true : false;
-    let livenessConfidence = isMedicalGrace ? 1.0 : null;
+    let livenessPassed = false;
+    let livenessConfidence = null;
     let livenessReason = isMedicalGrace ? 'Exempted: Medical Grace Protocol Active' : 'Not performed';
 
     if (image_data && !isMedicalGrace) {
@@ -932,7 +919,7 @@ router.post(
         livenessReason = result.reason;
 
         if (result.error) {
-          if (employee.has_registered_biometrics) {
+          if (hasBiometrics) {
             logger.security(reqId, 'Clock-in denied due to AI service issue', { employee_id, reason: result.reason });
             throw new AppError(`Biometric verification service temporarily unavailable: ${result.reason}. Please try again.`, 503, 'AI_SERVICE_UNAVAILABLE');
           }
@@ -946,7 +933,7 @@ router.post(
         logger.info(reqId, 'Liveness check passed', { employee_id, confidence: livenessConfidence });
       } catch (err) {
         if (err.code === 'AI_SERVICE_UNAVAILABLE' || err.code === 'AI_CIRCUIT_OPEN') {
-          if (employee.has_registered_biometrics) {
+          if (hasBiometrics) {
             logger.security(reqId, 'Clock-in denied due to AI outage', { employee_id });
             throw new AuthorizationError('Biometric verification service unavailable. Access denied for security.');
           }
@@ -1256,7 +1243,7 @@ router.post(
     // Verify Employee
     const { data: employee, error: empErr } = await supabase
       .from('employees')
-      .select('id, company_id, is_active, role, birth_date, address, phone, emergency_contact_name')
+      .select('id, auth_user_id, company_id, is_active, role, birth_date, address, phone, emergency_contact_name')
       .eq('id', employee_id)
       .single();
 
@@ -1302,32 +1289,52 @@ router.post(
       livenessResult = await performBiometricVerification(reqId, base64Data, employee, true);
     } catch (err) {
       if (err.code === 'AI_SERVICE_UNAVAILABLE' || err.code === 'AI_CIRCUIT_OPEN') {
-        throw new AuthorizationError('Biometric enrollment requires AI verification. Service temporarily unavailable.');
+        throw new AppError('Biometric verification is temporarily unavailable. Please try again.', 503, 'AI_SERVICE_UNAVAILABLE');
       }
       throw err;
     }
 
-    if (livenessResult.error) {
-      logger.warn(reqId, 'Biometric AI verification service issue during enrollment', { reason: livenessResult.reason });
-      throw new AppError(`Biometric verification service temporarily unavailable: ${livenessResult.reason || 'Network timeout'}. Please try again.`, 503, 'AI_SERVICE_UNAVAILABLE');
+    if (!livenessResult || livenessResult.error) {
+      logger.warn(reqId, 'Biometric AI verification service issue during enrollment', { reason: livenessResult?.reason });
+      throw new AppError('Biometric verification is temporarily unavailable. Please try again.', 503, 'AI_SERVICE_UNAVAILABLE');
     }
 
-    if (!livenessResult.passed) {
-      const desc = `Enrollment spoofing. Confidence: ${Math.round(livenessResult.confidence * 100)}%. ${livenessResult.reason}`;
-      await logSecurityViolation(reqId, employee_id, 'Enrollment Spoofing', desc, req.ip);
-      throw new AuthorizationError(`BIOMETRIC SPOOFING DETECTED: ${livenessResult.reason} [Confidence: ${Math.round(livenessResult.confidence * 100)}%]`);
+    if (livenessResult.passed !== true) {
+      const reviewRequired = livenessResult.decision === 'SUSPECTED_SPOOF';
+      // A model assessment blocks enrollment but cannot establish employee misconduct.
+      await auditLog(reqId, {
+        employee_id,
+        action: reviewRequired ? 'BIOMETRIC_ENROLLMENT_REVIEW_REQUIRED' : 'BIOMETRIC_ENROLLMENT_RECAPTURE',
+        severity: reviewRequired ? 'warning' : 'info',
+        details: {
+          confirmed_violation: false,
+          model_assessment: livenessResult.decision || 'RECAPTURE',
+          model_score: livenessResult.confidence,
+          reason: sanitizeString(livenessResult.reason),
+          presentation_cues: livenessResult.details?.presentation_cues || [],
+          quality_issues: livenessResult.details?.quality_issues || []
+        },
+        ip_address: req.ip
+      });
+      throw new AppError(
+        reviewRequired ? 'This capture contains possible screen or photo presentation indicators. Enrollment was not saved. Use the direct camera and contact HR if this repeats.' :
+          'This capture could not be verified. Enrollment was not saved. Face the light, keep your face clear, and retry without camera effects.',
+        reviewRequired ? 403 : 422,
+        reviewRequired ? 'BIOMETRIC_REVIEW_REQUIRED' : 'BIOMETRIC_RECAPTURE_REQUIRED'
+      );
     }
 
     // Store Baseline
     const safeCompanyFolder = employee.company_id || (company_id !== employee_id ? company_id : 'CP-MAIN');
     const buffer = Buffer.from(base64Data, 'base64');
-    const fileName = `${CONFIG.STORAGE.BASELINE_PREFIX}/${safeCompanyFolder}/${employee_id}.jpg`;
+    // A new path prevents stale cached faces and preserves the old baseline if the DB write fails.
+    const fileName = `${CONFIG.STORAGE.BASELINE_PREFIX}/${safeCompanyFolder}/${employee_id}-${randomUUID()}.jpg`;
 
     const { error: uploadErr } = await supabase.storage
       .from(CONFIG.STORAGE.BUCKET)
       .upload(fileName, buffer, {
         contentType: 'image/jpeg',
-        upsert: true,
+        upsert: false,
         cacheControl: '31536000', // 1 year immutable
       });
 
@@ -1342,17 +1349,22 @@ router.post(
         biometric_registered_at: new Date().toISOString(),
         biometric_liveness_confidence: livenessResult.confidence || 0.95
       })
-      .eq('id', employee_id);
+      .eq('id', employee_id)
+      .select('id')
+      .single();
 
     if (dbErr) {
       logger.error(reqId, 'Failed to update database with biometric status', dbErr);
+      await supabase.storage.from(CONFIG.STORAGE.BUCKET).remove([fileName]).catch(() => {});
+      throw new AppError('Unable to save biometric registration. Please retry.', 503, 'BIOMETRIC_SAVE_FAILED');
     }
 
     // Invalidate caches so UI immediately sees updated biometric registration
-    invalidateCache([`/api/employees/${employee_id}`, '/api/employees', '/api/dashboard']);
+    invalidateAuthUser(employee_id);
+    invalidateCache([`/api/employees/${employee_id}`, '/api/employees', '/api/dashboard', '/api/profile']);
 
     // Update auth user metadata
-    const { error: metaErr } = await supabase.auth.admin.updateUserById(employee_id, {
+    const { error: metaErr } = await supabase.auth.admin.updateUserById(employee.auth_user_id || employee_id, {
       user_metadata: { has_registered_biometrics: true }
     });
     if (metaErr) {

@@ -1,19 +1,12 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
-import { useSearchParams, Link } from 'react-router-dom';
+import { useSearchParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
+import BackButton from '../../../components/ui/BackButton';
 import { fetchWithAuth } from '../../../utils/api';
 import useEmployeeDocuments from '../../../utils/useEmployeeDocuments';
 import useDocumentRequests from '../../../utils/useDocumentRequests';
-import {
-    documentRequest,
-    openEmployeeDocument,
-    uploadEmployeeDocument,
-    cancelDocumentRequest,
-    remindDocumentRequest,
-    fetchEmployeeCompliance,
-    reviewDocumentStatus
-} from '../../../utils/documentApi';
+import { documentRequest, uploadEmployeeDocument, cancelDocumentRequest, remindDocumentRequest, fetchEmployeeCompliance, reviewDocumentStatus } from '../../../utils/documentApi';
 import {
     getDocumentExpiry,
     formatDocumentSize,
@@ -29,6 +22,7 @@ import RequestDocumentModal from './RequestDocumentModal';
 import RejectDocumentModal from './RejectDocumentModal';
 import DocumentThumbnail from '../../../components/DocumentThumbnail';
 import DocumentPreviewModal from '../../../components/DocumentPreviewModal';
+import { useConfirm } from '../../../components/ui/useConfirm';
 
 const CATEGORIES = ['All', ...DOCUMENT_CATEGORIES];
 
@@ -42,6 +36,7 @@ const SORT_OPTIONS = [
 const EXPIRABLE_CATEGORIES = ['Government ID', 'Clearance', 'Certificate'];
 
 export default function Documents() {
+    const confirm = useConfirm();
     const [searchParams] = useSearchParams();
     const employeeId = searchParams.get('employee_id');
     const fileInputRef = useRef(null);
@@ -60,11 +55,11 @@ export default function Documents() {
 
     const [targetEmployeeId, setTargetEmployeeId] = useState(() => employeeId || '');
 
-    useEffect(() => {
-        if (employeeId) {
-            setTargetEmployeeId(employeeId);
-        }
-    }, [employeeId]);
+    const [previousEmployeeId, setPreviousEmployeeId] = useState(employeeId);
+    if (previousEmployeeId !== employeeId) {
+        setPreviousEmployeeId(employeeId);
+        if (employeeId) setTargetEmployeeId(employeeId);
+    }
 
     // Active personnel list for target selection (workforce employees only, strictly excluding admin governance accounts)
     const { data: employeeOptions = [] } = useQuery({
@@ -104,7 +99,6 @@ export default function Documents() {
     const statusPillFilter = selectedStatusFilter;
     const setStatusPillFilter = setSelectedStatusFilter;
     const [requestStatusFilter, setRequestStatusFilter] = useState('all');
-    const [openingDocument, setOpeningDocument] = useState(null);
     const [reviewingDocument, setReviewingDocument] = useState(null);
     const [vaultViewMode, setVaultViewMode] = useState('grid');
     const [rejectingDoc, setRejectingDoc] = useState(null);
@@ -320,10 +314,19 @@ export default function Documents() {
 
     const handleReopenDocument = async (doc) => {
         if (!doc) return;
-        const confirmMsg = doc.status === 'rejected'
-            ? `Reopen review for "${doc.title || doc.file_name}"? This will clear the rejection remarks and return the document to pending review.`
-            : `Reopen review for "${doc.title || doc.file_name}"? This will return the approved record to pending review status.`;
-        if (!window.confirm(confirmMsg)) return;
+        const isRejected = doc.status === 'rejected';
+        const targetTitle = doc.title || doc.file_name || 'this document';
+        const confirmed = await confirm({
+            title: isRejected ? 'Reopen Rejected Document Review' : 'Reopen Approved Document Review',
+            message: isRejected
+                ? `Clear rejection remarks and return "${targetTitle}" back to pending review?`
+                : `Return approved document "${targetTitle}" back to pending review status? Compliance standing will be recalculated.`,
+            variant: 'accent',
+            icon: 'ti-rotate-2',
+            confirmLabel: 'Reopen Review',
+            cancelLabel: 'Keep Current Status'
+        });
+        if (!confirmed) return;
 
         setReviewingDocument(doc.id);
         const targetDocId = doc.id;
@@ -393,7 +396,15 @@ export default function Documents() {
     };
 
     const handleCancelRequest = async (requestId) => {
-        if (!window.confirm('Are you sure you want to cancel this document request?')) return;
+        const confirmed = await confirm({
+            title: 'Cancel Document Request',
+            message: 'Are you sure you want to cancel this document request? The employee will no longer see this pending requirement.',
+            variant: 'warning',
+            icon: 'ti-file-minus',
+            confirmLabel: 'Cancel Request',
+            cancelLabel: 'Keep Active'
+        });
+        if (!confirmed) return;
         setActioningRequestId(requestId);
         try {
             await cancelDocumentRequest(requestId);
@@ -418,13 +429,7 @@ export default function Documents() {
         }
     };
 
-    const getFileIcon = (fileName = '') => {
-        const ext = fileName.split('.').pop().toLowerCase();
-        if (['jpg', 'jpeg', 'png', 'svg', 'webp'].includes(ext)) return 'ti-photo text-accent bg-accent-subtle';
-        if (['pdf'].includes(ext)) return 'ti-file-type-pdf text-danger-ink bg-danger-subtle';
-        if (['doc', 'docx'].includes(ext)) return 'ti-file-description text-accent bg-accent-subtle';
-        return 'ti-file-text text-accent bg-accent-subtle';
-    };
+
 
     const isImageFile = (fileName = '') => {
         const ext = fileName.split('.').pop().toLowerCase();
@@ -564,7 +569,16 @@ export default function Documents() {
     const handleDeleteDocument = async (doc) => {
         if (!doc) return;
         const targetTitle = doc.title || doc.file_name || 'this document';
-        if (!window.confirm(`Permanently delete "${targetTitle}"? This will remove the file from storage and cannot be undone.`)) return;
+        const confirmed = await confirm({
+            title: 'Permanently Delete Document',
+            message: `Permanently delete "${targetTitle}"? This will remove the file from storage and cannot be undone.`,
+            variant: 'danger',
+            destructive: true,
+            icon: 'ti-trash',
+            confirmLabel: 'Delete Permanently',
+            cancelLabel: 'Keep File'
+        });
+        if (!confirmed) return;
         try {
             await documentRequest(`/api/documents/${doc.id}`, { method: 'DELETE' });
             setActivePreviewDoc(null);
@@ -675,13 +689,10 @@ export default function Documents() {
 
             {/* TOP BREADCRUMB */}
             <div className="flex items-center justify-between">
-                <Link
-                    to={employeeId ? `/admin/employees/${employeeId}` : '/admin/employees'}
-                    className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-500 hover:text-slate-900 transition-colors"
-                >
-                    <i className="ti ti-arrow-left text-sm" />
-                    <span>{employee ? `Back to ${employee.first_name} ${employee.last_name}` : 'Back to Employees'}</span>
-                </Link>
+                <BackButton
+                    fallback={employeeId ? `/admin/employees/${employeeId}` : '/admin/employees'}
+                    label={employee ? `Back to ${employee.first_name} ${employee.last_name}` : 'Back to Employees'}
+                />
             </div>
 
             {/* UNIFIED HEADER CARD */}
@@ -999,8 +1010,8 @@ export default function Documents() {
                     ) : vaultViewMode === 'table' ? (
                         /* TABLE VIEW MODE */
                         <div className="bg-white rounded-lg border border-slate-200 shadow-2xs overflow-hidden">
-                            <div className="overflow-x-auto">
-                                <table className="w-full text-left border-collapse">
+                            <div className="overflow-x-auto touch-scroll">
+                                <table className="w-full text-left border-collapse min-w-[720px]">
                                     <thead>
                                         <tr className="border-b border-slate-200 bg-slate-50/75 text-[11px] font-bold uppercase tracking-wider text-slate-500">
                                             <th className="py-3 px-4">Document &amp; File</th>

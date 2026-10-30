@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
 import { fetchWithAuth } from '../../../utils/api';
 import { supabase } from '../../../supabaseClient';
 import { STATUTORY_INPUT_LIMITS, isValidStatutoryInput, getStatutorySettingsError } from '../../../../../shared/statutorySettings.mjs';
+import BackButton from '../../../components/ui/BackButton';
 
 const DEFAULT_SETTINGS = {
     sss_employee_rate: 5,         // 5%
@@ -59,7 +59,6 @@ export default function StatutorySettings({ onBack }) {
     const [loading, setLoading] = useState(false);
     const [successMessage, setSuccessMessage] = useState('');
     const [errorMessage, setErrorMessage] = useState('');
-    const [realtimeSynced, setRealtimeSynced] = useState(false);
 
     const getCleanErrorMessage = (err) => {
         if (!err) return "An unexpected error occurred while processing your request.";
@@ -98,8 +97,6 @@ export default function StatutorySettings({ onBack }) {
                 (payload) => {
                     if (payload.new && !stopped) {
                         setSettings(previous => ({ ...previous, ...payload.new }));
-                        setRealtimeSynced(true);
-                        setTimeout(() => setRealtimeSynced(false), 3500);
                     }
                 }
             )
@@ -226,21 +223,7 @@ export default function StatutorySettings({ onBack }) {
     return (
         <div className="space-y-5 sm:space-y-6 max-w-7xl mx-auto pb-12 px-3 sm:px-4 md:px-0">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                <button
-                    type="button"
-                    onClick={() => onBack ? onBack() : window.history.back()}
-                    className="inline-flex items-center gap-1.5 text-slate-500 hover:text-slate-800 text-xs font-semibold rounded-md transition-colors duration-100 group cursor-pointer h-8 px-2"
-                >
-                    <svg
-                        className="w-4 h-4 transform group-hover:-translate-x-0.5 transition-transform duration-100 shrink-0"
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
-                    >
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
-                    </svg>
-                    <span>Back to Payroll</span>
-                </button>
+                <BackButton fallback="/admin/payroll" label="Back to Payroll" onClick={onBack} />
                 <div className="flex items-center gap-2">
                 </div>
             </div>

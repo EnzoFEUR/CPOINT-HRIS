@@ -1,4 +1,6 @@
-import React, { lazy } from 'react';
+import { lazy } from 'react';
+import { isBiometricSetupTestAccess } from '../utils/biometricSetupTestAccess.mjs';
+import { getActiveMedicalGrace } from '../../../shared/medicalGrace.mjs';
 import { Navigate } from 'react-router-dom';
 import { getStoredUser } from '../utils/storedUser.mjs';
 import { getRole, isSecurity, isAdmin, needsProfileCompletion } from '../utils/userAccess.mjs';
@@ -37,9 +39,12 @@ export const getUser = getStoredUser;
 export const getPageTitle = (pathname) => {
   if (pathname === '/') return 'Dashboard';
 
+  if (['/admin/employment-exit', '/employee/employment-exit'].includes(pathname)) return 'Employment Exit';
+
   // Payroll
   if (pathname === '/admin/payroll/statutory-settings') return 'Statutory Settings';
   if (pathname === '/admin/payroll') return 'Payroll Ledger';
+  if (pathname === '/admin/payroll/retirement') return 'Retirement Pay';
   if (pathname === '/admin/payroll/process') return 'Payroll Calculator';
   if (pathname.startsWith('/admin/payroll/')) return 'Payslip Details';
 
@@ -67,6 +72,8 @@ export const getPageTitle = (pathname) => {
   if (pathname === '/employee/dashboard') return 'Employee Portal';
   if (pathname === '/employee/qr') return 'My Digital QR';
   if (pathname === '/employee/scanner') return 'Self Scanner';
+  if (pathname === '/employee/documents') return 'Personnel Documents';
+  if (pathname === '/employee/policy-reports') return 'Policy & Incident Reports';
   if (pathname === '/employee/profile') return 'My Profile';
 
   const segment = pathname.split('/').filter(Boolean).pop() || 'Dashboard';
@@ -76,21 +83,7 @@ export const getPageTitle = (pathname) => {
   return 'Dashboard';
 };
 
-export const isMedicalExempt = (user) => {
-  if (!user) return false;
-  if (user.is_medical_exempt) return true;
-  if (!user.medical_record_url) return false;
-  try {
-    const med = typeof user.medical_record_url === 'string' ? JSON.parse(user.medical_record_url) : user.medical_record_url;
-    if (med?.exempt) {
-      const today = new Date().toISOString().split('T')[0];
-      return !med.valid_until || med.valid_until >= today;
-    }
-  } catch {
-    return false;
-  }
-  return false;
-};
+export const isMedicalExempt = user => Boolean(getActiveMedicalGrace(user));
 
 // Route Guard: Protected Routes
 export const ProtectedRoute = ({ children, allowedRoles = null, requireBiometrics = false }) => {
@@ -109,7 +102,7 @@ export const ProtectedRoute = ({ children, allowedRoles = null, requireBiometric
   }
 
   const hasBiometrics = Boolean(user.has_registered_biometrics || user.biometric_baseline_path);
-  if (requireBiometrics && !hasBiometrics && !isMedicalExempt(user) && !isSecurity(user) && !isAdmin(user)) {
+  if (requireBiometrics && !hasBiometrics && !isMedicalExempt(user) && !isBiometricSetupTestAccess(user) && !isSecurity(user) && !isAdmin(user)) {
     return <Navigate to="/biometric-setup" replace />;
   }
 
@@ -148,7 +141,7 @@ export const ForcePasswordChangeRoute = ({ children }) => {
     if (isAdmin(user)) return <Navigate to="/" replace />;
     if (needsProfileCompletion(user)) return <Navigate to="/onboarding" replace />;
     const hasBiometrics = Boolean(user.has_registered_biometrics || user.biometric_baseline_path);
-    if (!hasBiometrics && !isMedicalExempt(user)) return <Navigate to="/biometric-setup" replace />;
+    if (!hasBiometrics && !isMedicalExempt(user) && !isBiometricSetupTestAccess(user)) return <Navigate to="/biometric-setup" replace />;
     return <Navigate to="/employee/dashboard" replace />;
   }
 
@@ -184,7 +177,7 @@ export const OnboardingRoute = ({ children }) => {
 
   if (!needsProfileCompletion(user)) {
     const hasBiometrics = Boolean(user.has_registered_biometrics || user.biometric_baseline_path);
-    if (!hasBiometrics && !isMedicalExempt(user)) {
+    if (!hasBiometrics && !isMedicalExempt(user) && !isBiometricSetupTestAccess(user)) {
       return <Navigate to="/biometric-setup" replace />;
     }
     return <Navigate to="/employee/dashboard" replace />;
@@ -224,7 +217,7 @@ export const BiometricSetupRoute = ({ children }) => {
   }
 
   const hasBiometrics = Boolean(user.has_registered_biometrics || user.biometric_baseline_path);
-  if (hasBiometrics || isMedicalExempt(user)) {
+  if (hasBiometrics || isMedicalExempt(user) || isBiometricSetupTestAccess(user)) {
     return <Navigate to="/employee/dashboard" replace />;
   }
 
@@ -240,7 +233,7 @@ export const PublicOnlyRoute = ({ children }) => {
     if (isAdmin(user)) return <Navigate to="/" replace />;
     if (needsProfileCompletion(user)) return <Navigate to="/onboarding" replace />;
     const hasBiometrics = Boolean(user.has_registered_biometrics || user.biometric_baseline_path);
-    if (!hasBiometrics && !isMedicalExempt(user)) return <Navigate to="/biometric-setup" replace />;
+    if (!hasBiometrics && !isMedicalExempt(user) && !isBiometricSetupTestAccess(user)) return <Navigate to="/biometric-setup" replace />;
     return <Navigate to="/employee/dashboard" replace />;
   }
   return children;
@@ -255,6 +248,6 @@ export const RootRoute = () => {
   if (isAdmin(user)) return <Dashboard />;
   if (needsProfileCompletion(user)) return <Navigate to="/onboarding" replace />;
   const hasBiometrics = Boolean(user.has_registered_biometrics || user.biometric_baseline_path);
-  if (!hasBiometrics && !isMedicalExempt(user)) return <Navigate to="/biometric-setup" replace />;
+  if (!hasBiometrics && !isMedicalExempt(user) && !isBiometricSetupTestAccess(user)) return <Navigate to="/biometric-setup" replace />;
   return <Navigate to="/employee/dashboard" replace />;
 };

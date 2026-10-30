@@ -2,6 +2,7 @@ const CACHE_VERSION = 'v3.0.6-offline-mime-guard';
 const OFFLINE_BUILD_ENABLED = false;
 const OFFLINE_FEATURE_ENABLED = OFFLINE_BUILD_ENABLED || ['localhost', '127.0.0.1', '::1', '[::1]'].includes(self.location.hostname);
 const CACHE_NAME = `cpoint-hris-${CACHE_VERSION}`;
+const matchCached = request => caches.open(CACHE_NAME).then(cache => cache.match(request));
 
 // Pre-cached static assets
 const APP_SHELL = [
@@ -89,22 +90,19 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
+  // Keep installed fallback HTML paired with its precached bundle until the next worker activates.
   // HTML page navigation: Network-first with fast timeout fallback
   if (request.mode === 'navigate' || request.destination === 'document') {
     event.respondWith(
       Promise.race([
         fetch(request).then((networkResponse) => {
-          if (networkResponse && networkResponse.status === 200) {
-            const clone = networkResponse.clone();
-            caches.open(CACHE_NAME).then((cache) => cache.put('/index.html', clone));
-          }
           if (!networkResponse || networkResponse.status >= 500) throw new Error('Application unavailable.');
           return networkResponse;
         }),
         timeoutPromise(1200)
       ]).catch(async () => {
         if (OFFLINE_FEATURE_ENABLED && !['/', '/scanner', '/attendance-terminal', '/attendance-terminal/'].includes(url.pathname)) return new Response('<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Offline attendance</title></head><body><h1>This page requires a connection.</h1><p>Only provisioned attendance capture is available offline.</p><a href="/attendance-terminal">Open attendance terminal</a></body></html>', { status: 503, headers: { 'Content-Type': 'text/html' } });
-        const cached = await caches.match('/index.html') || await caches.match('/');
+        const cached = await matchCached('/index.html') || await matchCached('/');
         if (cached) return cached;
         return new Response(
           '<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><title>C-Point HRIS</title></head><body><h1>Application unavailable offline</h1><p>This browser has not downloaded the required application. Use the paper attendance procedure until connected.</p></body></html>',
@@ -118,7 +116,7 @@ self.addEventListener('fetch', (event) => {
   // Immutable hashed assets: Cache-first with strict MIME guard
   if (url.pathname.startsWith('/assets/')) {
     event.respondWith(
-      caches.match(request).then(async (cached) => {
+      matchCached(request).then(async (cached) => {
         if (cached) {
           const cachedType = cached.headers.get('content-type') || '';
           // Purge corrupted HTML cached under JS/CSS URLs
@@ -161,9 +159,9 @@ self.addEventListener('fetch', (event) => {
   // Other static assets: Stale-while-revalidate with MIME guard
   if (!APP_SHELL.includes(url.pathname)) return;
   event.respondWith(
-    caches.match(request).then((cachedResponse) => {
+    matchCached(request).then((cachedResponse) => {
       const fetchPromise = fetch(request).then((networkResponse) => {
-        if (networkResponse && networkResponse.status === 200) {
+        if (networkResponse && networkResponse.status === 200 && !['/', '/index.html'].includes(url.pathname)) {
           const contentType = networkResponse.headers.get('content-type') || '';
           const isCodeOrMedia = /\.(js|css|json|wasm|png|jpg|jpeg|svg|webp|ico|woff2?)$/i.test(url.pathname);
           if (!(isCodeOrMedia && contentType.includes('text/html'))) {
@@ -181,6 +179,11 @@ self.addEventListener('fetch', (event) => {
 
 // Skip waiting message listener
 self.addEventListener('message', (event) => {
+  if (event.data?.type === 'OFFLINE_STATUS' && event.ports?.[0]) {
+    event.waitUntil(matchCached('/offline-assets.json').then(manifest => {
+      event.ports[0].postMessage({ ready: OFFLINE_FEATURE_ENABLED && Boolean(manifest) });
+    }));
+  }
   if (event.data && event.data.type === 'SKIP_WAITING') {
     self.skipWaiting();
   }
@@ -200,7 +203,7 @@ self.addEventListener('push', (event) => {
   if (event.data) {
     try {
       data = { ...data, ...event.data.json() };
-    } catch (e) {
+    } catch {
       data.body = event.data.text();
     }
   }

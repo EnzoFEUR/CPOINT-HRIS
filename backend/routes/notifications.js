@@ -15,7 +15,8 @@ export function authorizeNotifications(req, res, next) {
     if (!target) return res.status(400).json({ error: 'A notification target is required.' });
     const manager = hasVerifiedManagerRole(req.user);
     const own = [req.user.id, req.user.auth_user_id, req.user.company_id].includes(target);
-    if ((!manager && input.role === 'admin') || (!manager && !own && !(req.method === 'POST' && target === 'admin'))) {
+    const managerRoleRequested = ['admin', 'hr', 'hr_manager'].includes(input.role);
+    if ((!manager && managerRoleRequested && input.role !== req.user.role) || (!manager && !own && !(req.method === 'POST' && target === 'admin'))) {
         return res.status(403).json({ error: 'You may only access your own notifications.' });
     }
     next();
@@ -30,7 +31,7 @@ router.get('/', authorizeNotifications, cacheResponse(15), async (req, res) => {
 
         let query = supabase.from('notifications').select('*').order('created_at', { ascending: false }).limit(40);
         
-        if (role === 'admin') {
+        if (hasVerifiedManagerRole(req.user) && ['admin', 'hr', 'hr_manager'].includes(role)) {
             query = query.or(`target.eq.admin,target.eq.${postgrestValue(user_id)}`);
         } else {
             query = query.eq('target', user_id);
@@ -104,15 +105,6 @@ router.get('/', authorizeNotifications, cacheResponse(15), async (req, res) => {
     }
 });
 
-// Singleton Realtime Channel to prevent channel leaks and socket degradation
-let systemNotifChannel = null;
-const getSystemNotifChannel = () => {
-    if (!systemNotifChannel) {
-        systemNotifChannel = supabase.channel('system-notifications');
-    }
-    return systemNotifChannel;
-};
-
 export const createNotification = async ({ target, title, text, type, sender_id, company_id, sender_name, sender_avatar }) => {
     const { data: newNotif, error } = await supabase
         .from('notifications')
@@ -174,16 +166,7 @@ export const createNotification = async ({ target, title, text, type, sender_id,
         sender_avatar: resolvedAvatar
     };
 
-    try {
-        const channel = getSystemNotifChannel();
-        await channel.send({
-            type: 'broadcast',
-            event: 'NEW_NOTIFICATION',
-            payload: enrichedPayload
-        });
-    } catch (chErr) {
-        console.warn('[NOTIF_BROADCAST_WARN]', chErr.message);
-    }
+    // Realtime table events enforce recipient RLS; personal alerts must not use a public broadcast.
 
     // Dispatch push notification to user devices
     import('../services/pushService.js')
@@ -204,6 +187,14 @@ export const createNotification = async ({ target, title, text, type, sender_id,
 // POST new notification
 router.post('/', authorizeNotifications, async (req, res) => {
     try {
+        if ((req.body.type !== undefined && (typeof req.body.type !== 'string' || req.body.type.length > 80)) ||
+            typeof req.body.target !== 'string' || !req.body.target.trim() || req.body.target.length > 128) {
+            return res.status(400).json({ error: 'Provide a valid notification target and a type of at most 80 characters.' });
+        }
+        if (String(req.body.type || '').trim().toLowerCase() === 'employment_exit' ||
+            req.body.exit_request_id !== undefined || req.body.exit_event_id !== undefined) {
+            return res.status(400).json({ error: 'Employment Exit alerts are created only from verified case actions.' });
+        }
         const { text, title } = req.body;
         if (typeof text !== 'string' || text.length > MAX_NOTIFICATION_MESSAGE_LENGTH || !text.trim()) {
             return res.status(400).json({ error: 'Notification text is required and must be at most 1000 characters.' });
@@ -227,7 +218,7 @@ router.put('/read-all', authorizeNotifications, async (req, res) => {
         
         let query = supabase.from('notifications').update({ read: true }).eq('read', false);
         
-        if (role === 'admin') {
+        if (hasVerifiedManagerRole(req.user) && ['admin', 'hr', 'hr_manager'].includes(role)) {
             query = query.or(`target.eq.admin,target.eq.${postgrestValue(user_id)}`);
         } else {
             query = query.eq('target', user_id);

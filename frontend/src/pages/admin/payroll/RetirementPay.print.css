@@ -1,0 +1,18 @@
+@media print {
+    body:has(#retirement-statement) * {
+        visibility: hidden !important;
+    }
+
+    body:has(#retirement-statement) #retirement-statement,
+    body:has(#retirement-statement) #retirement-statement * {
+        visibility: visible !important;
+    }
+
+    #retirement-statement {
+        position: absolute;
+        inset: 0 auto auto 0;
+        width: 100%;
+        padding: 20px;
+        background: white;
+    }
+}

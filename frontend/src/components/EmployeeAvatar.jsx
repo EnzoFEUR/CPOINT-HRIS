@@ -1,4 +1,6 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import { useState, useMemo } from 'react';
+import ProtectedImage from './ProtectedImage';
+import { privateMediaKey } from '../utils/privateMedia';
 
 // Global in-memory cache to remember loaded/failed URLs across component mounts and re-renders
 const urlStatusCache = new Map();
@@ -35,8 +37,6 @@ export const EmployeeAvatar = ({
     border = 'border border-slate-200',
     shadow = 'shadow-inner',
     className = '',
-    showOnlineStatus = false,
-    isOnline = false,
 }) => {
     // 1. Resolve Name
     const resolvedFirstName = firstName || employee?.first_name || '';
@@ -49,49 +49,34 @@ export const EmployeeAvatar = ({
         if (rawPhoto) {
             const safePhoto = typeof rawPhoto === 'string' ? rawPhoto.trim() : '';
             if (!safePhoto) return null;
-            if (safePhoto.startsWith('http') || safePhoto.startsWith('data:')) {
-                return safePhoto;
-            }
-            return `https://lzqshktnrvtlattdiwxf.supabase.co/storage/v1/object/public/public-bucket/${safePhoto.replace(/^\/+/, '')}`;
+            return safePhoto;
         }
         const cId = companyId || employee?.company_id;
         const eId = employeeId || employee?.id;
         if (cId && eId) {
-            return `https://lzqshktnrvtlattdiwxf.supabase.co/storage/v1/object/public/public-bucket/face-baselines/${cId}/${eId}.jpg`;
+            return `face-baselines/${cId}/${eId}.jpg`;
         }
         return null;
     }, [photoUrl, avatarUrl, employee, companyId, employeeId]);
+    const protectedMedia = privateMediaKey(resolvedAvatarSrc) !== undefined;
 
     // 3. Resolve Loading State from Global Cache
-    const initialStatus = resolvedAvatarSrc ? urlStatusCache.get(resolvedAvatarSrc) : null;
-    const [imgStatus, setImgStatus] = useState(() => initialStatus || 'loading');
-
-    // Keep status in sync if avatarSrc changes
-    useEffect(() => {
-        if (!resolvedAvatarSrc) {
-            setImgStatus('failed');
-            return;
-        }
-        const cached = urlStatusCache.get(resolvedAvatarSrc);
-        if (cached) {
-            setImgStatus(cached);
-        } else {
-            setImgStatus('loading');
-        }
-    }, [resolvedAvatarSrc]);
+    const [imageResult, setImageResult] = useState(null);
+    const imgStatus = !resolvedAvatarSrc ? 'failed' : imageResult?.src === resolvedAvatarSrc
+        ? imageResult.status : (!protectedMedia && urlStatusCache.get(resolvedAvatarSrc)) || 'loading';
 
     const handleLoad = () => {
-        if (resolvedAvatarSrc) {
+        if (resolvedAvatarSrc && !protectedMedia) {
             urlStatusCache.set(resolvedAvatarSrc, 'loaded');
         }
-        setImgStatus('loaded');
+        setImageResult({ src: resolvedAvatarSrc, status: 'loaded' });
     };
 
     const handleError = () => {
-        if (resolvedAvatarSrc) {
+        if (resolvedAvatarSrc && !protectedMedia) {
             urlStatusCache.set(resolvedAvatarSrc, 'failed');
         }
-        setImgStatus('failed');
+        setImageResult({ src: resolvedAvatarSrc, status: 'failed' });
     };
 
     // 4. Resolve Visual Theme for Blank Profile Background & Silhouette
@@ -120,8 +105,8 @@ export const EmployeeAvatar = ({
             <BlankProfilePhoto className="w-full h-full select-none pointer-events-none" />
 
             {/* Photo */}
-            {resolvedAvatarSrc && !isFailed && (
-                <img
+            {resolvedAvatarSrc && (!isFailed || protectedMedia) && (
+                <ProtectedImage
                     src={resolvedAvatarSrc}
                     onLoad={handleLoad}
                     onError={handleError}

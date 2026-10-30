@@ -2,6 +2,7 @@ import express from 'express';
 import { readDocumentPendingCounts } from '../utils/documentPendingCounts.js';
 import { validateRecordId, validateUuidParam } from '../middleware/requestValidation.js';
 import { supabase } from '../supabaseClient.js';
+import { invalidateCache } from '../middleware/cacheMiddleware.js';
 import {
     assertDocumentId,
     assertDocumentOwner,
@@ -146,6 +147,7 @@ export function createDocumentRouter(client = supabase) {
 
         const { data, error } = await client.from('document_requests').insert(payload).select().single();
         if (error) throw error;
+        invalidateCache(['/api/employees', '/api/documents']);
 
         // Real-time dispatch and notification to employee
         const requesterName = `${req.user.first_name || 'HR'} ${req.user.last_name || 'Admin'}`.trim();
@@ -193,6 +195,7 @@ export function createDocumentRouter(client = supabase) {
             .single();
         if (error) throw error;
 
+        invalidateCache(['/api/employees', '/api/documents']);
         try {
             const channel = client.channel('document-updates');
             await channel.httpSend('DOCUMENT_CHANGED', {

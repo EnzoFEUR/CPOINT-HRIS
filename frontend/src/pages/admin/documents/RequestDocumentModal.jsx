@@ -14,7 +14,7 @@ export default function RequestDocumentModal({
 }) {
     const [employeeId, setEmployeeId] = useState(initialEmployeeId || '');
     const [employees, setEmployees] = useState([]);
-    const [isLoadingEmployees, setIsLoadingEmployees] = useState(false);
+    const [isLoadingEmployees, setIsLoadingEmployees] = useState(Boolean(isOpen && !initialEmployeeId));
     const [selectedDocTypeId, setSelectedDocTypeId] = useState(initialDocTypeId || 'tin');
     const [customDocType, setCustomDocType] = useState('');
     const [customCategory, setCustomCategory] = useState('Other');
@@ -23,23 +23,17 @@ export default function RequestDocumentModal({
     const [notes, setNotes] = useState('');
     const [isSubmitting, setIsSubmitting] = useState(false);
 
-    useEffect(() => {
-        if (isOpen && initialDocTypeId) {
-            setSelectedDocTypeId(initialDocTypeId);
-        }
-    }, [isOpen, initialDocTypeId]);
-
-    // Sync initial employee
-    useEffect(() => {
-        if (initialEmployeeId) {
-            setEmployeeId(initialEmployeeId);
-        }
-    }, [initialEmployeeId]);
+    const [requestContext, setRequestContext] = useState({ isOpen, initialDocTypeId, initialEmployeeId });
+    if (requestContext.isOpen !== isOpen || requestContext.initialDocTypeId !== initialDocTypeId || requestContext.initialEmployeeId !== initialEmployeeId) {
+        setRequestContext({ isOpen, initialDocTypeId, initialEmployeeId });
+        if (isOpen && initialDocTypeId) setSelectedDocTypeId(initialDocTypeId);
+        if (initialEmployeeId) setEmployeeId(initialEmployeeId);
+        setIsLoadingEmployees(Boolean(isOpen && !initialEmployeeId));
+    }
 
     // Load active employees if not pre-selected
     useEffect(() => {
         if (isOpen && !initialEmployeeId) {
-            setIsLoadingEmployees(true);
             fetchWithAuth('/api/employees')
                 .then(res => res.json())
                 .then(data => {

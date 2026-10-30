@@ -1,14 +1,15 @@
 import { getManilaWorkDate } from '../../../../../shared/workPolicy.mjs';
-import React, { useState, useEffect, useMemo } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { useState, useEffect, useMemo } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { fetchWithAuth } from '../../../utils/api';
 import { FACTORY_SHOE_ROLES, extractProductionLines, getShoeRoleDetails, parseProductionGroup } from '../../../utils/factoryRoles';
-import { formatPhPhone, validatePhPhone, cleanPhPhone } from '../../../utils/phoneUtils';
+import { formatPhPhone, validatePhPhone } from '../../../utils/phoneUtils';
 import PhilippineAddressSelector from '../../../components/PhilippineAddressSelector';
 import EmailDomainWarning from '../../../components/EmailDomainWarning';
 import { sanitizePersonnelText, isPersonnelEmailInput, isValidPersonnelEmail, isEmployeePayInput, getEmployeePayError } from '../../../../../shared/personnelInput.mjs';
+import BackButton from '../../../components/ui/BackButton';
 
 export default function Edit() {
     const { id } = useParams();
@@ -175,15 +176,21 @@ export default function Edit() {
         };
     }, [id, navigate, cachedEmp]);
 
+    const currentEmailInput = String(emailInput || '').trim().toLowerCase();
+    const currentEmployeeEmail = String(employee?.email || '').trim().toLowerCase();
+    const [checkedEmail, setCheckedEmail] = useState({ input: currentEmailInput, current: currentEmployeeEmail });
+    if (checkedEmail.input !== currentEmailInput || checkedEmail.current !== currentEmployeeEmail) {
+        setCheckedEmail({ input: currentEmailInput, current: currentEmployeeEmail });
+        if (!currentEmailInput) setEmailStatus({ state: 'empty', message: '' });
+        else if (currentEmailInput === currentEmployeeEmail) setEmailStatus({ state: 'current', message: '' });
+    }
     // Real-time low-latency email conflict and archive availability check
     useEffect(() => {
         const clean = String(emailInput || '').trim().toLowerCase();
         if (!clean) {
-            setEmailStatus({ state: 'empty', message: '' });
             return;
         }
         if (clean === String(employee?.email || '').trim().toLowerCase()) {
-            setEmailStatus({ state: 'current', message: '' });
             return;
         }
 
@@ -207,7 +214,7 @@ export default function Edit() {
                         message: data.message || 'Email in use by active personnel'
                     });
                 }
-            } catch (_) {
+            } catch {
                 setEmailStatus({ state: 'idle', message: '' });
             }
         }, 300);
@@ -380,7 +387,7 @@ export default function Edit() {
             } else {
                 toast.error(result.error || result.message || 'Update failed');
             }
-        } catch (err) {
+        } catch {
             toast.error('Network error. Failed to update account.');
         }
     };
@@ -397,9 +404,7 @@ export default function Edit() {
     return (
         <div className="max-w-4xl mx-auto space-y-4 sm:space-y-6 pb-24 lg:pb-6 px-4 sm:px-6 lg:px-8 font-sans relative">
             <div className="flex items-center justify-between">
-                <Link to={`/admin/employees/${id}`} className="h-8 px-3 bg-white text-slate-600 font-semibold text-xs rounded-md hover:bg-slate-50 hover:text-accent transition-colors duration-100 shadow-2xs border border-slate-200 flex items-center gap-1.5">
-                    <i className="ti ti-arrow-left text-sm" /> Cancel Edit
-                </Link>
+                <BackButton fallback={`/admin/employees/${id}`} label="Cancel Edit" />
             </div>
 
             <div className="bg-white p-5 sm:p-6 rounded-lg shadow-2xs border border-slate-200">

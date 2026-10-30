@@ -135,17 +135,9 @@ export default function ProvisionAdmin() {
         <div className="max-w-4xl mx-auto pb-24 px-3 sm:px-6 lg:px-8 font-sans">
             <PageHeader
                 breadcrumbs={['Admin', 'Employees', 'Provision Administrator']}
-                actions={
-                    <div className="flex items-center gap-2">
-                        <Link
-                            to="/admin/employees"
-                            className="h-9 px-3.5 bg-white hover:bg-slate-50 text-slate-700 rounded-md font-medium text-xs border border-slate-200 transition-colors shadow-2xs flex items-center gap-1.5"
-                        >
-                            <i className="ti ti-arrow-left text-sm" />
-                            <span>Back to Directory</span>
-                        </Link>
-                    </div>
-                }
+                showBack
+                backFallback="/admin/employees"
+                backLabel="Back to Directory"
             />
 
             <form onSubmit={handleSubmit} className="space-y-6">

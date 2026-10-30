@@ -1,9 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams, useLocation, Link } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
 import { isPasswordReuseError, PASSWORD_REUSE_MESSAGE } from '../../../shared/passwordPolicy.mjs';
 import { API_BASE_URL } from '../utils/api';
 import toast from 'react-hot-toast';
+import { revokeBrowserPush } from '../utils/devicePush.mjs';
 
 export default function ResetPassword() {
   const [searchParams] = useSearchParams();
@@ -74,7 +75,7 @@ export default function ResetPassword() {
     length: password.length >= 10,
     case: /[A-Z]/.test(password) && /[a-z]/.test(password),
     number: /[0-9]/.test(password),
-    special: /[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/.test(password),
+    special: /[!@#$%^&*()_+\-=[\]{};':"\\|,.<>/?]/.test(password),
   };
 
   const passedCount = Object.values(checks).filter(Boolean).length;
@@ -108,6 +109,7 @@ export default function ResetPassword() {
           throw new Error(isPasswordReuseError(data) ? PASSWORD_REUSE_MESSAGE : data.error || 'Failed to update password.');
         }
 
+        await revokeBrowserPush().catch(() => {});
         await supabase.auth.signOut().catch(() => {});
         localStorage.removeItem('user');
 
@@ -120,6 +122,7 @@ export default function ResetPassword() {
       const { error: updateError } = await supabase.auth.updateUser({ password });
       if (updateError) throw updateError;
 
+      await revokeBrowserPush().catch(() => {});
       await supabase.auth.signOut().catch(() => {});
       localStorage.removeItem('user');
 

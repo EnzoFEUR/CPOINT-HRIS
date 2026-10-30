@@ -1,7 +1,5 @@
 /**
- * Hardware Camera Abstraction Layer
- * Provides low-level hardware sensor controls, continuous auto-focus,
- * dynamic exposure compensation, 60fps capture, and zero-copy frame grabbing.
+ * Shared browser camera constraints and optional hardware controls.
  */
 
 // Detect device form factor and orientation
@@ -14,6 +12,17 @@ export const getDeviceCameraMetrics = () => {
   return { isMobile, isPortrait };
 };
 
+// Let the camera choose its native orientation and avoid requesting a cropped feed.
+export const getCameraVideoConstraints = (facingMode = 'user') => ({
+  facingMode: { ideal: facingMode },
+  width: { ideal: 1280 },
+  height: { ideal: 720 },
+  frameRate: { ideal: 30, max: 30 },
+  ...(typeof navigator !== 'undefined' && navigator.mediaDevices?.getSupportedConstraints?.().resizeMode
+    ? { resizeMode: { ideal: 'none' } }
+    : {}),
+});
+
 /**
  * Requests camera stream with hardware-optimized constraints and progressive fallbacks.
  * @param {Object} options
@@ -22,97 +31,96 @@ export const getDeviceCameraMetrics = () => {
  * @returns {Promise<MediaStream>}
  */
 export const requestHardwareCamera = async (options = {}) => {
-  const { facingMode = 'user', preferHighFps = true } = options;
-  const { isMobile, isPortrait } = getDeviceCameraMetrics();
+  const { facingMode = 'user', preferHighFps = false } = options;
 
-  // Tier 1: 1080p/720p constraints
   const tier1Constraints = {
     video: {
-      facingMode: { ideal: facingMode },
-      width: { ideal: isMobile && isPortrait ? 720 : 1920, min: 640 },
-      height: { ideal: isMobile && isPortrait ? 1280 : 1080, min: 480 },
-      aspectRatio: { ideal: isMobile && isPortrait ? 9 / 16 : 16 / 9 },
-      frameRate: preferHighFps ? { ideal: 60, min: 30 } : { ideal: 30 },
+      ...getCameraVideoConstraints(facingMode),
+      ...(preferHighFps ? { frameRate: { ideal: 60, max: 60 } } : {}),
     },
     audio: false,
   };
 
-  // Tier 2: Standard 720p Stream
+  // Reduce the preferred resolution if the first request is rejected.
   const tier2Constraints = {
     video: {
       facingMode: { ideal: facingMode },
-      width: { ideal: isMobile && isPortrait ? 720 : 1280 },
-      height: { ideal: isMobile && isPortrait ? 1280 : 720 },
-      frameRate: { ideal: 30 },
+      width: { ideal: 640 },
+      height: { ideal: 480 },
+      frameRate: { ideal: 30, max: 30 },
     },
     audio: false,
   };
 
   // Tier 3: Basic Stream Fallback
   const tier3Constraints = {
-    video: { facingMode },
+    video: { facingMode: { ideal: facingMode } },
     audio: false,
   };
 
-  let stream;
-
-  try {
-    stream = await navigator.mediaDevices.getUserMedia(tier1Constraints);
-  } catch (err1) {
-    console.warn('[Camera Hardware] Tier 1 failed, retrying Tier 2:', err1.message);
+  const tiers = [tier1Constraints, tier2Constraints, tier3Constraints];
+  for (let index = 0; index < tiers.length; index += 1) {
+    let stream;
     try {
-      stream = await navigator.mediaDevices.getUserMedia(tier2Constraints);
-    } catch (err2) {
-      console.warn('[Camera Hardware] Tier 2 failed, falling back to basic constraints:', err2.message);
-      stream = await navigator.mediaDevices.getUserMedia(tier3Constraints);
+      stream = await navigator.mediaDevices.getUserMedia(tiers[index]);
+    } catch (error) {
+      if (['NotAllowedError', 'PermissionDeniedError', 'SecurityError'].includes(error?.name) || index === tiers.length - 1) {
+        throw error;
+      }
+      continue;
     }
+
+    // Optional camera controls must not delay delivery of an otherwise usable stream.
+    void applyHardwareEnhancements(stream);
+    return stream;
   }
-
-  // Engage hardware ISP optimizations on the active track
-  await applyHardwareEnhancements(stream);
-
-  return stream;
 };
 
 /**
  * Inspects underlying hardware capabilities and engages continuous auto-focus & exposure.
  * @param {MediaStream} stream
- * @returns {Promise<Object>} applied capabilities
+ * @returns {Promise<Object>} advertised capabilities
  */
 export const applyHardwareEnhancements = async (stream) => {
   if (!stream) return {};
 
-  const [track] = stream.getVideoTracks();
-  if (!track || !track.getCapabilities || !track.applyConstraints) {
-    return {};
-  }
-
   try {
+    const [track] = stream.getVideoTracks();
+    if (!track || !track.getCapabilities || !track.applyConstraints) return {};
     const capabilities = track.getCapabilities() || {};
-    const advanced = {};
-
-    // 1. Continuous auto-focus
-    if (capabilities.focusMode?.includes('continuous')) {
-      advanced.focusMode = 'continuous';
+    const adjustments = [];
+    for (const mode of ['focusMode', 'exposureMode', 'whiteBalanceMode']) {
+      if (capabilities[mode]?.includes('continuous')) {
+        adjustments.push({ [mode]: 'continuous' });
+      }
     }
 
-    // 2. Continuous auto-exposure
-    if (capabilities.exposureMode?.includes('continuous')) {
-      advanced.exposureMode = 'continuous';
+    const zoom = capabilities.zoom;
+    if (Number.isFinite(zoom?.min) && Number.isFinite(zoom?.max) && zoom.min <= zoom.max) {
+      if (zoom.min > 1) {
+        adjustments.push({ zoom: zoom.min });
+      } else if (zoom.max >= 1) {
+        const steps = (1 - zoom.min) / zoom.step;
+        if (!zoom.step || Math.abs(steps - Math.round(steps)) < 1e-6) {
+          adjustments.push({ zoom: 1 });
+        }
+      }
     }
 
-    // 3. Continuous white balance
-    if (capabilities.whiteBalanceMode?.includes('continuous')) {
-      advanced.whiteBalanceMode = 'continuous';
-    }
-
-    if (Object.keys(advanced).length > 0) {
-      await track.applyConstraints({ advanced: [advanced] });
+    let constraints = track.getConstraints?.() || {};
+    for (const adjustment of adjustments) {
+      try {
+        // applyConstraints replaces prior constraints, including capture frame limits.
+        const next = { ...constraints, advanced: [...(constraints.advanced || []), adjustment] };
+        await track.applyConstraints(next);
+        constraints = next;
+      } catch {
+        // A rejected optional control must not prevent the remaining adjustments.
+      }
     }
 
     return capabilities;
-  } catch (err) {
-    console.warn('[Camera Hardware] Could not apply advanced constraints:', err.message);
+  } catch {
     return {};
   }
 };
@@ -131,7 +139,11 @@ export const toggleHardwareTorch = async (stream, enable = true) => {
   try {
     const caps = track.getCapabilities();
     if (caps.torch) {
-      await track.applyConstraints({ advanced: [{ torch: Boolean(enable) }] });
+      const constraints = track.getConstraints?.() || {};
+      const advanced = (constraints.advanced || [])
+        .map(({ torch: _torch, ...rest }) => rest)
+        .filter((control) => Object.keys(control).length > 0);
+      await track.applyConstraints({ ...constraints, advanced: [...advanced, { torch: Boolean(enable) }] });
       return true;
     }
     return false;

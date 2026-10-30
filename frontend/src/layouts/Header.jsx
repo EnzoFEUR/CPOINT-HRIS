@@ -9,18 +9,18 @@ export const Header = ({ user }) => {
   const location = useLocation();
 
   return (
-    <header className="flex items-center justify-between px-4 sm:px-6 pt-[max(0.75rem,env(safe-area-inset-top,0px))] pb-3 sm:py-3.5 sticky top-0 sm:top-4 z-30 sm:mt-4 bg-white/95 backdrop-blur-md shadow-2xs border-b sm:border border-slate-200 sm:rounded-2xl sm:mx-4 lg:mx-8 touch-none select-none overscroll-none print:hidden">
-      <div>
-        <h2 className="text-base sm:text-2xl font-bold text-slate-800 tracking-tight capitalize leading-tight">
+    <header className="flex items-center justify-between px-4 sm:px-6 pt-[max(0.75rem,env(safe-area-inset-top,0px))] pb-3 sm:py-3.5 sticky top-0 sm:top-4 z-30 sm:mt-4 bg-white/95 backdrop-blur-md shadow-2xs border-b sm:border border-slate-200 sm:rounded-2xl sm:mx-4 lg:mx-8 touch-pan-y select-none overscroll-none print:hidden">
+      <div className="min-w-0 flex-1 mr-2">
+        <h2 className="text-base sm:text-2xl font-bold text-slate-800 tracking-tight capitalize leading-tight truncate">
           {getPageTitle(location.pathname)}
         </h2>
         {/* Isolated Clock: zero layout re-renders */}
         <HeaderClock />
       </div>
 
-      <div className="flex items-center gap-2 sm:gap-3 relative">
+      <div className="flex items-center gap-2 sm:gap-3 relative shrink-0">
         <GlobalSearch user={user} />
-        <NotificationBell user={user} />
+        <NotificationBell key={user?.id} user={user} />
       </div>
     </header>
   );

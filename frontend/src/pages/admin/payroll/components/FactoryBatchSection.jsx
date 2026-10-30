@@ -22,7 +22,6 @@ const FactoryBatchSection = ({
     isSubmitting,
     isInvalidDateRange,
     handleSubmitBatch,
-    absenteeInfo,
     absenteeValidation,
     setIsAbsenteeModalOpen,
     expectedWorkingDays
@@ -325,8 +324,8 @@ const FactoryBatchSection = ({
                         <p className="text-[11px] text-slate-400">No employees in {selectedGroup} matched your search or filter.</p>
                     </div>
                 ) : breakdownViewMode === 'table' ? (
-                    <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white shadow-2xs">
-                        <table className="w-full text-left border-collapse text-xs">
+                    <div className="overflow-x-auto touch-scroll rounded-lg border border-slate-200 bg-white shadow-2xs">
+                        <table className="w-full text-left border-collapse text-xs min-w-[640px]">
                             <thead>
                                 <tr className="bg-slate-50/90 border-b border-slate-200 text-[10px] font-bold text-slate-400 uppercase tracking-wider">
                                     <th className="p-3">Worker</th>

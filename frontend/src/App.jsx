@@ -1,6 +1,7 @@
 import { lazy, Suspense } from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate, useSearchParams } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate, useSearchParams, useLocation } from 'react-router-dom';
 import Toaster from './components/CspToaster';
+import { ConfirmProvider } from './components/ui/ConfirmDialog';
 import { SpeedInsights } from '@vercel/speed-insights/react';
 
 // Route Guards & Layouts
@@ -51,6 +52,7 @@ const EmployeeQrPrint = lazy(() => import('./pages/admin/employees/QrPrint'));
 // Admin - Payroll
 const StatutorySettings = lazy(() => import('./pages/admin/payroll/StatutorySettings'));
 const PayrollIndex = lazy(() => import('./pages/admin/payroll/Index'));
+const RetirementPay = lazy(() => import('./pages/admin/payroll/RetirementPay'));
 const PayrollCreate = lazy(() => import('./pages/admin/payroll/Create'));
 const PayrollShow = lazy(() => import('./pages/admin/payroll/Show'));
 
@@ -75,7 +77,16 @@ const ArchivedEmployeeProfile = lazy(() => import('./pages/admin/archive/Archive
 
 // Employee Portal Flow
 const MyQr = lazy(() => import('./pages/employee/MyQr'));
+const EmploymentExit = lazy(() => import('./pages/EmploymentExit'));
+const PersonnelDocuments = lazy(() => import('./pages/employee/PersonnelDocuments'));
+const PolicyIncidentReports = lazy(() => import('./pages/employee/PolicyIncidentReports'));
 const MyProfile = lazy(() => import('./pages/employee/MyProfile'));
+
+function EmployeeProfileRoute() {
+  const location = useLocation();
+  if (location.hash === '#documents') return <Navigate to="/employee/documents" replace />;
+  return <MyProfile />;
+}
 
 function App() {
   // Global Biometric Photo & Avatar Protection (Anti-Save, Anti-Drag, Anti-New-Tab)
@@ -83,8 +94,9 @@ function App() {
 
   return (
     <Router>
-      <Toaster
-        position="top-center"
+      <ConfirmProvider>
+        <Toaster
+          position="top-center"
         toastOptions={{
           style: {
             borderRadius: '9999px',
@@ -151,6 +163,7 @@ function App() {
           }
         />
 
+        <Route path="/employee/employment-exit" element={<ProtectedRoute allowedRoles={['employee', 'admin', 'hr']}><Suspense fallback={AuthFallback}><MainLayout><EmploymentExit /></MainLayout></Suspense></ProtectedRoute>} />
         {/* Authenticated Persistent Shell */}
         <Route
           element={
@@ -165,6 +178,7 @@ function App() {
 
           {/* Admin - Employees Directory & Archive (Strictly Gated by 2FA) */}
           <Route element={<EmployeeModuleGate />}>
+            <Route path="/admin/employment-exit" element={<ProtectedRoute allowedRoles={['admin', 'hr']}><EmploymentExit manager /></ProtectedRoute>} />
             <Route path="/admin/employees" element={<ProtectedRoute allowedRoles={['admin', 'hr']} requireBiometrics><EmployeeIndex /></ProtectedRoute>} />
             <Route path="/admin/employees/create" element={<ProtectedRoute allowedRoles={['admin', 'hr']} requireBiometrics><EmployeeCreate /></ProtectedRoute>} />
             <Route path="/admin/employees/provision-admin" element={<ProtectedRoute allowedRoles={['admin', 'hr']} requireBiometrics><EmployeeProvisionAdmin /></ProtectedRoute>} />
@@ -184,6 +198,7 @@ function App() {
           {/* Admin - Payroll Ledger & Processing */}
           <Route path="/admin/payroll/statutory-settings" element={<ProtectedRoute allowedRoles={['admin', 'hr']} requireBiometrics><StatutorySettings /></ProtectedRoute>} />
           <Route path="/admin/payroll" element={<ProtectedRoute allowedRoles={['admin', 'hr']} requireBiometrics><PayrollIndex /></ProtectedRoute>} />
+          <Route path="/admin/payroll/retirement" element={<ProtectedRoute allowedRoles={['admin', 'hr']} requireBiometrics><RetirementPay /></ProtectedRoute>} />
           <Route path="/admin/payroll/process" element={<ProtectedRoute allowedRoles={['admin', 'hr']} requireBiometrics><PayrollCreate /></ProtectedRoute>} />
           <Route path="/admin/payroll/create" element={<Navigate to="/admin/payroll/process" replace />} />
           <Route path="/admin/payroll/:id" element={<ProtectedRoute allowedRoles={['admin', 'hr']} requireBiometrics><PayrollShow /></ProtectedRoute>} />
@@ -200,8 +215,9 @@ function App() {
           <Route path="/employee/dashboard" element={<ProtectedRoute allowedRoles={['employee']}><EmployeeDashboard /></ProtectedRoute>} />
           <Route path="/employee/qr" element={<ProtectedRoute allowedRoles={['employee']}><MyQr /></ProtectedRoute>} />
           <Route path="/employee/scanner" element={<Navigate to="/employee/qr" replace />} />
-          <Route path="/employee/profile" element={<ProtectedRoute allowedRoles={['employee', 'admin', 'hr']}><MyProfile /></ProtectedRoute>} />
-          <Route path="/employee/documents" element={<ProtectedRoute allowedRoles={['employee', 'admin', 'hr']}><Navigate to="/employee/profile#documents" replace /></ProtectedRoute>} />
+          <Route path="/employee/profile" element={<ProtectedRoute allowedRoles={['employee', 'admin', 'hr']}><EmployeeProfileRoute /></ProtectedRoute>} />
+          <Route path="/employee/documents" element={<ProtectedRoute allowedRoles={['employee', 'admin', 'hr']}><PersonnelDocuments /></ProtectedRoute>} />
+          <Route path="/employee/policy-reports" element={<ProtectedRoute allowedRoles={['employee', 'admin', 'hr']}><PolicyIncidentReports /></ProtectedRoute>} />
           <Route path="/profile" element={<Navigate to="/employee/profile" replace />} />
         </Route>
         
@@ -209,6 +225,7 @@ function App() {
         <Route path="*" element={<Navigate to="/" replace />} />
         </Route>
       </Routes>
+      </ConfirmProvider>
       {import.meta.env.PROD && import.meta.env.VERCEL_DEPLOYMENT && <SpeedInsights />}
     </Router>
   );

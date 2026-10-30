@@ -11,7 +11,7 @@ import LeaveDatePicker from './LeaveDatePicker';
 import { getEmployeeRestDays, getManilaWorkDate } from '../../../shared/workPolicy.mjs';
 
 const emptyForm = { leave_type: 'Sick Leave', start_date: '', end_date: '', reason: '', requested_pay_type: '' };
-const inputClass = 'mt-1 w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 font-medium focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent transition-colors shadow-2xs';
+
 
 export default function EmployeeLeaveRequest({ open, employee, statusReady, blockedReason, onClose }) {
     const actorId = getUser()?.id;

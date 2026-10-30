@@ -858,17 +858,6 @@ export default function PayrollIndex() {
         return () => document.removeEventListener('keydown', handler);
     }, [searchQuery]);
 
-    const handleCategoryChange = useCallback((cat) => {
-        const params = new URLSearchParams(searchParams);
-        if (cat === 'group' || cat === 'regular') {
-            params.set('category', cat);
-        } else {
-            params.delete('category');
-        }
-        setSearchParams(params);
-        setCurrentPage(1);
-    }, [searchParams, setSearchParams]);
-
     const handleClearFilters = () => {
         setSearchQuery('');
         setSelectedDepartment('All');
@@ -1190,54 +1179,6 @@ export default function PayrollIndex() {
         });
         return ['All', ...Array.from(depts)];
     }, [enrichedRecords]);
-
-    const categoryCounts = useMemo(() => {
-        const groupSet = new Set();
-        let regular = 0;
-        let groupWorkers = 0;
-        const targetMonth = currentMonth ? parseInt(currentMonth, 10) : null;
-        const targetYear = currentYear ? parseInt(currentYear, 10) : null;
-
-        enrichedRecords.forEach(p => {
-            const roleStr = (p.employees?.role || '').toLowerCase();
-            if (roleStr === 'admin' || roleStr === 'security') return;
-
-            if (targetMonth) {
-                const pDate = dayjs(p.period_start || p.period_end);
-                if (pDate.isValid() && (pDate.month() + 1) !== targetMonth) return;
-            }
-
-            if (targetYear) {
-                const pDate = dayjs(p.period_start || p.period_end);
-                if (pDate.isValid() && pDate.year() !== targetYear) return;
-            }
-
-            if (selectedDepartment !== 'All' && p._dept !== selectedDepartment) return;
-
-            const isGroup = isFactoryDept(p._dept) || Boolean(p._line);
-            if (isGroup) {
-                groupWorkers++;
-                const groupName = p._line || (isFactoryDept(p._dept) ? 'Factory General' : '');
-                if (groupName) {
-                    const groupId = `factory-line-${groupName.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`;
-                    groupSet.add(groupId);
-                }
-            } else {
-                regular++;
-            }
-        });
-
-        const groupCount = groupSet.size;
-        const allEntries = viewMode === 'flat' ? (groupWorkers + regular) : (groupCount + regular);
-
-        return {
-            regular,
-            group: groupCount,
-            groupWorkers,
-            all: allEntries,
-            totalWorkers: groupWorkers + regular,
-        };
-    }, [enrichedRecords, currentMonth, currentYear, selectedDepartment, viewMode]);
 
     const filteredPayrolls = useMemo(() => {
         const q = deferredSearch.trim().toLowerCase();
@@ -1590,11 +1531,9 @@ export default function PayrollIndex() {
     const totalItems = displayList.length;
     const totalPages = Math.ceil(totalItems / pageSize) || 1;
 
-    useEffect(() => {
-        if (currentPage > totalPages) {
-            setCurrentPage(totalPages);
-        }
-    }, [currentPage, totalPages]);
+    if (currentPage > totalPages) {
+        setCurrentPage(totalPages);
+    }
 
     const paginatedDisplayItems = displayList.slice((currentPage - 1) * pageSize, currentPage * pageSize);
 
@@ -1638,6 +1577,14 @@ export default function PayrollIndex() {
                             <i className="ti ti-download text-base text-slate-500" />
                             <span>Export CSV</span>
                         </button>
+
+                        <Link
+                            to="/admin/payroll/retirement"
+                            className="h-9 px-3.5 bg-white hover:bg-slate-50 text-slate-700 rounded-md font-medium text-xs sm:text-sm transition-colors duration-100 flex items-center gap-1.5 border border-slate-200 shadow-2xs"
+                        >
+                            <i className="ti ti-receipt text-base text-slate-500" />
+                            <span>Retirement pay</span>
+                        </Link>
 
                         <Link
                             to="/admin/payroll/statutory-settings"

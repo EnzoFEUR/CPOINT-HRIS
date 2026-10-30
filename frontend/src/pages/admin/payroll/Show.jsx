@@ -1,6 +1,7 @@
-import React, { useState, useEffect } from 'react';
-import { Link, useParams, useNavigate } from 'react-router-dom';
+import { useState, useEffect } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import BackButton from '../../../components/ui/BackButton';
 import toast from 'react-hot-toast';
 import { supabase } from '../../../supabaseClient';
 import { fetchWithAuth } from '../../../utils/api';
@@ -125,9 +126,7 @@ export default function PayrollShow() {
                 </div>
                 <h3 className="text-lg font-bold text-slate-800 tracking-tight">Record Unavailable</h3>
                 <p className="text-xs text-slate-500 mt-2 mb-6">{errorMessage || 'The requested payslip could not be found or has been removed.'}</p>
-                <Link to="/admin/payroll" className="inline-flex items-center gap-2 h-9 px-4 bg-slate-900 text-white rounded-md text-xs font-semibold hover:bg-slate-800 transition-colors duration-100 shadow-2xs">
-                    <i className="ti ti-arrow-left" /> Back to Payroll
-                </Link>
+                <BackButton fallback="/admin/payroll" label="Back to Payroll" />
             </div>
         );
     }

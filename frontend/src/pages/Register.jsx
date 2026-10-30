@@ -1,7 +1,7 @@
-import React, { useState, useMemo } from 'react';
+import { useState, useMemo } from 'react';
 import { supabase } from '../supabaseClient';
 import { Link } from 'react-router-dom';
-import { formatPhPhone, validatePhPhone, cleanPhPhone } from '../utils/phoneUtils';
+import { formatPhPhone, validatePhPhone } from '../utils/phoneUtils';
 import toast from 'react-hot-toast';
 import { UserPlus, Check, User, Mail, Lock, Loader2 } from 'lucide-react';
 import { sanitizePersonnelText, isValidPersonnelText, isValidPersonnelEmail } from '../../../shared/personnelInput.mjs';
@@ -22,7 +22,7 @@ export default function Register() {
     length: password.length >= 10,
     case: /[A-Z]/.test(password) && /[a-z]/.test(password),
     number: /[0-9]/.test(password),
-    special: /[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/.test(password),
+    special: /[!@#$%^&*()_+\-=[\]{};':"\\|,.<>/?]/.test(password),
   };
   const isEntropyCompliant = Object.values(checks).every(Boolean);
 
@@ -51,7 +51,7 @@ export default function Register() {
 
     try {
       const cleanPhone = phoneCheck.cleanPhone;
-      const { data, error: signUpError } = await supabase.auth.signUp({
+      const { error: signUpError } = await supabase.auth.signUp({
         email: email.trim().toLowerCase(),
         password,
         phone: `+63${cleanPhone}`,

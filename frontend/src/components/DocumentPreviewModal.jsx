@@ -1,6 +1,49 @@
 import { useState, useEffect, useRef } from 'react';
-import { isImageDocument, isPdfDocument, formatDocumentSize, getDocumentStatus } from '../utils/documentUtils';
+import { isImageDocument, isPdfDocument, isDocxDocument, formatDocumentSize, getDocumentStatus } from '../utils/documentUtils';
 import { fetchWithAuth } from '../utils/api';
+import { parseAsync, renderDocument } from 'docx-preview';
+
+// Security Sanitization for untrusted Word Document AST / DOM
+function sanitizeDocxNodes(nodes) {
+    const dangerousTags = new Set(['SCRIPT', 'IFRAME', 'OBJECT', 'EMBED', 'FORM', 'APPLET', 'BASE']);
+    const cleanElement = (el) => {
+        if (!el || el.nodeType !== (typeof Node !== 'undefined' ? Node.ELEMENT_NODE : 1)) return;
+        if (dangerousTags.has(el.nodeName)) {
+            el.remove();
+            return;
+        }
+        if (el.nodeName === 'A') {
+            const href = (el.getAttribute('href') || '').trim().toLowerCase();
+            if (href.startsWith('javascript:') || href.startsWith('vbscript:') || href.startsWith('data:text/html')) {
+                el.removeAttribute('href');
+            } else if (href) {
+                el.setAttribute('target', '_blank');
+                el.setAttribute('rel', 'noopener noreferrer nofollow');
+            }
+        }
+        const attrs = Array.from(el.attributes || []);
+        for (const attr of attrs) {
+            if (attr.name.toLowerCase().startsWith('on')) {
+                el.removeAttribute(attr.name);
+            }
+        }
+        Array.from(el.children).forEach(cleanElement);
+    };
+
+    for (const node of nodes) {
+        if (node && node.nodeType === (typeof Node !== 'undefined' ? Node.ELEMENT_NODE : 1)) {
+            cleanElement(node);
+        }
+    }
+}
+
+function sanitizeDocxCss(css) {
+    if (!css || typeof css !== 'string') return '';
+    return css
+        .replace(/@import\s+[^;]+;/gi, '/* @import stripped */')
+        .replace(/expression\s*\([^)]*\)/gi, 'none')
+        .replace(/behavior\s*:[^;]+;/gi, '');
+}
 
 export default function DocumentPreviewModal({
     isOpen,
@@ -15,26 +58,34 @@ export default function DocumentPreviewModal({
 }) {
     const [zoom, setZoom] = useState(1);
     const [rotation, setRotation] = useState(0);
-    const [activeUrl, setActiveUrl] = useState(null);
-    const [isLoadingUrl, setIsLoadingUrl] = useState(false);
+    const [activeUrl, setActiveUrl] = useState(doc?.preview_url || null);
+    const [isLoadingUrl, setIsLoadingUrl] = useState(Boolean(isOpen && doc?.id && !doc?.preview_url));
     const [loadError, setLoadError] = useState(null);
+    const [docxResult, setDocxResult] = useState(null);
+    const docxContainerRef = useRef(null);
     const documentId = doc?.id;
     const previewUrl = doc?.preview_url;
+    const fileName = doc?.file_name || doc?.title || '';
+    const isImage = isImageDocument(fileName);
+    const isPdf = isPdfDocument(fileName);
+    const isDocx = isDocxDocument(fileName);
+    const isDocxRendering = Boolean(isOpen && isDocx && activeUrl && docxResult?.url !== activeUrl);
+    const docxRenderError = isOpen && isDocx && docxResult?.url === activeUrl ? docxResult.error : null;
+    const [previewContext, setPreviewContext] = useState({ isOpen, documentId, previewUrl, isDocx });
+    if (previewContext.isOpen !== isOpen || previewContext.documentId !== documentId || previewContext.previewUrl !== previewUrl || previewContext.isDocx !== isDocx) {
+        setPreviewContext({ isOpen, documentId, previewUrl, isDocx });
+        setZoom(1);
+        setRotation(0);
+        setLoadError(null);
+        setDocxResult(null);
+        setActiveUrl(isOpen ? previewUrl || null : null);
+        setIsLoadingUrl(Boolean(isOpen && documentId && !previewUrl));
+    }
 
     // Reset zoom and rotation when modal opens with a new doc
     useEffect(() => {
         let active = true;
-        if (isOpen && (documentId || previewUrl)) {
-            setZoom(1);
-            setRotation(0);
-            setLoadError(null);
-            setActiveUrl(null);
-
-            if (previewUrl) {
-                setActiveUrl(previewUrl);
-                setIsLoadingUrl(false);
-            } else {
-                setIsLoadingUrl(true);
+        if (isOpen && documentId && !previewUrl) {
                 fetchWithAuth(`/api/employee-documents/${encodeURIComponent(documentId)}/url`)
                     .then(res => res.json())
                     .then(data => {
@@ -51,9 +102,6 @@ export default function DocumentPreviewModal({
                     .finally(() => {
                         if (active) setIsLoadingUrl(false);
                     });
-            }
-        } else {
-            setActiveUrl(null);
         }
         return () => { active = false; };
     }, [isOpen, documentId, previewUrl]);
@@ -70,11 +118,142 @@ export default function DocumentPreviewModal({
         return () => window.removeEventListener('keydown', handleKeyDown);
     }, [isOpen, onClose]);
 
+    // Asynchronously render DOCX OpenXML packages client-side
+    useEffect(() => {
+        if (!isOpen || !isDocx || !activeUrl) return;
+
+        let active = true;
+
+        const renderDocx = async () => {
+            let error = null;
+            try {
+                const res = activeUrl.startsWith('http')
+                    ? await fetch(activeUrl)
+                    : await fetchWithAuth(activeUrl);
+
+                if (!res.ok) {
+                    throw new Error(`Failed to load document content (${res.status} ${res.statusText}).`);
+                }
+
+                const buffer = await res.arrayBuffer();
+                if (!active || !docxContainerRef.current) return;
+
+                const renderOptions = {
+                    className: 'docx',
+                    inWrapper: true,
+                    ignoreWidth: false,
+                    ignoreHeight: false,
+                    breakPages: true,
+                    renderHeaders: true,
+                    renderFooters: true,
+                    renderFootnotes: true,
+                    renderEndnotes: true,
+                    useBase64URL: true,
+                };
+
+                const doc = await parseAsync(buffer, renderOptions);
+                if (!active || !docxContainerRef.current) return;
+
+                const nodes = await renderDocument(doc, renderOptions);
+                if (!active || !docxContainerRef.current) return;
+
+                // 1. Separate style nodes from document body nodes
+                const styleNodes = [];
+                const bodyNodes = [];
+                for (const node of nodes) {
+                    if (node.nodeName === 'STYLE') {
+                        styleNodes.push(node);
+                    } else {
+                        bodyNodes.push(node);
+                    }
+                }
+
+                // 2. Sanitize document nodes against clickjacking, script execution, and malicious embeds
+                sanitizeDocxNodes(bodyNodes);
+
+                // 3. Extract and sanitize CSS rules
+                const rawCss = sanitizeDocxCss(styleNodes.map(s => s.textContent || s.innerText || '').join('\n'));
+                const defaultPaperStyles = `
+                    .docx-wrapper {
+                        background: transparent !important;
+                        padding: 0 !important;
+                        display: flex !important;
+                        flex-direction: column !important;
+                        align-items: center !important;
+                    }
+                    .docx-wrapper > section.docx {
+                        background: #ffffff !important;
+                        color: #0f172a !important;
+                        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.08), 0 2px 4px -2px rgba(0, 0, 0, 0.08) !important;
+                        border: 1px solid #e2e8f0 !important;
+                        border-radius: 4px !important;
+                        margin-bottom: 24px !important;
+                    }
+                `;
+                const fullCss = `${rawCss}\n${defaultPaperStyles}`;
+
+                // 4. Enterprise Sandboxing via Shadow DOM
+                const container = docxContainerRef.current;
+                let shadow = container.shadowRoot;
+                if (!shadow) {
+                    shadow = container.attachShadow({ mode: 'open' });
+                }
+                shadow.replaceChildren();
+
+                // 5. Enterprise CSP-compliant styling via Constructable Stylesheets (CSSOM)
+                // W3C CSP Level 3 spec exempts Constructable Stylesheets from style-src
+                // because they are script-driven objects and not inline <style> DOM tags.
+                let appliedViaCssom = false;
+                if (typeof CSSStyleSheet !== 'undefined' && 'replaceSync' in CSSStyleSheet.prototype) {
+                    try {
+                        const sheet = new CSSStyleSheet();
+                        sheet.replaceSync(fullCss);
+                        shadow.adoptedStyleSheets = [sheet];
+                        appliedViaCssom = true;
+                    } catch (e) {
+                        console.warn('[DocumentPreviewModal] Constructable Stylesheet failed, falling back to nonced element:', e);
+                    }
+                }
+
+                if (!appliedViaCssom) {
+                    const metaNonce = document.querySelector('meta[name="csp-nonce"]')?.content;
+                    const currentNonce = (metaNonce && !metaNonce.includes('PLACEHOLDER'))
+                        ? metaNonce
+                        : (document.querySelector('script[nonce]')?.nonce || document.querySelector('style[nonce]')?.nonce || '');
+
+                    const styleTag = document.createElement('style');
+                    if (currentNonce) {
+                        styleTag.nonce = currentNonce;
+                        styleTag.setAttribute('nonce', currentNonce);
+                    }
+                    styleTag.textContent = fullCss;
+                    shadow.appendChild(styleTag);
+                }
+
+                // 6. Mount sanitized document nodes into isolated Shadow DOM
+                for (const bodyNode of bodyNodes) {
+                    shadow.appendChild(bodyNode);
+                }
+            } catch (err) {
+                if (!active) return;
+                console.error('[DocumentPreviewModal] DOCX render failure:', err);
+                error = err.message || 'Unable to parse Word document format.';
+            } finally {
+                if (active) {
+                    setDocxResult({ url: activeUrl, error });
+                }
+            }
+        };
+
+        renderDocx();
+
+        return () => {
+            active = false;
+        };
+    }, [isOpen, isDocx, activeUrl, documentId, previewUrl]);
+
     if (!isOpen || !doc) return null;
 
-    const fileName = doc.file_name || doc.title || '';
-    const isImage = isImageDocument(fileName);
-    const isPdf = isPdfDocument(fileName);
     const statusMeta = getDocumentStatus(doc);
 
     const handleZoomIn = () => setZoom(prev => Math.min(prev + 0.25, 3));
@@ -106,7 +285,7 @@ export default function DocumentPreviewModal({
                 <div className="flex items-center justify-between px-4 sm:px-5 py-3 border-b border-line bg-surface shrink-0">
                     <div className="flex items-center gap-3 min-w-0 pr-2">
                         <div className="h-8 w-8 rounded-md bg-surface-muted border border-line flex items-center justify-center shrink-0 text-ink">
-                            <i className={`ti ${isImage ? 'ti-photo text-accent' : isPdf ? 'ti-file-type-pdf text-danger-ink' : 'ti-file-text text-ink-muted'} text-base`} />
+                            <i className={`ti ${isImage ? 'ti-photo text-accent' : isPdf ? 'ti-file-type-pdf text-danger-ink' : isDocx ? 'ti-file-type-docx text-blue-600' : 'ti-file-text text-ink-muted'} text-base`} />
                         </div>
                         <div className="min-w-0">
                             <div className="flex items-center gap-2">
@@ -125,7 +304,7 @@ export default function DocumentPreviewModal({
 
                     {/* Toolbar & Controls */}
                     <div className="flex items-center gap-1.5 shrink-0">
-                        {isImage && activeUrl && (
+                        {(isImage || isDocx) && activeUrl && (
                             <div className="hidden sm:flex items-center gap-0.5 px-1 py-0.5 bg-surface border border-line rounded-md shadow-2xs">
                                 <button
                                     type="button"
@@ -268,6 +447,46 @@ export default function DocumentPreviewModal({
                                 className="w-full h-full border-0 rounded-md flex-1"
                             />
                         </div>
+                    ) : isDocx && activeUrl ? (
+                        <div className="w-full h-full bg-slate-100/90 rounded-md shadow-xs border border-line overflow-auto flex flex-col relative">
+                            {isDocxRendering && (
+                                <div className="absolute inset-0 z-10 bg-surface/80 backdrop-blur-2xs flex flex-col items-center justify-center space-y-2">
+                                    <i className="ti ti-loader text-2xl text-accent animate-spin" />
+                                    <p className="text-xs font-medium text-ink-muted">Rendering Word document preview...</p>
+                                </div>
+                            )}
+                            {docxRenderError ? (
+                                <div className="m-auto bg-surface rounded-lg p-6 max-w-md w-full text-center border border-danger/20 shadow-xs space-y-3">
+                                    <div className="w-10 h-10 bg-danger-subtle text-danger-ink rounded-md flex items-center justify-center mx-auto border border-danger/20">
+                                        <i className="ti ti-alert-circle text-xl" />
+                                    </div>
+                                    <div>
+                                        <h4 className="font-semibold text-ink text-sm">Word Preview Notice</h4>
+                                        <p className="text-xs text-ink-muted mt-1 leading-relaxed">{docxRenderError}</p>
+                                    </div>
+                                    <button
+                                        type="button"
+                                        onClick={handleDownload}
+                                        className="h-8 px-3.5 bg-slate-900 hover:bg-slate-800 text-white font-medium text-xs rounded-md shadow-2xs inline-flex items-center gap-1.5 transition-colors duration-100 cursor-pointer"
+                                    >
+                                        <i className="ti ti-download text-xs" />
+                                        <span>Download file</span>
+                                    </button>
+                                </div>
+                            ) : (
+                                <div className="p-3 sm:p-6 overflow-auto flex-1 flex justify-center items-start">
+                                    <div
+                                        ref={docxContainerRef}
+                                        style={{
+                                            transform: `scale(${zoom})`,
+                                            transformOrigin: 'top center',
+                                            transition: 'transform 0.12s ease-out'
+                                        }}
+                                        className="docx-preview-root max-w-4xl w-full"
+                                    />
+                                </div>
+                            )}
+                        </div>
                     ) : (
                         <div className="bg-surface rounded-lg p-6 max-w-md w-full border border-line shadow-xs space-y-4">
                             <div className="flex items-start gap-3">
@@ -390,4 +609,3 @@ export default function DocumentPreviewModal({
         </div>
     );
 }
-

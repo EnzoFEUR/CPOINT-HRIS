@@ -35,7 +35,7 @@ export async function offlineApi(path, options = {}) {
   } catch {
     body = { error: `Server returned ${response.status} (${response.statusText || 'offline endpoint unavailable'}).` };
   }
-  if (!response.ok) throw Object.assign(new Error(body.message || body.error || 'Offline attendance request failed.'), { http_status: response.status });
+  if (!response.ok) throw Object.assign(new Error(body.message || body.error || 'Offline attendance request failed.'), { http_status: response.status, code: body.code });
   return body.data || body;
 }
 
@@ -95,7 +95,7 @@ export function syncOfflineAttendance({ manual = false } = {}) {
     if (!session?.access_token) throw new Error('Sign in online to synchronize this terminal. Pending captures remain safely stored.');
     // Authenticated roster request proves reachability and current terminal approval.
     const retry = await readMeta('sync_retry');
-    if (!manual && (retry?.held || retry?.retry_at > Date.now())) return pendingResult('waiting');
+    if (!manual && ((retry?.held && /revoked|Only the assigned operator/i.test(retry.error || '')) || retry?.retry_at > Date.now())) return pendingResult('waiting');
     const enrollment = await readMeta('enrollment');
     if (!enrollment) throw new Error('This terminal has not been enrolled.');
     try {
@@ -105,7 +105,8 @@ export function syncOfflineAttendance({ manual = false } = {}) {
       await writeMeta('sync_retry', { attempts: 0, retry_at: 0 });
     } catch (error) {
       const attempts = (retry?.attempts || 0) + 1;
-      await writeMeta('sync_retry', { attempts, retry_at: Date.now() + retryDelay(attempts), held: error.http_status === 403, error: error.message });
+      const held = error.http_status === 403 && error.code !== 'SECOND_FACTOR_REQUIRED' && /revoked|Only the assigned operator/i.test(error.message);
+      await writeMeta('sync_retry', { attempts, retry_at: Date.now() + retryDelay(attempts), held, error: error.message, code: error.code });
       if (error.http_status === 403 && /revoked/i.test(error.message)) await writeMeta('capture_hold', 'This terminal was revoked. Captures are locked; existing signed records remain available for encrypted backup and HR recovery.');
       throw error;
     }

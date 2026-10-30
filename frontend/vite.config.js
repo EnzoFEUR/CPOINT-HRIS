@@ -3,6 +3,7 @@ import { fileURLToPath } from 'node:url';
 import { env as runtimeEnv } from 'node:process';
 import react from '@vitejs/plugin-react';
 import { offlineAssetManifest } from './offlineAssets.js';
+import { blinkAssets } from './blinkAssets.mjs';
 import { frontendSecurityHeaders } from '../shared/securityPolicy.mjs';
 import { DEV_NONCE_PLACEHOLDER, createBackendProxy, frontendHttpSecurity } from './devSecurity.mjs';
 
@@ -15,9 +16,12 @@ const securityHeadersFor = mode => {
 };
 
 export default defineConfig(({ mode }) => ({
-  plugins: [frontendHttpSecurity(securityHeadersFor(mode), { development: mode === 'development', allowedFsPaths }), react(), offlineAssetManifest({ enabled: loadEnv(mode, frontendRoot, 'VITE_').VITE_ENABLE_OFFLINE_ATTENDANCE === 'true' })],
+  plugins: [frontendHttpSecurity(securityHeadersFor(mode), { development: mode === 'development', allowedFsPaths }), react(), blinkAssets(), offlineAssetManifest({ enabled: loadEnv(mode, frontendRoot, 'VITE_').VITE_ENABLE_OFFLINE_ATTENDANCE === 'true' })],
   html: { cspNonce: mode === 'development' ? DEV_NONCE_PLACEHOLDER : undefined },
-  resolve: { alias: [{ find: /^react-hot-toast$/, replacement: 'react-hot-toast/headless' }] },
+  resolve: {
+    dedupe: ['react', 'react-dom'],
+    alias: [{ find: /^react-hot-toast$/, replacement: 'react-hot-toast/headless' }]
+  },
   define: { 'import.meta.env.VERCEL_DEPLOYMENT': JSON.stringify(runtimeEnv.VERCEL === '1') },
   server: {
     fs: { allow: allowedFsPaths },
@@ -66,6 +70,9 @@ export default defineConfig(({ mode }) => ({
             if (normalizedId.includes('html5-qrcode')) {
               return 'vendor-scanner';
             }
+            if (normalizedId.includes('docx-preview')) {
+              return 'vendor-docx';
+            }
             if (normalizedId.includes('jszip') || normalizedId.includes('file-saver')) {
               return 'vendor-export';
             }
@@ -100,6 +107,8 @@ export default defineConfig(({ mode }) => ({
       'react-router-dom',
       '@tanstack/react-query',
       '@supabase/supabase-js',
+      'docx-preview',
+      'jszip',
     ],
   },
 }));

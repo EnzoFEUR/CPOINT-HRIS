@@ -11,6 +11,8 @@ import { supabase } from './supabaseClient.js';
 import employeeRoutes from './routes/employees.js';
 import attendanceRoutes from './routes/attendance.js';
 import payrollRoutes from './routes/payroll.js';
+import retirementPayRoutes from './routes/retirementPay.js';
+import employmentExitRoutes from './routes/employmentExit.js';
 import leaveRoutes, { createLeaveCreditsRouter } from './routes/leaves.js';
 import dashboardRoutes from './routes/dashboard.js';
 import profileRoutes from './routes/profile.js';
@@ -25,11 +27,12 @@ import totpRoutes from './routes/totp.js';
 import authSecurityRoutes from './routes/authSecurity.js';
 import productionGroupRoutes from './routes/productionGroups.js';
 import documentRouter from './routes/document.js';
+import storageRoutes from './routes/storage.js';
 import { mountOfflineAttendance } from './routes/mountOfflineAttendance.js';
 
 // Middleware & Utilities
 import { register, telemetryMiddleware, getTelemetrySummary, getPrometheusMetrics } from './utils/telemetry.js';
-import { securityHeaders, removeExposedHeaders, apiRateLimiter, authRateLimiter, createCorsOptions, createAdmissionControl } from './middleware/securityMiddleware.js';
+import { securityHeaders, removeExposedHeaders, apiRateLimiter, authRateLimiter, createCorsOptions, createAdmissionControl, createHeavyWorkAdmissionControl, createClassificationAdmissionControl } from './middleware/securityMiddleware.js';
 import { createHealthRouter } from './routes/health.js';
 import { validateApiInput } from './middleware/requestValidation.js';
 import { protectApiResponses, apiNotFound, apiErrorHandler } from './middleware/errorMiddleware.js';
@@ -59,6 +62,7 @@ app.use(compression({
 }));
 
 // Core Middleware
+app.use('/api', createHeavyWorkAdmissionControl(), createClassificationAdmissionControl());
 app.use('/api', createAdmissionControl({ maxInFlight: Number(process.env.MAX_API_IN_FLIGHT || 64) }));
 app.use('/api', apiRateLimiter({ windowMs: API_RATE_POLICY.windowMs, max: API_RATE_POLICY.anonymousRequestsPerIp, releaseVerified: true }));
 app.use('/api/auth', authRateLimiter());
@@ -79,9 +83,12 @@ const verifiedUserLimiter = apiRateLimiter({ windowMs: API_RATE_POLICY.windowMs,
 const verifyToken = (req, res, next) => verifyIdentityToken(req, res, () => verifiedUserLimiter(req, res, next));
 await mountOfflineAttendance(app, verifyToken);
 app.use('/api/documents', verifyToken, documentRouter);
+app.use('/api/storage', verifyToken, storageRoutes);
 app.use('/api/employees', verifyToken, checkVerifiedManagerOrOwnership, employeeRoutes);
 app.use('/api/attendance', verifyToken, attendanceRoutes);
 app.use('/api/payroll', verifyToken, checkVerifiedManagerOrOwnership, payrollRoutes);
+app.use('/api/retirement-pay', verifyToken, retirementPayRoutes);
+app.use('/api/employment-exit', verifyToken, employmentExitRoutes);
 app.use('/api/leaves', verifyToken, leaveRoutes);
 app.use('/api/leave-credits', verifyToken, createLeaveCreditsRouter());
 app.use('/api/dashboard', verifyToken, dashboardRoutes);

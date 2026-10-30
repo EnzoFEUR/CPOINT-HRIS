@@ -1,4 +1,3 @@
-import React from 'react';
 import OfflineAttendanceReview from '../../../components/OfflineAttendanceReview';
 
 const OfflineCaptures = () => {

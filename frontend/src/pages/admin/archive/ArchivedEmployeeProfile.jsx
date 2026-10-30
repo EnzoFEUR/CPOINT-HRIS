@@ -1,11 +1,13 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import ProtectedImage from '../../../components/ProtectedImage';
+import { useEffect, useMemo, useState } from 'react';
+import { useParams } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { supabase } from '../../../supabaseClient';
-import { fetchWithAuth } from '../../../utils/api';
+
 import JSZip from 'jszip';
 import { saveAs } from 'file-saver';
 import { formatPhDisplay } from '../../../utils/phoneUtils';
+import BackButton from '../../../components/ui/BackButton';
 
 // ---------- helpers ----------
 
@@ -29,7 +31,7 @@ function getAvatarUrl(emp) {
     emp.biometric_baseline_path ||
     (emp.company_id && emp.id ? `face-baselines/${emp.company_id}/${emp.id}.jpg` : null);
   if (!photoPath) return null;
-  return `https://lzqshktnrvtlattdiwxf.supabase.co/storage/v1/object/public/public-bucket/${photoPath.replace(/^\/+/, '')}`;
+  return photoPath.replace(/^\/+/, '');
 }
 
 function isTerminatedStatus(emp) {
@@ -138,7 +140,6 @@ const TABS = [
 
 export default function ArchivedEmployeeProfile() {
   const { id } = useParams();
-  const navigate = useNavigate();
   const [employee, setEmployee] = useState(null);
   const [activeTab, setActiveTab] = useState('overview');
   const [loading, setLoading] = useState(true);
@@ -266,12 +267,7 @@ export default function ArchivedEmployeeProfile() {
           <p className="text-slate-500 text-xs mb-5">
             This employee record may have been permanently removed or updated.
           </p>
-          <button
-            onClick={() => navigate('/admin/archive')}
-            className="h-9 inline-flex items-center gap-1.5 px-3 bg-accent hover:bg-accent-hover text-white rounded-md text-xs font-semibold transition-colors duration-100 cursor-pointer shadow-2xs"
-          >
-            <i className="ti ti-arrow-left text-sm"></i> Back to Archive
-          </button>
+          <BackButton fallback="/admin/archive" label="Back to Archive" />
         </div>
       </div>
     );
@@ -283,17 +279,12 @@ export default function ArchivedEmployeeProfile() {
     <div className="p-6 space-y-6 max-w-7xl mx-auto">
       {/* Top Action Bar */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <button
-          onClick={() => navigate('/admin/archive')}
-          className="h-8 inline-flex items-center gap-1.5 px-3 border border-slate-200 rounded-md bg-white hover:bg-slate-50 text-slate-700 text-xs font-semibold shadow-2xs transition-colors duration-100 w-fit cursor-pointer"
-        >
-          <i className="ti ti-arrow-left text-sm"></i> Back to Archive Directory
-        </button>
+        <BackButton fallback="/admin/archive" label="Back to Archive Directory" />
 
         <div className="flex flex-wrap items-center gap-2">
           <div className="h-8 inline-flex items-center gap-1.5 px-3 bg-slate-100 border border-slate-200 text-slate-600 rounded-md text-xs font-medium">
             <i className="ti ti-lock text-slate-500 text-sm"></i>
-            <span>Permanent Archive · Cold Storage</span>
+            <span>Archived Employment Record</span>
           </div>
 
           <button
@@ -316,9 +307,9 @@ export default function ArchivedEmployeeProfile() {
             <i className="ti ti-shield-check text-sm"></i>
           </div>
           <div>
-            <p className="font-bold text-slate-800 text-xs">Immutable Compliance Record</p>
+            <p className="font-bold text-slate-800 text-xs">Archived Employment Record</p>
             <p className="text-slate-500 font-medium text-[11px]">
-              This personnel record is permanently archived for statutory audit and regulatory retention. Direct restoration is prohibited to protect historical tax and payroll integrity. To re-engage this personnel, initiate a formal Re-hire onboarding process.
+              This archived record preserves the separation reason and employment history for authorized HR use. Retention follows applicable legal obligations and company policy. Re-employment requires HR review without overwriting prior employment history.
             </p>
           </div>
         </div>
@@ -335,7 +326,7 @@ export default function ArchivedEmployeeProfile() {
               const avatarUrl = getAvatarUrl(employee);
               const inactive = isTerminatedStatus(employee);
               return avatarUrl ? (
-                <img
+                <ProtectedImage
                   src={avatarUrl}
                   alt={`${employee.first_name} ${employee.last_name}`}
                   className={`w-16 h-16 rounded-md object-cover ring-2 ring-white/10 shadow-2xs shrink-0 ${

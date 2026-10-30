@@ -1,5 +1,5 @@
-import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
-import { matchJobTitle } from './Create';
+import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
+import { matchJobTitle } from './utils/payrollHelpers';
 import { PAYROLL_NUMBER_LIMITS, isBoundedDecimalInput, MAX_FACTORY_ROW_TOTAL, getFactoryRowsError } from '../../../../../shared/inputLimits.mjs';
 
 export default function FactoryPiece({
@@ -11,10 +11,7 @@ export default function FactoryPiece({
     handleGroupTabChange,
     factoryEmployees = [],
     activeGroupEmployees = [],
-    grandTotalFactoryPayout = 0,
-    factoryRows = [],
-    setFactoryRows,
-    computedFactoryRows = []
+    factoryRows = []
 }) {
     const [localRows, setLocalRows] = useState(factoryRows);
     const draftsRef = useRef({});
@@ -47,7 +44,7 @@ export default function FactoryPiece({
             const rawAssigned = Array.isArray(row.assignedEmployeeIds) ? row.assignedEmployeeIds : [];
             const groupAssignedIds = rawAssigned.filter(id => activeGroupSet.has(String(id)));
 
-            let effectiveAssignedIds = [];
+            let effectiveAssignedIds;
 
             if (row.isExplicitlyEmpty) {
                 effectiveAssignedIds = [];
@@ -156,9 +153,11 @@ export default function FactoryPiece({
         draftsRef.current = {};
     };
 
-    useEffect(() => {
+    const [previousHasEmptyRows, setPreviousHasEmptyRows] = useState(hasEmptyRows);
+    if (previousHasEmptyRows !== hasEmptyRows) {
+        setPreviousHasEmptyRows(hasEmptyRows);
         if (!hasEmptyRows) setSaveError('');
-    }, [hasEmptyRows]);
+    }
 
     // Close on Escape key without saving
     useEffect(() => {
@@ -404,8 +403,8 @@ export default function FactoryPiece({
 
                         {/* VIEW MODE: Compact View */}
                         {viewMode === 'compact' && (
-                            <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white shadow-2xs">
-                                <table className="w-full text-left border-collapse">
+                            <div className="overflow-x-auto touch-scroll rounded-lg border border-slate-200 bg-white shadow-2xs">
+                                <table className="w-full text-left border-collapse min-w-[760px]">
                                     <thead>
                                         <tr className="bg-slate-50/90 border-b border-slate-200 text-[10px] font-bold text-slate-400 uppercase tracking-wider">
                                             <th className="p-3">Process / Operation</th>

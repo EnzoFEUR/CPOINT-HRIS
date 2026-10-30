@@ -1,10 +1,10 @@
 import printStylesUrl from './OfficialPayslipDocument.print.css?url&no-inline';
-import React from 'react';
 import dayjs from 'dayjs';
 import EmployeeAvatar from './EmployeeAvatar';
 import { SilCashEarnings } from './SilPaymentCard';
 import { HOLIDAY_LABELS, parsePayrollFinancials, formatCurrency } from '../utils/payslipUtils';
 import { printHtmlElement } from '../utils/printDocument';
+import BackButton from './ui/BackButton';
 
 /**
  * C-Point HRIS - Universal Official Payslip Document Component
@@ -19,15 +19,7 @@ import { printHtmlElement } from '../utils/printDocument';
  * - Dynamic document title for automatic, meaningful PDF file naming on export.
  * - Dual sign-off verification (Employer / HR Administrator & Employee Acknowledgment).
  */
-export default function OfficialPayslipDocument({
-    payroll,
-    employee: employeeOverride,
-    variant = 'admin', // 'admin' | 'employee' | 'document-only'
-    onBack,
-    onClose,
-    onDelete,
-    pagination,
-}) {
+export default function OfficialPayslipDocument({ payroll, employee: employeeOverride, onBack, onClose, onDelete, pagination }) {
     if (!payroll) return null;
 
     const emp = payroll.employees || employeeOverride || {};
@@ -79,14 +71,11 @@ export default function OfficialPayslipDocument({
             <div className="payslip-screen-actions mb-4 sm:mb-6 flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-3 print:hidden">
                 <div className="flex items-center gap-2">
                     {onBack && (
-                        <button
-                            type="button"
+                        <BackButton
                             onClick={onBack}
-                            className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-600 hover:text-slate-900 transition-colors py-1.5 px-2.5 rounded-md hover:bg-slate-100 cursor-pointer"
-                        >
-                            <i className="ti ti-arrow-left text-sm" />
-                            <span>Back</span>
-                        </button>
+                            fallback="/admin/payroll"
+                            label="Back to Payroll"
+                        />
                     )}
                     {pagination && pagination.totalCount > 1 && (
                         <div className="flex items-center gap-1 bg-white border border-slate-200 rounded-md p-1 shadow-2xs">

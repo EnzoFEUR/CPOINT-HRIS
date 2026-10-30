@@ -1,4 +1,6 @@
-const EMPLOYEE_LIST_FIELDS = `id company_id first_name last_name email role job_title position department status employment_status is_active
+import { isFinalVoluntarySeparation, getArchiveReviewDaysRemaining } from '../../shared/employmentExit.mjs';
+
+const EMPLOYEE_LIST_FIELDS = `id company_id first_name last_name email role job_title position department status employment_status is_active separation_type
     archived_at separation_date separation_reason created_at updated_at shift production_group_id production_groups production_group_name production_group
     group factory_group line factory_line line_assignment assigned_line section sub_department work_center
     daily_rate hourly_rate monthly_salary salary phone phone_number has_registered_biometrics biometric_baseline_path
@@ -47,9 +49,10 @@ export function employeeDirectoryPage(employees, pending, filters, now = new Dat
         const email = (e.email || '').toLowerCase();
         if (role.includes('admin') || role.includes('security') || name.includes('terminal guard') || name.includes('system admin') ||
             ['guard@c-point.com', 'admin@c-point.com'].includes(email)) return false;
+        if (isFinalVoluntarySeparation(e)) return false;
         if (!terminated(e)) return true;
-        const date = e.archived_at || e.separation_date || e.updated_at;
-        return !date || now.getTime() - new Date(date).getTime() < 14 * 86400_000;
+        const remaining = getArchiveReviewDaysRemaining(e, now.getTime());
+        return remaining === null || remaining > 0;
     });
     const counts = { all: visible.length, active: 0, suspended: 0, pendingTermination: 0, salaried: 0, pieceRate: 0, pendingDocs: 0 };
     for (const e of visible) {
