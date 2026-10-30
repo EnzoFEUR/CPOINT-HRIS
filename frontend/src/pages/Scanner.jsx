@@ -63,6 +63,32 @@ const ENV = {
   REQUIRED_BLINKS: 1,
 };
 
+const createFaceOverlay = (canvas) => {
+  const ctx = canvas.getContext('2d');
+  let timer = null, generation = 0, lastObservedAt = -Infinity, closed = false;
+  const clear = () => {
+    generation++;
+    clearTimeout(timer);
+    timer = null;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+  };
+  return {
+    clear,
+    close() { closed = true; clear(); },
+    show(tracked, color, locked, observedAt) {
+      if (closed || observedAt <= lastObservedAt) return;
+      const age = performance.now() - observedAt;
+      if (!tracked || !Number.isFinite(age) || age < 0 || age >= 250) { clear(); return; }
+      clear();
+      drawTrackedFace(ctx, tracked, color, locked);
+      lastObservedAt = observedAt;
+      const current = generation;
+      // Keep fresh dots visible during inference, but never leave a frozen mesh on screen.
+      timer = setTimeout(() => { if (generation === current) clear(); }, 250 - age);
+    },
+  };
+};
+
 const detectIdentityFaces = async (frame, minConfidence) => {
   const faces = await faceapi.detectAllFaces(frame, new faceapi.TinyFaceDetectorOptions({
     inputSize: ENV.DETECTION_INPUT_SIZE, scoreThreshold: .4,
@@ -171,9 +197,16 @@ function reducer(state, action) {
     case 'SET_EMPLOYEE': return { ...state, employee: action.payload };
     case 'SET_BASELINE': return { ...state, baselineDescriptor: action.payload };
     case 'SET_PHOTO': return { ...state, employeePhotoUrl: action.payload };
-    case 'SET_PROGRESS': return { ...state, scanProgress: action.payload };
-    case 'SET_MATCH': return { ...state, matchScore: action.payload };
-    case 'SET_LIVENESS': return { ...state, liveness: { ...state.liveness, ...action.payload } };
+    case 'SET_PROGRESS': return Object.is(state.scanProgress, action.payload) ? state : { ...state, scanProgress: action.payload };
+    case 'SET_MATCH': return Object.is(state.matchScore, action.payload) ? state : { ...state, matchScore: action.payload };
+    case 'SET_SCAN_METRICS': {
+      const scanProgress = 'scanProgress' in action.payload ? action.payload.scanProgress : state.scanProgress;
+      const matchScore = 'matchScore' in action.payload ? action.payload.matchScore : state.matchScore;
+      return Object.is(state.scanProgress, scanProgress) && Object.is(state.matchScore, matchScore)
+        ? state : { ...state, scanProgress, matchScore };
+    }
+    case 'SET_LIVENESS': return Object.entries(action.payload).every(([key, value]) => Object.is(state.liveness[key], value))
+      ? state : { ...state, liveness: { ...state.liveness, ...action.payload } };
     case 'SET_FEEDBACK': return { ...state, mode: MODES.FEEDBACK, feedback: action.payload };
     case 'SET_ERROR': return { ...state, mode: MODES.ERROR, error: action.payload };
     case 'SET_ONLINE': return { ...state, isOnline: action.payload };
@@ -218,6 +251,7 @@ const ScannerTerminal = () => {
   const qrRef = useRef(null);
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
+  const faceOverlayRef = useRef(null);
   const streamRef = useRef(null);
   const blinkDetectorRef = useRef(null);
   const detectionRef = useRef(null);
@@ -254,7 +288,6 @@ const ScannerTerminal = () => {
     matchScore: null,
     employeeId: null,
     baseline: null,
-    lastUiUpdate: 0,
     isMedicalExempt: false,
     medicalExemption: null,
     lastStatusText: null,
@@ -284,24 +317,22 @@ const ScannerTerminal = () => {
     img.src = src;
   });
 
-  // UI status and throttled dispatch
+  // Publish only changed values; safety resets must never be discarded by a timer.
   const updateStatus = useCallback((text) => {
     if (vaultRef.current.lastStatusText === text) return;
     vaultRef.current.lastStatusText = text;
     dispatch({ type: 'SET_LIVENESS', payload: { prompt: text } });
   }, [dispatch]);
 
-  const throttledDispatch = useCallback((updates) => {
-    const now = Date.now();
-    if (now - vaultRef.current.lastUiUpdate < 80) return; // ~12fps UI updates
-    vaultRef.current.lastUiUpdate = now;
-    if ('scanProgress' in updates) dispatch({ type: 'SET_PROGRESS', payload: updates.scanProgress });
-    if ('matchScore' in updates) dispatch({ type: 'SET_MATCH', payload: updates.matchScore });
+  const updateScanMetrics = useCallback((updates) => {
+    dispatch({ type: 'SET_SCAN_METRICS', payload: updates });
   }, [dispatch]);
 
   // Camera Stop Controls
   const stopFaceCamera = useCallback(() => {
     cameraRequestRef.current++;
+    faceOverlayRef.current?.close();
+    faceOverlayRef.current = null;
     clearTimeout(captureTimerRef.current);
     if (detectionRef.current) {
       detectionRef.current.stop();
@@ -533,6 +564,9 @@ const ScannerTerminal = () => {
     if (!video || !canvas) return;
     const frame = video.ownerDocument.createElement('canvas');
     detectionRef.current?.stop();
+    faceOverlayRef.current?.close();
+    const overlay = createFaceOverlay(canvas);
+    faceOverlayRef.current = overlay;
 
     const syncCanvas = () => {
       const nw = frame.width, nh = frame.height;
@@ -547,6 +581,7 @@ const ScannerTerminal = () => {
     vault.faceTrack = {};
     vault.captureHold = {};
     const interruptEvidence = () => {
+      overlay.clear();
       resetCaptureHold(vault.captureHold);
       resetBlinkCycle(vault.blinkState);
       vault.blinkCount = 0;
@@ -582,8 +617,6 @@ const ScannerTerminal = () => {
       if (!copyVideoFrame(video, frame)) return;
       const observedAt = performance.now();
       syncCanvas();
-      const ctx = canvas.getContext('2d');
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
 
       const minConfidence = vault.padStage === 'CENTER_BLINK' ? 0.42 : .55;
       const [faces, blinkResult] = await Promise.all([
@@ -605,7 +638,7 @@ const ScannerTerminal = () => {
       if (faces.length !== 1) {
         resetChallenge();
         updateStatus(faces.length > 1 ? 'Only one person should be in the frame' : 'Place your face inside the guide');
-        throttledDispatch({ scanProgress: Math.max(0, (vaultRef.current.lockFrames / ENV.REQUIRED_LOCK_FRAMES) * 100), matchScore: null });
+        updateScanMetrics({ scanProgress: Math.max(0, (vaultRef.current.lockFrames / ENV.REQUIRED_LOCK_FRAMES) * 100), matchScore: null });
         return;
       }
       const [det] = faces;
@@ -630,9 +663,9 @@ const ScannerTerminal = () => {
 
       if (!centered || !bigEnough || det.detection.score < minConfidence) {
         interruptEvidence();
-        throttledDispatch({ scanProgress: 0, matchScore: null });
+        updateScanMetrics({ scanProgress: 0, matchScore: null });
         updateStatus(!bigEnough ? 'Move closer to the camera' : !centered ? 'Center your face in the frame' : 'Hold still and face the light');
-        drawTrackedFace(ctx, tracked, '#3b82f6', false);
+        overlay.show(tracked, '#3b82f6', false, observedAt);
         return;
       }
       if (!liveDsc || liveDsc.length !== 128 || !Array.from(liveDsc).every(Number.isFinite)) {
@@ -658,9 +691,9 @@ const ScannerTerminal = () => {
 
       if (!matched) {
         resetChallenge();
-        throttledDispatch({ scanProgress: 0, matchScore: currentScore });
+        updateScanMetrics({ scanProgress: 0, matchScore: currentScore });
         updateStatus('Face not recognized. Try again');
-        drawTrackedFace(ctx, tracked, '#ef4444', false);
+        overlay.show(tracked, '#ef4444', false, observedAt);
         return;
       }
 
@@ -675,6 +708,7 @@ const ScannerTerminal = () => {
       const eyes = readBlinkEyes(blinkResult, box, frame.width, frame.height);
       if (!eyes || !legacyPose || det.detection.score < minConfidence || !Number.isFinite(legacyPose.noseOffset)) {
         interruptEvidence();
+        overlay.show(tracked, '#f59e0b', false, observedAt);
         updateStatus('Move closer so both eyes are clear');
         dispatch({ type: 'SET_LIVENESS', payload: { status: 'EYES_UNCLEAR', blinkCount: 0 } });
         return;
@@ -699,9 +733,9 @@ const ScannerTerminal = () => {
           const eyesReady = calibrateBlink(vault.blinkState, eyes, now);
           vaultRef.current.lockFrames += 1;
           const progress = Math.min((vaultRef.current.lockFrames / 3) * 25, 25);
-          throttledDispatch({ scanProgress: progress, matchScore: currentScore });
+          updateScanMetrics({ scanProgress: progress, matchScore: currentScore });
           updateStatus(eyesReady ? 'Face detected. Checking presence...' : BLINK_PROMPTS.CALIBRATING);
-          drawTrackedFace(ctx, tracked, '#3b82f6', false);
+          overlay.show(tracked, '#3b82f6', false, observedAt);
 
           if (vaultRef.current.lockFrames >= 3 && eyesReady) {
             vault.neutralPose = { yaw: pose.yaw, pitch: pose.pitch };
@@ -722,7 +756,7 @@ const ScannerTerminal = () => {
         } else {
           interruptEvidence();
           updateStatus('Look directly at the camera');
-          drawTrackedFace(ctx, tracked, '#3b82f6', false);
+          overlay.show(tracked, '#3b82f6', false, observedAt);
         }
         return;
       }
@@ -738,10 +772,9 @@ const ScannerTerminal = () => {
 
         if (targetTurnMet) {
           vaultRef.current.challengeTurnFrames += 1;
-          const progress = 25 + Math.min((vaultRef.current.challengeTurnFrames / 2) * 35, 35);
-          throttledDispatch({ scanProgress: progress, matchScore: currentScore });
+          updateScanMetrics({ scanProgress: 25, matchScore: currentScore });
           updateStatus('Head turn detected');
-          drawTrackedFace(ctx, tracked, '#22c55e', true);
+          overlay.show(tracked, '#22c55e', true, observedAt);
 
           if (vaultRef.current.challengeTurnFrames >= 2) {
             if (calculateVariance(vault.depthSamples) < .0005) {
@@ -750,6 +783,8 @@ const ScannerTerminal = () => {
             }
             vaultRef.current.challengePassed = true;
             vaultRef.current.padStage = 'CENTER_BLINK';
+            updateScanMetrics({ scanProgress: 60, matchScore: currentScore });
+            updateStatus('Turn your face back to center');
             vaultRef.current.recenterFrames = 0;
             resetBlinkCycle(vault.blinkState);
             vault.blinkCount = 0;
@@ -767,9 +802,9 @@ const ScannerTerminal = () => {
           }
         } else {
           vault.challengeTurnFrames = 0;
-          throttledDispatch({ scanProgress: 35, matchScore: currentScore });
+          updateScanMetrics({ scanProgress: 25, matchScore: currentScore });
           updateStatus(Math.abs(relativeYaw) > .4 ? 'Turn slightly back toward the camera' : directiveText);
-          drawTrackedFace(ctx, tracked, '#3b82f6', false);
+          overlay.show(tracked, '#3b82f6', false, observedAt);
         }
         return;
       }
@@ -785,16 +820,16 @@ const ScannerTerminal = () => {
           resetBlinkCycle(vault.blinkState);
           vault.blinkCount = 0;
           dispatch({ type: 'SET_LIVENESS', payload: { status: 'RECENTER', blinkCount: 0, blinkPhase: 'PAUSED' } });
-          throttledDispatch({ scanProgress: 60, matchScore: currentScore });
+          updateScanMetrics({ scanProgress: 60, matchScore: currentScore });
           updateStatus('Turn face back to center');
-          drawTrackedFace(ctx, tracked, '#3b82f6', false);
+          overlay.show(tracked, '#3b82f6', false, observedAt);
           return;
         }
 
         vault.recenterFrames++;
         if (vault.recenterFrames < 3) {
           updateStatus('Face the camera');
-          drawTrackedFace(ctx, tracked, '#3b82f6', false);
+          overlay.show(tracked, '#3b82f6', false, observedAt);
           return;
         }
         updateBlink(vault.blinkState, eyes, now);
@@ -811,7 +846,7 @@ const ScannerTerminal = () => {
 
         if (vaultRef.current.blinkCount < ENV.REQUIRED_BLINKS) {
           resetCaptureHold(vault.captureHold);
-          throttledDispatch({ scanProgress: 75, matchScore: currentScore });
+          updateScanMetrics({ scanProgress: 60, matchScore: currentScore });
           updateStatus(BLINK_PROMPTS[vault.blinkState.phase]);
           dispatch({
             type: 'SET_LIVENESS',
@@ -822,26 +857,28 @@ const ScannerTerminal = () => {
               ear
             }
           });
-          drawTrackedFace(ctx, tracked, '#3b82f6', false);
+          overlay.show(tracked, '#3b82f6', false, observedAt);
           return;
         }
 
         if (!areEyesOpen(vault.blinkState, eyes)) {
           resetCaptureHold(vault.captureHold);
           updateStatus('Keep both eyes open for capture');
+          overlay.show(tracked, '#f59e0b', false, observedAt);
           return;
         }
         const stability = updateCaptureHold(vault.captureHold, { box, yaw: relativeYaw, pitch: relativePitch }, now);
         if (stability < 1) {
-          throttledDispatch({ scanProgress: 80, matchScore: currentScore });
+          updateScanMetrics({ scanProgress: 75 + stability * 15, matchScore: currentScore });
           dispatch({ type: 'SET_LIVENESS', payload: { stage: 'CAPTURE', status: 'STABILIZING', blinkCount: vault.blinkCount } });
           updateStatus('Blink confirmed. Hold still for capture');
+          overlay.show(tracked, '#22c55e', true, observedAt);
           return;
         }
 
         // Completed challenge and blink
         vaultRef.current.padStage = 'FLASH_CAPTURE';
-        throttledDispatch({ scanProgress: 90, matchScore: currentScore });
+        updateScanMetrics({ scanProgress: 90, matchScore: currentScore });
         updateStatus('Capture complete. Verifying attendance...');
         dispatch({
           type: 'SET_LIVENESS',
@@ -854,11 +891,13 @@ const ScannerTerminal = () => {
             ear
           }
         });
-        drawTrackedFace(ctx, tracked, '#22c55e', true);
+        overlay.show(tracked, '#22c55e', true, observedAt);
 
         // Flash and capture snapshot
         detectionRef.current?.stop();
         detectionRef.current = null;
+        overlay.close();
+        if (faceOverlayRef.current === overlay) faceOverlayRef.current = null;
 
         const request = cameraRequestRef.current;
         const verifiedImage = frame.toDataURL('image/jpeg', 0.9);
@@ -869,13 +908,14 @@ const ScannerTerminal = () => {
         return;
       }
     }, { intervalMs: ENV.DETECTION_INTERVAL_MS, onError: error => {
-      canvas.getContext('2d')?.clearRect(0, 0, canvas.width, canvas.height);
+      overlay.close();
+      if (faceOverlayRef.current === overlay) faceOverlayRef.current = null;
       dispatch({ type: 'SET_ERROR', payload: {
         message: error?.code?.startsWith('BLINK_') ? 'Blink detection interrupted. Reload this page to retry.' : error?.code === 'FACE_PROCESSING_TIMEOUT' ? 'Face processing timed out. Reload this page to retry.' : 'Face tracking interrupted. Restart the scanner to retry.',
         code: error?.code || 'FACE_PROCESSING_FAILED',
       } });
     } });
-  }, [dispatch, throttledDispatch, updateStatus, captureAndSubmit]);
+  }, [dispatch, updateScanMetrics, updateStatus, captureAndSubmit]);
 
   // Start face camera
   const startFaceCamera = useCallback(async (facing = cameraFacingRef.current) => {
