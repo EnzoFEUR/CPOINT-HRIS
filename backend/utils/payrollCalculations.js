@@ -2,6 +2,7 @@ import { DEFAULT_REST_DAYS } from '../../shared/workPolicy.mjs';
 import { HOLIDAY_TYPES, HOLIDAY_TYPE_LABELS, MULTIPLIERS } from '../../shared/holidayMultipliers.mjs';
 import { sumCashAmounts } from '../../shared/leavePolicy.js';
 import { summarizeApprovedLeaves } from './leaveUtils.js';
+import { fetchStatutoryLeavePayroll, statutoryPayForEmployee } from './statutoryLeavePayroll.js';
 
 // Data Sanitization & Math Helpers
 export function toSafeNumber(val, fallback = 0) {
@@ -424,14 +425,16 @@ export function cashPayForEmployee(requests, employeeId) {
 
 export async function fetchPayrollLeavePay(client, employees, periodStart, periodEnd) {
     const ids = employees.map(employee => employee.id);
-    const [leaves, cash] = await Promise.all([
+    const [leaves, cash, statutory] = await Promise.all([
         client.from('leave_requests').select('*').in('employee_id', ids).eq('status', 'Approved').lte('start_date', periodEnd).gte('end_date', periodStart),
         fetchPendingSilCash(client, ids, periodEnd),
+        fetchStatutoryLeavePayroll(client, ids, periodStart, periodEnd),
     ]);
     if (leaves.error) throw new Error('Unable to retrieve approved leave. Payroll calculation must be retried.', { cause: leaves.error });
     const data = {};
     for (const employee of employees) {
         const summary = summarizeApprovedLeaves((leaves.data || []).filter(row => row.employee_id === employee.id && row.status === 'Approved'), { employeeId: employee.id, periodStart, periodEnd });
+        if ((summary.maternity_days || summary.paternity_days) && !statutory.available) throw Object.assign(new Error('Install the statutory leave payroll migration before paying this benefit.'), { status: 503 });
         const savedRate = Number(employee.daily_rate || employee.daily_pay || 0);
         const factory = `${employee.department || ''} ${employee.shift || ''}`.toLowerCase().includes('factory');
         const rate = savedRate > 0 ? savedRate : factory ? 0 : round2(getEffectiveMonthlySalary(employee) * 12 / 261);
@@ -441,6 +444,7 @@ export async function fetchPayrollLeavePay(client, employees, periodStart, perio
             paid_leave_pay: round2(summary.paid_leave_days * rate),
             leaves: summary.leaves,
             leave_signature: payrollLeaveSignature(summary.leaves),
+            statutory: statutoryPayForEmployee(statutory, employee.id, { factory, dailyRate: rate }),
             ...cashPayForEmployee(cash.requests, employee.id)
         };
     }

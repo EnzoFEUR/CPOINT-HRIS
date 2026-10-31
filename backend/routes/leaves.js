@@ -6,10 +6,15 @@ import { createAuditLog } from './auditLogs.js';
 import { cacheResponse, invalidateCache } from '../middleware/cacheMiddleware.js';
 import { getLeaveSummaryForPeriod } from '../utils/leaveUtils.js';
 import { randomUUID } from 'node:crypto';
+import { validateStatutoryReview } from '../../shared/statutoryLeave.mjs';
+import { calculateMaternityAssessment } from '../../shared/maternityAssessment.mjs';
+import { readMaternityContext, maternityDraft } from '../utils/maternityReview.js';
+import { isDeepStrictEqual } from 'node:util';
 import {
     isCreditUuid,
     isLeaveDate,
     isCreditLeaveType,
+    isStatutoryLeaveType,
     isCreditManager,
     validateSilPolicy,
     validateCashOutRequest,
@@ -31,6 +36,17 @@ export const isMissingCreditSchema = error => ['PGRST202', 'PGRST205', '42883', 
 export const isVerifiedCreditManager = user => user?.role_verified === true && isCreditManager(user) && user.is_active !== false && !user.archived_at && !['inactive', 'suspended', 'terminated', 'resigned', 'separated'].includes(String(user.status || '').toLowerCase());
 
 const conflicts = {
+    MATERNITY_SOURCES_REQUIRED: 'Save and verify the maternity calculation sources before approval.',
+    MATERNITY_SOURCES_CHANGED: 'The wage or source records changed. Refresh and review the maternity calculation again.',
+    MATERNITY_REVIEW_CLOSED: 'This maternity request is no longer pending. Its evidence cannot be changed.',
+    MATERNITY_REQUEST_IMMUTABLE: 'Preserve the submitted maternity details and file a revised request if dates or entitlement change.',
+    STATUTORY_REVIEW_REQUIRED: 'HR must verify the statutory entitlement, wage evidence and payment details.',
+    STATUTORY_REVIEW_CHANGED: 'The statutory benefit review changed. Refresh before approving.',
+    STATUTORY_SCHEDULE_CHANGED: 'The employee work schedule changed. Refresh the review.',
+    STATUTORY_EXISTING_PAYROLL: 'Payroll already covers this leave period. HR must reconcile it before approving this statutory benefit.',
+    STATUTORY_PAYROLL_LINKED: 'This statutory benefit is linked to payroll. Preserve the record and arrange a reviewed financial adjustment.',
+    PATERNITY_ENTITLEMENT_EXCEEDED: 'Approved paternity days for this contingency would exceed seven working days.',
+    MATERNITY_CONTINGENCY_EXISTS: 'An approved maternity benefit already exists for this contingency.',
     INSUFFICIENT_CONVERTIBLE_CREDITS: 'These days are not available for cash conversion. Refresh the balance and eligibility date.',
     SIL_CLASSIFICATION_REQUIRED: 'Payroll compliance must review contribution and tax treatment before approval.',
     SIL_PAYROLL_LOCKED: 'This payslip contains committed SIL earnings and cannot be changed or deleted.',
@@ -466,8 +482,9 @@ export function createLeavesRouter(client = supabase, notify = createNotificatio
         res.setHeader('Expires', '0');
         try {
             let query = client.from('leave_requests').select('*, employees:employee_id(*)').order('created_at', { ascending: false });
-            if (req.query.employee_id) {
-                query = query.eq('employee_id', req.query.employee_id);
+            const employeeScope = isVerifiedCreditManager(req.user) ? req.query.employee_id : req.user.id;
+            if (employeeScope) {
+                query = query.eq('employee_id', employeeScope);
             }
             if (req.query.limit) {
                 const limitNum = Math.min(100, Math.max(1, parseInt(req.query.limit, 10) || 50));
@@ -649,6 +666,7 @@ export function createLeavesRouter(client = supabase, notify = createNotificatio
                     start_date,
                     end_date,
                     notes: reason,
+                    ...(command.maternity_request ? { maternity_request: command.maternity_request } : {}),
                     status: 'New'
                 })
                 .select('*')
@@ -694,8 +712,40 @@ export function createLeavesRouter(client = supabase, notify = createNotificatio
 
             res.json({ success: true, message: 'Leave request submitted successfully!', data: insertedLeave });
         } catch (err) {
+            if (err?.code === '42703' && req.body?.maternity_request) return res.status(503).json({ code: 'MATERNITY_AUTOMATION_UNAVAILABLE', error: 'Install the maternity review automation migration before submitting these details.' });
             if (err?.code === '23514') return sendCreditError(res, err);
             res.status(err.message?.includes('LEAVE_OVERLAP') ? 409 : err.status || 500).json({ error: err.message?.includes('LEAVE_OVERLAP') ? 'A leave request already covers these dates. Refresh your recent requests.' : err.message });
+        }
+    });
+
+    router.get('/:id/maternity-draft', async (req, res) => {
+        res.setHeader('Cache-Control', 'no-store');
+        if (!isVerifiedCreditManager(req.user)) return res.status(403).json({ error: 'HR or administrator access is required.' });
+        try { res.json({ success: true, data: maternityDraft(await readMaternityContext(client, req.user.id, req.params.id)) }); }
+        catch (error) {
+            if (isMissingCreditSchema(error)) return res.status(503).json({ code: 'MATERNITY_AUTOMATION_UNAVAILABLE', error: 'Install the maternity review automation migration before calculating this benefit.' });
+            sendCreditError(res, error);
+        }
+    });
+
+    router.put('/:id/maternity-draft', async (req, res) => {
+        res.setHeader('Cache-Control', 'no-store');
+        if (!isVerifiedCreditManager(req.user)) return res.status(403).json({ error: 'HR or administrator access is required.' });
+        try {
+            const context = await readMaternityContext(client, req.user.id, req.params.id);
+            if (!['New', 'Pending'].includes(context.leave.status)) return sendCreditError(res, { message: 'MATERNITY_REVIEW_CLOSED' });
+            if (!Number.isInteger(req.body.expected_revision) || req.body.expected_revision !== (context.source_record?.revision || 0)
+                || !isDeepStrictEqual(req.body.employee_snapshot, context.employee_snapshot)) return sendCreditError(res, { message: 'MATERNITY_SOURCES_CHANGED' });
+            const calculation = calculateMaternityAssessment({ ...context.leave, employees: context.employee }, req.body.sources);
+            const saved = await client.rpc('save_maternity_review_sources', { p_actor_id: req.user.id, p_leave_id: String(req.params.id), p_expected_revision: req.body.expected_revision,
+                p_employee_snapshot: context.employee_snapshot, p_sources: calculation.sources, p_review: calculation.review });
+            if (saved.error) throw saved.error;
+            await audit({ log_name: 'leaves', event: 'updated', subject_type: 'App\\Models\\LeaveRequest', subject_id: req.params.id, causer_id: req.user.id,
+                description: 'Saved reviewed maternity calculation sources', properties: { source_revision: saved.data.revision } }).catch(() => console.warn('[leaves] Maternity sources saved; audit delivery failed.'));
+            res.json({ success: true, data: maternityDraft({ ...context, source_record: saved.data }) });
+        } catch (error) {
+            if (isMissingCreditSchema(error)) return res.status(503).json({ code: 'MATERNITY_AUTOMATION_UNAVAILABLE', error: 'Install the maternity review automation migration before saving this benefit.' });
+            sendCreditError(res, error);
         }
     });
 
@@ -739,12 +789,33 @@ export function createLeavesRouter(client = supabase, notify = createNotificatio
             const requestId = req.body.request_id || randomUUID();
             if (!isCreditUuid(requestId)) return res.status(400).json({ error: 'Invalid request_id.' });
             const reviewed = req.body.expected_status !== undefined;
-            const transaction = await client.rpc(reviewed ? 'set_leave_status_with_credits_reviewed' : 'set_leave_status_with_credits', {
+            const statutory = isStatutoryLeaveType(currentLeave.type);
+            let statutoryReview = null;
+            if (statutory && isApproved) {
+                if (!leaveIsPaid || creditPool) return res.status(400).json({ error: 'Statutory maternity and paternity use their own entitlement, without SIL deductions.' });
+                if (currentLeave.type === 'Maternity Leave') {
+                    const context = await readMaternityContext(client, req.user.id, req.params.id);
+                    if (!context.source_record) return sendCreditError(res, { message: 'MATERNITY_SOURCES_REQUIRED' });
+                    if (req.body.statutory_review?.source_revision !== context.source_record.revision || !isDeepStrictEqual(context.source_record.employee_snapshot, context.employee_snapshot)) return sendCreditError(res, { message: 'MATERNITY_SOURCES_CHANGED' });
+                    const calculated = calculateMaternityAssessment({ ...context.leave, employees: context.employee }, context.source_record.sources);
+                    statutoryReview = { ...validateStatutoryReview({ ...context.leave, employees: context.employee }, { ...calculated.review, eligibility_confirmed: req.body.statutory_review?.eligibility_confirmed === true }), source_revision: context.source_record.revision };
+                } else {
+                const [employee, holidays] = await Promise.all([
+                    client.from('employees').select('id, rest_days, date_hired').eq('id', currentLeave.employee_id).single(),
+                    client.from('holidays').select('date, type').gte('date', currentLeave.start_date).lte('date', currentLeave.end_date)
+                ]);
+                if (employee.error || holidays.error || !employee.data || !Array.isArray(holidays.data)) return res.status(503).json({ error: 'The statutory work schedule could not be verified.' });
+                statutoryReview = validateStatutoryReview({ ...currentLeave, employees: employee.data }, req.body.statutory_review, { holidays: holidays.data });
+                }
+            }
+            const transaction = await client.rpc(statutory ? 'review_statutory_leave' : reviewed ? 'set_leave_status_with_credits_reviewed' : 'set_leave_status_with_credits', {
                 p_actor_id: req.user.id, p_leave_id: String(req.params.id), p_request_id: requestId,
-                p_status: status, p_is_paid: leaveIsPaid, p_credit_pool: creditPool,
-                ...(reviewed ? { p_expected_status: req.body.expected_status } : {}),
+                p_status: status,
+                ...(statutory ? { p_review: statutoryReview, p_expected_status: req.body.expected_status || currentLeave.status }
+                    : { p_is_paid: leaveIsPaid, p_credit_pool: creditPool, ...(reviewed ? { p_expected_status: req.body.expected_status } : {}) }),
             });
-            const legacy = transaction.error && ['PGRST202', '42883'].includes(transaction.error.code) && !creditPool && !currentLeave.credit_pool && !currentLeave.credit_operation_id && !currentLeave.requested_pay_type;
+            const legacy = !statutory && transaction.error && ['PGRST202', '42883'].includes(transaction.error.code) && !creditPool && !currentLeave.credit_pool && !currentLeave.credit_operation_id && !currentLeave.requested_pay_type;
+            if (statutory && isMissingCreditSchema(transaction.error)) return res.status(503).json({ code: 'STATUTORY_LEAVE_UNAVAILABLE', error: 'Install the statutory leave payroll migration before reviewing this benefit.' });
             if (transaction.error && !legacy) return sendCreditError(res, transaction.error);
 
             const rawNotes = currentLeave.notes || '';
@@ -866,7 +937,7 @@ export function createLeavesRouter(client = supabase, notify = createNotificatio
                 pay_type: leaveIsPaid ? 'with_pay' : 'without_pay'
             });
         } catch (err) {
-            res.status(500).json({ error: err.message });
+            res.status(err.status || 500).json({ code: err.code, error: err.message });
         }
     });
 

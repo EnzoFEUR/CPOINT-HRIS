@@ -101,6 +101,13 @@ const SinglePayrollSection = ({
             </div>
 
             {silCashPay > 0 && <div className="rounded-md border border-slate-200 bg-slate-50 p-3 text-xs font-semibold text-slate-700">SIL cash payout: PHP {silCashPay.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>}
+            {(holidayPreview?.statutory?.signature?.lines?.length > 0 || holidayPreview?.statutory?.signature?.coverage?.length > 0) && <div className="space-y-1 rounded-md border border-slate-200 bg-slate-50 p-3 text-xs text-slate-700">
+                <p className="font-semibold">Reviewed statutory benefits</p>
+                {holidayPreview.statutory.paternity_pay > 0 && <p>Paternity entitlement: PHP {holidayPreview.statutory.paternity_pay.toFixed(2)} · Additional to basic: PHP {holidayPreview.statutory.paternity_additional_pay.toFixed(2)}</p>}
+                {holidayPreview.statutory.maternity_sss_pay > 0 && <p>SSS maternity advance: PHP {holidayPreview.statutory.maternity_sss_pay.toFixed(2)}</p>}
+                {holidayPreview.statutory.maternity_salary_differential > 0 && <p>Employer maternity differential: PHP {holidayPreview.statutory.maternity_salary_differential.toFixed(2)}</p>}
+                {holidayPreview.statutory.signature.coverage.some(leave => leave.type === 'Maternity Leave') && <p>Covered ordinary wages replaced by the maternity benefit.</p>}
+            </div>}
             {/* Leave with Pay Details Banner */}
             {selectedEmployee && (
                 <div className="bg-surface-muted border border-line p-4 rounded-lg shadow-2xs space-y-3">

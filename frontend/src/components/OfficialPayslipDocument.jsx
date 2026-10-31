@@ -36,6 +36,7 @@ export default function OfficialPayslipDocument({ payroll, employee: employeeOve
     const paymentDate = payroll.created_at ? dayjs(payroll.created_at).format('MMM DD, YYYY') : dayjs().format('MMM DD, YYYY');
 
     const financials = parsePayrollFinancials(payroll);
+    const paternityEntitlement = (payroll.statutory_leave_lines || []).filter(line => line.component === 'paternity').reduce((sum, line) => sum + Number(line.amount || 0), 0);
     const {
         basicPay,
         overtimePay,
@@ -46,6 +47,8 @@ export default function OfficialPayslipDocument({ payroll, employee: employeeOve
         paidLeaveInBasic,
         otherLeavePay,
         maternityPay,
+        maternitySssPay,
+        thirteenthMonthPay,
         grossEarnings,
         deductionsList,
         totalDeductions,
@@ -393,6 +396,7 @@ export default function OfficialPayslipDocument({ payroll, employee: employeeOve
 
                                         <SilCashEarnings payroll={payroll} />
 
+                                        {paternityEntitlement > 0 && <p className="py-1 text-xs text-slate-600">Paternity entitlement: {formatCurrency(paternityEntitlement)} · Included in basic wages and any additional statutory leave pay below.</p>}
                                         {otherLeavePay > 0 && (
                                             <div className="flex justify-between items-center py-1 border-b border-slate-100 print:border-slate-200">
                                                 <span className="font-semibold text-slate-800">Other Statutory Leave Pay</span>
@@ -402,6 +406,8 @@ export default function OfficialPayslipDocument({ payroll, employee: employeeOve
                                             </div>
                                         )}
 
+                                        {maternitySssPay > 0 && <div className="flex justify-between items-center py-1 border-b border-slate-100 print:border-slate-200"><span className="font-semibold text-slate-800">SSS Maternity Advance</span><span className="font-mono font-semibold text-ink text-xs sm:text-sm">{formatCurrency(maternitySssPay)}</span></div>}
+                                        {thirteenthMonthPay > 0 && <div className="flex justify-between items-center py-1 border-b border-slate-100 print:border-slate-200"><span className="font-semibold text-slate-800">13th-Month Pay</span><span className="font-mono font-semibold text-ink text-xs sm:text-sm">{formatCurrency(thirteenthMonthPay)}</span></div>}
                                         {maternityPay > 0 && (
                                             <div className="flex justify-between items-center py-1 border-b border-slate-100 print:border-slate-200">
                                                 <span className="font-semibold text-slate-800">Maternity Salary Differential</span>

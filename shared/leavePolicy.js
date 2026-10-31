@@ -7,8 +7,10 @@ const invalid = (message, status = 400) => { throw Object.assign(new Error(messa
 // --- Identifiers & Role Checks ---
 export const isCreditManager = user => ['admin', 'hr'].includes(String(user?.role || '').toLowerCase());
 export const isCreditLeaveType = type => ['sick leave', 'vacation / pto', 'vacation leave', 'emergency leave', 'service incentive leave'].includes(String(type || '').toLowerCase().trim());
+export const isStatutoryLeaveType = type => ['Maternity Leave', 'Paternity Leave'].includes(type);
 export const isCreditUuid = value => typeof value === 'string' && UUID.test(value);
 export const isLeaveDate = value => typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(Date.parse(value)) && new Date(value).toISOString().slice(0, 10) === value;
+export const MATERNITY_CALENDAR_DAYS = Object.freeze({ live_birth: 105, solo_parent_live_birth: 120, miscarriage_etp: 60 });
 
 // --- SIL Policy Validation ---
 export function validateSilPolicy(input = {}) {
@@ -152,6 +154,11 @@ export function validateCreditCommand(kind, input = {}) {
 
 export function getLeaveOverlapDays(leave, periodStart, periodEnd) {
     if (![leave.start_date, leave.end_date, periodStart, periodEnd].every(isLeaveDate) || periodEnd < periodStart || leave.end_date < leave.start_date) throw new Error('Invalid leave date range.');
+    if (leave.type === 'Paternity Leave' && leave.statutory_review) {
+        const dates = leave.statutory_review.work_dates;
+        if (!Array.isArray(dates) || !dates.length || dates.length > 7 || dates.some(date => !isLeaveDate(date) || date < leave.start_date || date > leave.end_date) || new Set(dates).size !== dates.length) throw new Error('Paternity leave requires reviewed work dates.');
+        return dates.filter(date => date >= periodStart && date <= periodEnd).length;
+    }
     if (leave.credit_pool || (leave.requested_pay_type && (!leave.status || leave.status === 'Approved'))) {
         if (!Array.isArray(leave.credit_dates) || !leave.credit_dates.length || leave.credit_dates.some(date => !isLeaveDate(date) || date < leave.start_date || date > leave.end_date) || new Set(leave.credit_dates).size !== leave.credit_dates.length) throw new Error('Managed leave requires valid, distinct work dates.');
         return leave.credit_dates.filter(date => date >= periodStart && date <= periodEnd).length;
@@ -164,8 +171,9 @@ export function getLeaveOverlapDays(leave, periodStart, periodEnd) {
 export function getCreditAttendanceConflicts(leaves = [], attendance = []) {
     const creditedDates = new Set(
         (leaves || [])
-            .filter(leave => leave && leave.is_paid && leave.credit_pool)
-            .flatMap(leave => Array.isArray(leave.credit_dates) ? leave.credit_dates : [])
+            .filter(leave => leave && leave.is_paid && (leave.credit_pool || isStatutoryLeaveType(leave.type)))
+            .flatMap(leave => leave.type === 'Maternity Leave' ? getScheduledWorkDates(leave.start_date, leave.end_date, [])
+                : leave.type === 'Paternity Leave' ? leave.statutory_review?.work_dates || [] : Array.isArray(leave.credit_dates) ? leave.credit_dates : [])
     );
     if (creditedDates.size === 0) return [];
     const conflicts = new Set();
@@ -188,7 +196,7 @@ export function assertCreditAttendanceConsistent(leaves = [], attendance = []) {
 
 
 // --- Leave Filing & Request Range Validation ---
-export const LEAVE_REQUEST_TYPES = ['Sick Leave', 'Vacation / PTO', 'Service Incentive Leave', 'Maternity/Paternity', 'Emergency Leave'];
+export const LEAVE_REQUEST_TYPES = ['Sick Leave', 'Vacation / PTO', 'Service Incentive Leave', 'Maternity Leave', 'Paternity Leave', 'Emergency Leave'];
 
 export function validateLeaveRange(start, end) {
     if (!isLeaveDate(start) || !isLeaveDate(end) || end < start || Date.parse(end) - Date.parse(start) > 365 * 86400000) invalid('Choose valid first and last dates, in order, covering at most 366 calendar days.', 400);
@@ -203,8 +211,18 @@ export function validateLeaveRequest(input) {
     if (!isCreditUuid(input.employee_id)) invalid('A valid employee ID is required.', 400);
     if (typeof input.leave_type !== 'string' || !input.leave_type.trim() || input.leave_type.trim().length > 100) invalid('A valid leave type is required.', 400);
     validateLeaveFilingDates(input.start_date, input.end_date);
+    if (input.leave_type.trim().toLowerCase() === 'maternity/paternity') invalid('Choose Maternity Leave or Paternity Leave for a new application. Historical combined records remain available.', 400);
     if (typeof input.reason !== 'string' || !input.reason.trim() || input.reason.length > 255) invalid('Enter a reason using 1-255 characters.', 400);
     const result = { employee_id: input.employee_id, leave_type: input.leave_type.trim(), start_date: input.start_date, end_date: input.end_date, reason: input.reason.trim() };
+    if (input.maternity_request != null) {
+        const request = input.maternity_request;
+        if (result.leave_type !== 'Maternity Leave' || typeof request !== 'object' || Array.isArray(request) || !Object.hasOwn(MATERNITY_CALENDAR_DAYS, request.event)
+            || !Number.isInteger(request.allocated_days) || request.allocated_days < 0 || request.allocated_days > 7 || (request.event === 'miscarriage_etp' && request.allocated_days !== 0)
+            || !isLeaveDate(request.contingency_date) || request.contingency_date > result.end_date) invalid('Choose a valid maternity entitlement, allocation and expected/actual contingency date.', 400);
+        const days = MATERNITY_CALENDAR_DAYS[request.event] - request.allocated_days;
+        if (Date.parse(result.end_date) - Date.parse(result.start_date) !== (days - 1) * 86400000) invalid(`This maternity request requires ${days} calendar days.`, 400);
+        result.maternity_request = { event: request.event, allocated_days: request.allocated_days, contingency_date: request.contingency_date };
+    }
     if (input.requested_pay_type !== undefined) {
         if (!isCreditLeaveType(result.leave_type) || !['with_pay', 'without_pay'].includes(input.requested_pay_type)) invalid('Choose paid or unpaid for an ordinary leave request. Other statutory benefits require separate HR review.', 400);
         if (input.requested_pay_type === 'with_pay' ? input.requested_credit_pool != null && input.requested_credit_pool !== 'sil' : input.requested_credit_pool != null) invalid('Paid ordinary leave uses SIL credits; unpaid leave cannot use credits.', 400);
@@ -229,6 +247,7 @@ export function validateLeaveWorkdayEndpoints(input, employee) {
 export function getEmployeeLeaveStatus(leave) {
     if (isPendingLeave(leave.status)) return leave.requested_pay_type ? `Pending HR review - ${leave.requested_pay_type === 'with_pay' ? 'Paid' : 'Unpaid'} requested` : 'Pending HR review';
     if (leave.status !== 'Approved') return leave.status || 'Awaiting review';
+    if (isStatutoryLeaveType(leave.type)) return leave.statutory_review ? 'Approved - Statutory benefit' : 'HR benefit review required';
     if (leave.is_paid === false || leave.pay_type === 'without_pay' || /\[PAY_TYPE:WITHOUT_PAY\]|\[UNPAID\]/i.test(leave.notes || '')) return 'Approved - Unpaid';
     if (leave.credit_pool) return `Approved - ${leave.credit_pool === 'sil' ? 'SIL' : 'Historical credit'} (${leave.credit_days} days)`;
     return 'Approved - Paid';

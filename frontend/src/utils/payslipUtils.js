@@ -59,7 +59,9 @@ export const parsePayrollFinancials = (payroll) => {
     const silCashPay = Number(payroll.sil_cash_pay || 0);
     const otherLeavePay = Number(payroll.leave_pay || 0);
     const maternityPay = Number(payroll.maternity_salary_differential || 0);
-    const grossEarnings = basicPay + overtimePay + holidayPay + (paidLeaveInBasic ? 0 : paidLeavePay) + silCashPay + otherLeavePay + maternityPay;
+    const maternitySssPay = Number(payroll.maternity_sss_pay || 0);
+    const thirteenthMonthPay = Number(payroll.thirteenth_month_pay || 0);
+    const grossEarnings = basicPay + overtimePay + holidayPay + (paidLeaveInBasic ? 0 : paidLeavePay) + silCashPay + otherLeavePay + maternityPay + maternitySssPay + thirteenthMonthPay;
 
     // Deductions Parser
     const deductionsMap = new Map();
@@ -168,6 +170,8 @@ export const parsePayrollFinancials = (payroll) => {
         silCashPay,
         otherLeavePay,
         maternityPay,
+        maternitySssPay,
+        thirteenthMonthPay,
         grossEarnings,
         deductionsList,
         totalDeductions,

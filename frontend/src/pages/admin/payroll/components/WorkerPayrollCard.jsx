@@ -95,6 +95,9 @@ const WorkerPayrollCard = React.memo(({ worker, workerData, isLoadingAttendance 
             {workerData.holidayMissingRate && <p className="text-xs text-danger-ink">Worked a holiday but has no daily rate saved - holiday pay not computed</p>}
             {workerData.thirteenthMonthPay > 0 && <p className="text-xs text-ink font-semibold">13th month pay: PHP {workerData.thirteenthMonthPay.toFixed(2)}</p>}
             {workerData.paidLeavePay > 0 && <p className="text-xs text-slate-600">Paid leave: PHP {workerData.paidLeavePay.toFixed(2)}</p>}
+            {workerData.statutory?.paternity_pay > 0 && <p className="text-xs text-slate-600">Paternity pay: PHP {workerData.statutory.paternity_pay.toFixed(2)}</p>}
+            {workerData.statutory?.maternity_sss_pay > 0 && <p className="text-xs text-slate-600">SSS maternity advance: PHP {workerData.statutory.maternity_sss_pay.toFixed(2)}</p>}
+            {workerData.statutory?.maternity_salary_differential > 0 && <p className="text-xs text-slate-600">Maternity differential: PHP {workerData.statutory.maternity_salary_differential.toFixed(2)}</p>}
             {workerData.silCashPay > 0 && <p className="text-xs text-slate-600">SIL cash payout: PHP {workerData.silCashPay.toFixed(2)}</p>}
             {workerData.lateMinutes > 0 && <p className="text-xs text-danger-ink">Tardiness: {workerData.lateMinutes} min beyond grace - PHP {workerData.lateDeduction.toFixed(2)}</p>}
             {/* Deductions & Net Pay */}
