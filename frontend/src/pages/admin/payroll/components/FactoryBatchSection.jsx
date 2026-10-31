@@ -372,6 +372,18 @@ const FactoryBatchSection = ({
                                                             </span>
                                                         ))}
                                                     </div>
+                                                ) : workerData.payReasons?.length > 0 ? (
+                                                    <div className="flex flex-wrap gap-1 max-w-sm">
+                                                        {workerData.payReasons.map((r, idx) => (
+                                                            <span
+                                                                key={idx}
+                                                                className="inline-flex items-center gap-1 text-[10px] font-semibold bg-accent-subtle text-accent px-2 py-0.5 rounded-md"
+                                                            >
+                                                                <i className={`ti ${(r.kind === 'leave' || r.kind === 'statutory') ? 'ti-beach' : r.kind === 'holiday' ? 'ti-calendar-event' : 'ti-cash'} text-[10px]`} />
+                                                                <span>{r.label}</span>
+                                                            </span>
+                                                        ))}
+                                                    </div>
                                                 ) : workerData.skippedNoAttendance ? (
                                                     <span className="text-[10px] font-semibold text-danger-ink bg-danger-subtle px-2 py-0.5 rounded-md inline-block">
                                                         No attendance this cutoff

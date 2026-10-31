@@ -1073,6 +1073,59 @@ const PayrollCreate = () => {
     });
     const leavePayLoading = leavePayEmployeeIds.length > 0 && (leavePayPreview.isPending || leavePayPreview.isFetching);
 
+    // Leave types per worker for this cutoff (batch mode). Display only: it labels WHY a worker
+    // has pay without attendance (e.g. "Sick Leave 2d"). Pay amounts still come from leavePayPreview.
+    // Only workers that actually have leave-based pay are looked up. Uses the same leaves endpoint as the
+    // single-employee view (direct table reads can be blocked by row-level security), with the table as fallback.
+    const leaveTypeEmployeeIds = leavePayEmployeeIds.filter(id => {
+        const e = leavePayPreview.data?.data?.[id];
+        return (e?.paid_leave_pay || 0) > 0 || (e?.statutory?.total_additional_pay || 0) > 0;
+    });
+    const batchLeaveTypes = useQuery({
+        queryKey: ['payrollBatchLeaveTypes', getUser()?.id, leaveTypeEmployeeIds, periodStart, periodEnd],
+        enabled: entryMode === 'batch' && leaveTypeEmployeeIds.length > 0 && Boolean(periodStart && periodEnd) && !isInvalidDateRange,
+        queryFn: async () => {
+            const byEmployee = {};
+            const addRow = (empId, type, notes, days, isUnpaid) => {
+                const text = `${type || ''} ${notes || ''}`;
+                const isStatutory = /maternity|paternity|statutory/i.test(text);
+                const typeName = /maternity|paternity/i.test(type || '') ? type
+                    : /maternity/i.test(text) ? 'Maternity Leave'
+                    : /paternity/i.test(text) ? 'Paternity Leave'
+                    : (type || 'Leave');
+                (byEmployee[String(empId)] = byEmployee[String(empId)] || []).push({ type: typeName, days: days || 1, isStatutory, isUnpaid });
+            };
+            await Promise.all(leaveTypeEmployeeIds.map(async (empId) => {
+                try {
+                    const res = await fetchWithAuth(`/api/leaves/summary?employee_id=${empId}&start_date=${periodStart}&end_date=${periodEnd}`).catch(() => null);
+                    if (res && res.ok) {
+                        const summary = await res.json();
+                        (summary.leaves || []).forEach(l => addRow(empId, l.type, l.notes, l.overlap_days, l.is_paid === false));
+                        return;
+                    }
+                    const { data } = await supabase
+                        .from('leave_requests')
+                        .select('type, start_date, end_date, notes')
+                        .eq('employee_id', empId)
+                        .eq('status', 'Approved')
+                        .lte('start_date', periodEnd)
+                        .gte('end_date', periodStart);
+                    (data || []).forEach(l => {
+                        const notes = l.notes || '';
+                        const oStart = l.start_date > periodStart ? l.start_date : periodStart;
+                        const oEnd = l.end_date < periodEnd ? l.end_date : periodEnd;
+                        const days = Math.max(1, Math.round((new Date(oEnd) - new Date(oStart)) / 86400000) + 1);
+                        addRow(empId, l.type, notes, days, /\[PAY_TYPE:WITHOUT_PAY\]/i.test(notes) || /\[UNPAID\]/i.test(notes));
+                    });
+                } catch (err) {
+                    console.error('Failed to load leave types for', empId, err);
+                }
+            }));
+            return byEmployee;
+        },
+        staleTime: 15000, retry: false,
+    });
+
     // Weekly payroll takes SSS / PhilHealth / Pag-IBIG once a month, in the first cutoff that ends in the month.
     // The server supplies each worker's monthly base (salary, or last month's average weekly pay).
     const isFirstCutoff = isFirstCutoffOfMonth(periodEnd);
@@ -1390,7 +1443,10 @@ const PayrollCreate = () => {
                 lateDeduction: groupTardinessMap[idStr]?.deduction || 0,
                 netPay: 0,
                 daysPresent: groupAttendanceMap[idStr] || 0,
-                skippedNoAttendance: zeroAttendanceIdSet.has(idStr),
+                skippedNoAttendance: false,
+                noAttendance: zeroAttendanceIdSet.has(idStr),
+                leaveItems: batchLeaveTypes.data?.[idStr] || [],
+                payReasons: [],
                 isAbsent: !!absenteeInfo[idStr],
                 daysAbsent: absenteeInfo[idStr] ? absenteeInfo[idStr].daysAbsent : 0,
                 expectedWorkingDays,
@@ -1449,6 +1505,32 @@ const PayrollCreate = () => {
             item.holidayItems = holiday?.items || [];
             item.holidayMissingRate = !!holiday?.missingRate;
             item.thirteenthMonthPay = thirteenthByWorker[empId] || 0;
+            // Why this worker is being paid. Used so a worker with pay but no clock-ins is not
+            // labelled "No attendance" (that would look like a mistake next to a non-zero payout).
+            const reasons = [];
+            const regularLeaves = item.leaveItems.filter(l => !l.isStatutory && !l.isUnpaid);
+            // Statutory pay replaces the employer's leave pay, so if no row is named maternity/paternity,
+            // fall back to the unpaid-marked leave row(s) for this cutoff.
+            let statutoryLeaves = item.leaveItems.filter(l => l.isStatutory);
+            if (statutoryLeaves.length === 0) statutoryLeaves = item.leaveItems.filter(l => l.isUnpaid);
+            if (item.paidLeavePay > 0) {
+                if (regularLeaves.length > 0) {
+                    regularLeaves.forEach(l => reasons.push({ kind: 'leave', label: l.type }));
+                } else {
+                    reasons.push({ kind: 'leave', label: 'Paid leave' });
+                }
+            }
+            // Maternity/paternity pay arrives as statutory pay (paidLeavePay can be 0), so it is
+            // keyed off statutoryLeavePay, not paidLeavePay.
+            if ((item.statutoryLeavePay || 0) > 0) {
+                statutoryLeaves.forEach(l => reasons.push({ kind: 'statutory', label: l.type }));
+            }
+            if (item.silCashPay > 0) reasons.push({ kind: 'sil', label: 'SIL cash-out' });
+            if (item.holidayPay > 0) reasons.push({ kind: 'holiday', label: 'Holiday pay' });
+            if ((item.statutoryLeavePay || 0) > 0 && !reasons.some(r => r.kind === 'statutory')) reasons.push({ kind: 'statutory', label: 'Statutory leave' });
+            if (item.thirteenthMonthPay > 0) reasons.push({ kind: 'thirteenth', label: '13th month' });
+            item.payReasons = reasons;
+            item.skippedNoAttendance = item.noAttendance && reasons.length === 0;
             const compensation = item.piecePay + item.paidLeavePay + item.holidayPay + (item.statutory?.paternity_additional_pay || 0);
             const gross = parseFloat((compensation + item.silCashPay + item.thirteenthMonthPay + (item.statutory?.tax_exempt_pay || 0)).toFixed(2));
             item.grossPay = gross;
@@ -1468,7 +1550,7 @@ const PayrollCreate = () => {
         });
 
         return map;
-    }, [activeGroupEmployees, computedFactoryRows, groupAttendanceMap, groupTardinessMap, absenteeInfo, expectedWorkingDays, statutoryRates, isFirstCutoff, statutoryBases, leavePayPreview.data, holidayPayByWorker, thirteenthByWorker, zeroAttendanceIdSet]);
+    }, [activeGroupEmployees, computedFactoryRows, groupAttendanceMap, groupTardinessMap, absenteeInfo, expectedWorkingDays, statutoryRates, isFirstCutoff, statutoryBases, leavePayPreview.data, holidayPayByWorker, thirteenthByWorker, zeroAttendanceIdSet, batchLeaveTypes.data]);
 
     const grandTotalFactoryPayout = Object.values(workerPayrollMap).reduce((sum, item) => sum + item.grossPay, 0);
 

@@ -1366,13 +1366,18 @@ export default function PayrollIndex() {
             const groupName = payroll._line || (isFactoryDept(payroll._dept) ? 'Factory General' : '');
 
             if (isFactory && groupName) {
-                const groupId = `factory-line-${groupName.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`;
+                // One group per line AND per cutoff, so each pay period gets its own banner row.
+                const startKey = String(payroll.period_start || '').substring(0, 10);
+                const endKey = String(payroll.period_end || payroll.period_start || '').substring(0, 10);
+                const groupId = `factory-line-${groupName.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-${startKey}_${endKey}`;
 
                 if (!factoryGroupsMap[groupId]) {
                     factoryGroupsMap[groupId] = {
                         type: 'group',
                         id: groupId,
                         groupName,
+                        periodStart: startKey,
+                        periodEnd: endKey,
                         department: payroll._dept || 'Factory',
                         items: [],
                         totalGross: 0,
@@ -1420,8 +1425,12 @@ export default function PayrollIndex() {
             }
         });
 
-        groupPaidList.sort((a, b) => a.groupName.localeCompare(b.groupName));
-        groupPendingList.sort((a, b) => a.groupName.localeCompare(b.groupName));
+        // Same line together, cutoffs in chronological order (Cutoff 1, 2, 3...).
+        const compareGroups = (a, b) =>
+            a.groupName.localeCompare(b.groupName) ||
+            String(a.periodStart).localeCompare(String(b.periodStart));
+        groupPaidList.sort(compareGroups);
+        groupPendingList.sort(compareGroups);
 
         const regularPaidItems = [];
         const regularPendingItems = [];

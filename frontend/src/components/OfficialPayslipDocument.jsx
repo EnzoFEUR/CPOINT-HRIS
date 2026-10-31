@@ -443,19 +443,10 @@ export default function OfficialPayslipDocument({ payroll, employee: employeeOve
                                     <div className="p-3.5 sm:p-4 space-y-2.5 text-xs">
                                         {deductionsList.length > 0 ? (
                                             deductionsList.map((ded, index) => {
-                                                const percentage = grossEarnings > 0 && ded.amount > 0
-                                                    ? ((ded.amount / grossEarnings) * 100).toFixed(1)
-                                                    : null;
-
                                                 return (
                                                     <div key={index} className="flex justify-between items-center py-1 border-b border-slate-100 print:border-slate-200">
                                                         <div className="flex items-center">
                                                             <span className="font-semibold text-slate-800">{ded.name}</span>
-                                                            {percentage && (
-                                                                <span className="text-[10px] font-mono text-danger-ink bg-danger-subtle px-1 py-0.2 rounded border border-danger/20 ml-1.5 print:hidden">
-                                                                    {percentage}%
-                                                                </span>
-                                                            )}
                                                         </div>
                                                         <span className="font-mono font-semibold text-danger-ink print:text-slate-800 text-xs sm:text-sm">
                                                             {formatCurrency(ded.amount)}
