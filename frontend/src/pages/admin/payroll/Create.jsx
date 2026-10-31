@@ -1,7 +1,6 @@
 import { calculateBIRWithholdingTax } from '../../../../../shared/payrollTax.mjs';
-import { getSssMsc } from '../../../../../shared/sssContribution.mjs';
 import { PAYROLL_NUMBER_LIMITS, isBoundedDecimalInput } from '../../../../../shared/inputLimits.mjs';
-import { isFirstCutoffOfMonth } from '../../../../../shared/statutoryTiming.mjs';
+import { isFirstCutoffOfMonth, computeEmployeeStatutory } from '../../../../../shared/statutoryTiming.mjs';
 import { isLastCutoffOfDecember } from '../../../../../shared/thirteenthMonth.mjs';
 import { getUser } from '../../../routes/guards';
 import { getEmployeeRestDays, getScheduledWorkDates, calculateTardiness, DEFAULT_WORK_POLICY } from '../../../../../shared/workPolicy.mjs';
@@ -1109,6 +1108,7 @@ const PayrollCreate = () => {
         const channel = supabase.channel(`payroll-attendance-${entryMode}-${formData.employee_id || selectedGroup}`)
             .on('postgres_changes', { event: '*', schema: 'public', table: 'leave_requests' }, event => { if (ids.has(String(event.new?.employee_id || event.old?.employee_id))) refresh(); })
             .on('postgres_changes', { event: '*', schema: 'public', table: 'sil_cash_out_requests' }, event => { if (ids.has(String(event.new?.employee_id || event.old?.employee_id))) refresh(); })
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'payrolls' }, event => { if (ids.has(String(event.new?.employee_id || event.old?.employee_id))) refresh(); })
             .on('postgres_changes', { event: '*', schema: 'public', table: 'attendances', ...(entryMode === 'single' ? { filter: `employee_id=eq.${formData.employee_id}` } : {}) }, event => {
                 const id = event.new?.employee_id || event.old?.employee_id;
                 if (ids.has(String(id)) || event.eventType === 'DELETE') refresh();
@@ -1441,22 +1441,24 @@ const PayrollCreate = () => {
             const extra = leavePayPreview.data?.data?.[empId];
             item.piecePay = parseFloat(item.grossPay.toFixed(2));
             item.paidLeavePay = extra?.paid_leave_pay || 0;
+            item.statutory = extra?.statutory;
+            item.statutoryLeavePay = extra?.statutory?.total_additional_pay || 0;
             item.silCashPay = extra?.cash_pay || 0;
             const holiday = holidayPayByWorker[empId];
             item.holidayPay = holiday?.total || 0;
             item.holidayItems = holiday?.items || [];
             item.holidayMissingRate = !!holiday?.missingRate;
             item.thirteenthMonthPay = thirteenthByWorker[empId] || 0;
-            const compensation = item.piecePay + item.paidLeavePay + item.holidayPay;
-            const gross = parseFloat((compensation + item.silCashPay + item.thirteenthMonthPay).toFixed(2));
+            const compensation = item.piecePay + item.paidLeavePay + item.holidayPay + (item.statutory?.paternity_additional_pay || 0);
+            const gross = parseFloat((compensation + item.silCashPay + item.thirteenthMonthPay + (item.statutory?.tax_exempt_pay || 0)).toFixed(2));
             item.grossPay = gross;
-            if (compensation > 0 && isFirstCutoff) {
+            if (gross > 0 && isFirstCutoff) {
                 // Full monthly amount, taken once (first cutoff of the month). No earlier payslips: this cutoff x4.
                 const monthlyBase = statutoryBases?.[empId] ?? compensation * 4;
-                item.sss = parseFloat((getSssMsc(monthlyBase, statutoryRates.sss_max_msc) * statutoryRates.sss_employee_rate / 100).toFixed(2));
-                const phBase = Math.min(Math.max(monthlyBase, statutoryRates.philhealth_min_salary), statutoryRates.philhealth_max_salary);
-                item.philHealth = parseFloat((phBase * statutoryRates.philhealth_rate / 100 / 2).toFixed(2));
-                item.pagIbig = parseFloat(Math.min(monthlyBase * statutoryRates.pagibig_employee_rate / 100, statutoryRates.pagibig_max_contribution).toFixed(2));
+                const deductions = computeEmployeeStatutory(monthlyBase, 1, statutoryRates);
+                item.sss = deductions.sss;
+                item.philHealth = deductions.philHealth;
+                item.pagIbig = deductions.pagIbig;
             }
             const statutory = item.sss + item.philHealth + item.pagIbig;
             item.tax = calculateBIRWithholdingTax(Math.max(0, compensation + (extra?.taxable_cash || 0) + Math.max(0, item.thirteenthMonthPay - 90000) - statutory - item.lateDeduction), 'weekly');
@@ -1814,6 +1816,9 @@ const PayrollCreate = () => {
                     gross_pay: workerData?.piecePay || 0,
                     expected_paid_leave_pay: workerData?.paidLeavePay || 0,
                     expected_sil_cash_pay: workerData?.silCashPay || 0,
+                    expected_statutory_signature: workerData?.statutory?.signature,
+                    expected_statutory_pay: workerData?.statutoryLeavePay || 0,
+                    output_work_dates: groupWorkedDatesMap[empIdStr] || [],
                     sss_deduction: workerData ? workerData.sss : 0,
                     philhealth_deduction: workerData ? workerData.philHealth : 0,
                     pagibig_deduction: workerData ? workerData.pagIbig : 0,
@@ -1833,7 +1838,7 @@ const PayrollCreate = () => {
                     overtime_hours: 0,
                     overtime_pay: 0
                 };
-            }).filter(entry => entry.gross_pay + entry.expected_holiday_pay + entry.expected_paid_leave_pay + entry.expected_sil_cash_pay > 0);
+            }).filter(entry => entry.gross_pay + entry.expected_holiday_pay + entry.expected_paid_leave_pay + entry.expected_sil_cash_pay + entry.expected_statutory_pay > 0);
 
             if (batchEntries.length === 0) {
                 setError('No employees have output pay, paid leave or approved cash payouts this period.');
@@ -1911,6 +1916,7 @@ const PayrollCreate = () => {
                 daily_rate: employeeRates.dailyRate,
                 expected_paid_leave_pay: leavePayPreview.data?.data?.[formData.employee_id]?.paid_leave_pay || 0,
                 expected_sil_cash_pay: singleCashPay,
+                expected_statutory_signature: holidayPreview?.statutory?.signature,
                 paid_leave_days: totalPaidLeaveDays,
                 paid_leave_pay: parseFloat((totalPaidLeaveDays * employeeRates.dailyRate).toFixed(2)),
                 overtime_hours: otHours,

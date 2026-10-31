@@ -10,7 +10,7 @@ import { sanitizeGender, validateBirthDate, sanitizeAddress } from '../utils/per
 import { sanitizePhPhone } from './employees.js';
 import { createAuditLog } from './auditLogs.js';
 import { DOCUMENT_URL_TTL } from '../services/documentService.js';
-import { getOrGenerateOtp, storeOtp, verifyOtpCode, sendEmailOtp, acquireOtpLock, releaseOtpLock } from '../services/otpService.js';
+import { getOrGenerateOtp, verifyOtpCode, sendEmailOtp, acquireOtpLock, releaseOtpLock, otpTestMode, reserveAccountChallengeCreation } from '../services/otpService.js';
 import { checkTotpRateLimit, recordTotpFailure, clearTotpRateLimit } from '../services/totpService.js';
 
 const router = express.Router();
@@ -432,6 +432,11 @@ router.post('/avatar', verifyToken, async (req, res) => {
 
 // POST /api/profile/request-password-otp - Request single-use OTP for administrative password change
 router.post('/request-password-otp', verifyToken, async (req, res) => {
+    const requestId = crypto.randomUUID();
+    res.set('X-Request-ID', requestId);
+    if ((req.body?.mock || req.body?.is_mock) && !otpTestMode()) {
+        return res.status(403).json({ success: false, code: 'OTP_TEST_MODE_DISABLED', message: 'Mock verification is disabled on this server.' });
+    }
     try {
         let userEmail = (req.user.email || '').toLowerCase().trim();
         let userName = `${req.user.first_name || ''} ${req.user.last_name || ''}`.trim() || 'Administrator';
@@ -452,7 +457,7 @@ router.post('/request-password-otp', verifyToken, async (req, res) => {
             return res.status(400).json({ success: false, message: 'No registered corporate email found for this administrator account.' });
         }
 
-        const clientIp = req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.socket?.remoteAddress || 'unknown';
+        const clientIp = req.ip || req.socket?.remoteAddress || 'unknown';
         const rateLimitKey = `pwd_otp_req:${req.user.id}:${clientIp}`;
         const rateCheck = checkTotpRateLimit(rateLimitKey, 5, 10 * 60 * 1000, 15 * 60 * 1000);
         if (!rateCheck.allowed) {
@@ -479,20 +484,31 @@ router.post('/request-password-otp', verifyToken, async (req, res) => {
             });
         }
 
+        let sendSucceeded = false;
+        let creationReservation;
         try {
-            const otpInfo = getOrGenerateOtp(identifier);
+            const targetChallengeId = req.body?.challengeId || req.body?.challenge_id;
+            const otpInfo = getOrGenerateOtp(identifier, {
+                challengeId: targetChallengeId,
+                purpose: 'change_password',
+                method: 'email',
+                accountExists: true
+            });
+            if (!otpInfo.isRotated) creationReservation = reserveAccountChallengeCreation(userEmail, clientIp);
             const code = otpInfo.code;
-            storeOtp(identifier, code, 'email');
 
             const isMock = Boolean(req.body?.mock || req.body?.is_mock);
             let dispatchResult;
             if (isMock) {
                 dispatchResult = { simulated: true, provider: 'mock', success: true };
             } else {
-                dispatchResult = await sendEmailOtp(userEmail, code, userName);
+                dispatchResult = await sendEmailOtp(userEmail, code, userName, { requestId, purpose: 'change_password' });
             }
 
-            releaseOtpLock(lockKeys, true);
+            if (typeof otpInfo.commit === 'function') {
+                otpInfo.commit();
+            }
+            sendSucceeded = true;
 
             await createAuditLog({
                 log_name: 'security',
@@ -507,16 +523,20 @@ router.post('/request-password-otp', verifyToken, async (req, res) => {
             return res.json({
                 success: true,
                 message: `Verification code sent to ${userEmail}. Valid for 5 minutes.`,
+                challengeId: otpInfo.challengeId,
                 cooldown: 60,
                 expiresIn: otpInfo.remainingSeconds
             });
         } catch (dispatchErr) {
-            releaseOtpLock(lockKeys, false);
             throw dispatchErr;
+        } finally {
+            if (!sendSucceeded) creationReservation?.release();
+            releaseOtpLock(lockKeys, sendSucceeded);
         }
     } catch (err) {
-        console.error('[PASSWORD_OTP_REQUEST_ERROR]', err);
-        res.status(500).json({ success: false, message: err.message || 'Failed to dispatch verification code.' });
+        console.error('[PASSWORD_OTP_REQUEST_ERROR]', { requestId, code: err.code || 'OTP_SEND_FAILED' });
+        if (err.retryAfter || err.status === 503) res.set('Retry-After', String(err.retryAfter || 5));
+        res.status(err.status || 500).json({ success: false, code: err.code, retry_after: err.retryAfter, message: err.status ? err.message : 'Failed to dispatch verification code.' });
     }
 });
 
@@ -626,7 +646,13 @@ router.post('/change-password', verifyToken, async (req, res) => {
         let verifiedVia = 'EMAIL_OTP';
 
         // Check Email OTP first
-        const otpCheck = verifyOtpCode(emailOtpIdentifier, cleanOtp);
+        const targetChallengeId = req.body?.challengeId || req.body?.challenge_id;
+        const otpCheck = verifyOtpCode({
+            challengeId: targetChallengeId,
+            identifier: emailOtpIdentifier,
+            code: cleanOtp,
+            purpose: 'change_password'
+        });
         if (otpCheck.valid) {
             isCodeValid = true;
             verifiedVia = 'EMAIL_OTP';

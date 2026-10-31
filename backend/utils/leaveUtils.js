@@ -1,5 +1,20 @@
 import { supabase } from '../supabaseClient.js';
-import { getLeaveOverlapDays } from '../../shared/leavePolicy.js';
+import { getLeaveOverlapDays, isStatutoryLeaveType, isLeaveDate, getScheduledWorkDates } from '../../shared/leavePolicy.js';
+
+export function getPaidLeaveDates(leaves = [], windowStart, windowEnd) {
+    const result = new Set();
+    for (const leave of leaves) {
+        if (!leave?.is_paid) continue;
+        if (!isLeaveDate(leave.start_date) || !isLeaveDate(leave.end_date) || leave.end_date < leave.start_date) throw new Error('Invalid paid leave dates. HR must review the request.');
+        const start = windowStart && windowStart > leave.start_date ? windowStart : leave.start_date;
+        const end = windowEnd && windowEnd < leave.end_date ? windowEnd : leave.end_date;
+        if (end < start) continue;
+        if (Date.parse(end) - Date.parse(start) > 365 * 86400000) throw new Error('Paid leave date window exceeds 366 days.');
+        const dates = leave.credit_pool ? leave.credit_dates || [] : leave.type === 'Paternity Leave' ? leave.statutory_review?.work_dates || [] : getScheduledWorkDates(start, end, []);
+        for (const date of dates) if (date >= start && date <= end) result.add(date);
+    }
+    return [...result];
+}
 
 /**
  * Calculates approved leave days (paid vs unpaid) for an employee in a given date range.
@@ -61,6 +76,8 @@ export async function getLeaveSummaryForPeriod({ employeeId, periodStart, period
 export function summarizeApprovedLeaves(rawLeaves, { employeeId, periodStart, periodEnd }) {
     let paidDays = 0;
     let unpaidDays = 0;
+    let maternityDays = 0;
+    let paternityDays = 0;
     const leaveItems = [];
 
     for (const leave of (rawLeaves || [])) {
@@ -68,6 +85,7 @@ export function summarizeApprovedLeaves(rawLeaves, { employeeId, periodStart, pe
         const oEnd = leave.end_date < periodEnd ? leave.end_date : periodEnd;
 
         if (oStart <= oEnd) {
+            if (isStatutoryLeaveType(leave.type) && (leave.statutory_review?.version !== 1 || leave.statutory_review.kind !== (leave.type === 'Maternity Leave' ? 'maternity' : 'paternity'))) throw new Error('HR must complete the statutory benefit review before payroll.');
             const days = getLeaveOverlapDays(leave, periodStart, periodEnd);
             const rawNotes = leave.notes || '';
             const isUnpaid = /\[PAY_TYPE:WITHOUT_PAY\]/i.test(rawNotes) || /\[UNPAID\]/i.test(rawNotes);
@@ -77,7 +95,9 @@ export function summarizeApprovedLeaves(rawLeaves, { employeeId, periodStart, pe
                 .replace(/\[(PAID|UNPAID)\]/gi, '')
                 .trim();
 
-            if (isPaid) {
+            if (leave.type === 'Maternity Leave') maternityDays += days;
+            else if (leave.type === 'Paternity Leave') paternityDays += days;
+            else if (isPaid) {
                 paidDays += days;
             } else {
                 unpaidDays += days;
@@ -92,6 +112,7 @@ export function summarizeApprovedLeaves(rawLeaves, { employeeId, periodStart, pe
                 start_date: leave.start_date,
                 end_date: leave.end_date,
                 requested_pay_type: leave.requested_pay_type || null,
+                statutory_review: leave.statutory_review || null,
                 credit_pool: leave.credit_pool || null,
                 credit_dates: leave.credit_dates || null,
                 notes: cleanNotes
@@ -105,7 +126,9 @@ export function summarizeApprovedLeaves(rawLeaves, { employeeId, periodStart, pe
         period_end: periodEnd,
         paid_leave_days: paidDays,
         unpaid_leave_days: unpaidDays,
-        total_leave_days: paidDays + unpaidDays,
+        maternity_days: maternityDays,
+        paternity_days: paternityDays,
+        total_leave_days: paidDays + unpaidDays + maternityDays + paternityDays,
         leaves: leaveItems
     };
 }

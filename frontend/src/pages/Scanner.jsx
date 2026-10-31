@@ -1774,30 +1774,34 @@ const ScannerTerminal = () => {
             className={`absolute inset-0 z-50 flex items-center justify-center p-4 ${state.feedback.type === 'success' ? 'bg-black/85' : 'bg-black/90'}`}
           >
             <div
-              className="flex flex-col sm:flex-row items-center gap-5 sm:gap-6 p-5 sm:p-6 w-full max-w-lg rounded-lg bg-slate-900 border border-slate-800 shadow-xl"
+              role="status"
+              aria-live="polite"
+              aria-atomic="true"
+              className="flex max-h-full w-full max-w-lg flex-col items-center gap-4 overflow-y-auto rounded-lg border border-slate-700 bg-slate-900 p-5 shadow-xl sm:flex-row sm:items-start sm:gap-5 sm:p-6"
             >
               {state.feedback.image && (
-                <div className={`w-24 h-24 sm:w-28 sm:h-28 rounded-md overflow-hidden border-2 shrink-0 ${state.feedback.type === 'success' ? 'border-line' : 'border-danger'}`}>
+                <div className="h-24 w-24 shrink-0 overflow-hidden rounded-md border border-slate-700 bg-slate-800 sm:h-28 sm:w-28">
                   <img src={state.feedback.image} alt="" className={`w-full h-full object-contain ${cameraFacing === 'user' ? '-scale-x-100' : ''}`} />
                 </div>
               )}
-              <div className="text-center sm:text-left flex-1 w-full">
-                <div className="flex items-center justify-center sm:justify-start gap-2 mb-2">
-                  <div className={`h-6 w-6 rounded-md flex items-center justify-center text-xs text-white shrink-0 ${state.feedback.type === 'success' ? 'bg-ink-subtle' : 'bg-danger'}`}>
-                    {state.feedback.type === 'success' ? <Check className="w-3.5 h-3.5 text-white" /> : <X className="w-3.5 h-3.5 text-white" />}
+              <div className="min-w-0 w-full flex-1 text-center sm:text-left">
+                <div className="mb-2 flex items-center justify-center gap-2 sm:justify-start">
+                  <div aria-hidden="true" className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full ${state.feedback.type === 'success' ? 'bg-emerald-500/15 text-emerald-300' : 'bg-red-500/15 text-red-300'}`}>
+                    {state.feedback.type === 'success' ? <Check className="h-4 w-4" /> : <X className="h-4 w-4" />}
                   </div>
-                  <h2 className={`text-lg sm:text-xl font-bold tracking-tight ${state.feedback.type === 'success' ? 'text-ink' : 'text-danger'}`}>
+                  <h2 className={`min-w-0 text-lg font-bold leading-snug tracking-tight [overflow-wrap:anywhere] sm:text-xl ${state.feedback.type === 'success' ? 'text-emerald-300' : 'text-red-300'}`}>
                     {state.feedback.title}
                   </h2>
                 </div>
-                <p role="status" aria-live="polite" className="text-xs font-medium text-slate-200">{state.feedback.message}</p>
-                <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2 mt-2.5 text-xs text-slate-400">
-                  {state.feedback.recordedAt && Number.isFinite(Date.parse(state.feedback.recordedAt)) && (
-                    <span className="font-mono bg-slate-800 px-1.5 py-0.5 rounded-sm">
-                      Recorded: {new Date(state.feedback.recordedAt).toLocaleString('en-PH', { timeZone: 'Asia/Manila', hour12: false })} PHT
-                    </span>
-                  )}
-                </div>
+                <p className="text-sm leading-relaxed text-slate-200 [overflow-wrap:anywhere]">{state.feedback.message}</p>
+                {state.feedback.recordedAt && Number.isFinite(Date.parse(state.feedback.recordedAt)) && (
+                  <div className="mt-4 border-t border-slate-700 pt-3">
+                    <p className="mb-1 text-xs font-medium text-slate-400">Recorded time (PHT)</p>
+                    <time dateTime={state.feedback.recordedAt} className="block text-sm font-semibold tabular-nums leading-relaxed text-white [overflow-wrap:anywhere]">
+                      {new Date(state.feedback.recordedAt).toLocaleString('en-PH', { timeZone: 'Asia/Manila', year: 'numeric', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', second: '2-digit', hour12: true })}
+                    </time>
+                  </div>
+                )}
               </div>
             </div>
           </div>

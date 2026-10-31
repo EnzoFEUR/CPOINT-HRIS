@@ -9,8 +9,9 @@ import { fetchEmployeeLeaveCredits, leaveCreditKey } from '../utils/useEmployeeL
 import { getLeaveApprovalBlock, isCreditLeaveType, LEAVE_REQUEST_TYPES, validateLeaveFilingDates, validateLeaveRequest, validateLeaveWorkdayEndpoints } from '../../../shared/leavePolicy.js';
 import LeaveDatePicker from './LeaveDatePicker';
 import { getEmployeeRestDays, getManilaWorkDate } from '../../../shared/workPolicy.mjs';
+import { getMaternityLeavePlan } from '../../../shared/statutoryLeave.mjs';
 
-const emptyForm = { leave_type: 'Sick Leave', start_date: '', end_date: '', reason: '', requested_pay_type: '' };
+const emptyForm = { leave_type: 'Sick Leave', start_date: '', end_date: '', reason: '', requested_pay_type: '', maternity_event: 'live_birth', maternity_allocated_days: 0, maternity_contingency_date: '' };
 
 
 export default function EmployeeLeaveRequest({ open, employee, statusReady, blockedReason, onClose }) {
@@ -23,8 +24,22 @@ export default function EmployeeLeaveRequest({ open, employee, statusReady, bloc
     const dialog = useRef(null);
     const close = useRef(onClose);
     useEffect(() => { close.current = onClose; }, [onClose]);
-    const set = (name, value) => { setForm(previous => ({ ...previous, [name]: value })); setError(''); };
+    const set = (name, value) => {
+        setForm(previous => {
+            const next = { ...previous, [name]: value };
+            if (name === 'maternity_event' && value === 'miscarriage_etp') next.maternity_allocated_days = 0;
+            if (next.leave_type === 'Maternity Leave' && ['leave_type', 'start_date', 'maternity_event', 'maternity_allocated_days'].includes(name)) {
+                next.end_date = getMaternityLeavePlan(next.start_date, next.maternity_event, next.maternity_allocated_days).end_date;
+            } else if ((name === 'start_date' && (!next.end_date || next.end_date < value)) || (name === 'leave_type' && previous.leave_type === 'Maternity Leave')) {
+                next.end_date = next.start_date;
+            }
+            return next;
+        });
+        setError('');
+    };
     const creditType = isCreditLeaveType(form.leave_type);
+    const maternityLeave = form.leave_type === 'Maternity Leave';
+    const maternityDays = maternityLeave ? getMaternityLeavePlan(form.start_date, form.maternity_event, form.maternity_allocated_days).days : 0;
     const schedule = useQuery({
         queryKey: ['employeeLeaveRequestSchedule', actorId, employee.id],
         enabled: Boolean(open && actorId && employee.id && statusReady && !blockedReason),
@@ -137,7 +152,8 @@ export default function EmployeeLeaveRequest({ open, employee, statusReady, bloc
             if (!statusReady || blockedReason) throw new Error(blockedReason || 'Refresh your account status before filing.');
             if (rangeError || restError || scheduleUnavailable || !preview.data || preview.isError || preview.isFetching || zeroWorkdays) throw new Error('Verify a valid scheduled leave range before submitting.');
             if (paymentBlock) throw new Error(paymentBlock);
-            const payload = validateLeaveRequest({ employee_id: employee.id, ...form, requested_pay_type: creditType ? form.requested_pay_type : undefined, requested_credit_pool: paidRequest ? 'sil' : null });
+            const payload = validateLeaveRequest({ employee_id: employee.id, ...form, requested_pay_type: creditType ? form.requested_pay_type : undefined, requested_credit_pool: paidRequest ? 'sil' : null,
+                ...(maternityLeave ? { maternity_request: { event: form.maternity_event, allocated_days: form.maternity_allocated_days, contingency_date: form.maternity_contingency_date } } : {}) });
             busy.current = true;
             setSaving(true);
             const response = await fetchWithAuth('/api/leaves', { method: 'POST', body: JSON.stringify(payload) });
@@ -197,8 +213,9 @@ export default function EmployeeLeaveRequest({ open, employee, statusReady, bloc
                     {/* Row 1: Leave Type & Payment Preference */}
                     <div className={`grid grid-cols-1 ${creditType ? 'sm:grid-cols-2' : ''} gap-3`}>
                         <div>
-                            <label className="block text-xs font-semibold text-slate-700 mb-1">Leave Type</label>
+                            <label htmlFor="employee-leave-type" className="block text-xs font-semibold text-slate-700 mb-1">Leave Type</label>
                             <select
+                                id="employee-leave-type"
                                 required
                                 className="w-full h-9 rounded-md border border-slate-200 bg-white px-2.5 text-xs text-slate-800 font-medium focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent transition-colors shadow-2xs"
                                 value={form.leave_type}
@@ -227,6 +244,24 @@ export default function EmployeeLeaveRequest({ open, employee, statusReady, bloc
                         )}
                     </div>
 
+                    {maternityLeave && <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                        <label className="block text-xs font-semibold text-slate-700">Maternity entitlement
+                            <select value={form.maternity_event} onChange={event => set('maternity_event', event.target.value)} className="mt-1 h-9 w-full rounded-md border border-slate-200 bg-white px-2 text-xs text-slate-800">
+                                <option value="live_birth">Live childbirth — 105 calendar days</option>
+                                <option value="solo_parent_live_birth">Qualified solo parent — 120 calendar days</option>
+                                <option value="miscarriage_etp">Miscarriage / ETP — 60 calendar days</option>
+                            </select>
+                        </label>
+                        <label className="block text-xs font-semibold text-slate-700">{form.maternity_event === 'miscarriage_etp' ? 'Date of miscarriage / ETP' : 'Expected / actual childbirth date'}
+                            <input type="date" required max={form.end_date || undefined} value={form.maternity_contingency_date} onChange={event => set('maternity_contingency_date', event.target.value)} className="mt-1 h-9 w-full min-w-0 rounded-md border border-slate-200 bg-white px-2 text-xs text-slate-800" />
+                        </label>
+                        {form.maternity_event !== 'miscarriage_etp' && <label className="block text-xs font-semibold text-slate-700">Days voluntarily allocated to caregiver
+                            <select value={form.maternity_allocated_days} onChange={event => set('maternity_allocated_days', Number(event.target.value))} className="mt-1 h-9 w-full rounded-md border border-slate-200 bg-white px-2 text-xs text-slate-800">
+                                {[0, 1, 2, 3, 4, 5, 6, 7].map(days => <option key={days} value={days}>{days === 0 ? 'None — keep full entitlement' : `${days} ${days === 1 ? 'day' : 'days'}`}</option>)}
+                            </select>
+                        </label>}
+                    </div>}
+
                     {/* Row 2: Start Date & End Date with directional alignment */}
                     <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                         <LeaveDatePicker
@@ -238,9 +273,12 @@ export default function EmployeeLeaveRequest({ open, employee, statusReady, bloc
                             disabled={saving || Boolean(blockedReason) || !statusReady || scheduleUnavailable}
                             align="left"
                             placeholder="Select start date"
-                            onChange={date => { set('start_date', date); if (!form.end_date || form.end_date < date) set('end_date', date); }}
+                            onChange={date => set('start_date', date)}
                         />
-                        <LeaveDatePicker
+                        {maternityLeave ? <div>
+                            <label htmlFor="employee-maternity-end" className="mb-1 block text-xs font-semibold text-slate-700">End Date (automatic)</label>
+                            <input id="employee-maternity-end" type="date" readOnly value={form.end_date} aria-describedby="employee-maternity-duration" className="h-9 w-full min-w-0 rounded-md border border-slate-200 bg-slate-50 px-3 text-xs font-semibold text-slate-800" />
+                        </div> : <LeaveDatePicker
                             label="End Date"
                             value={form.end_date}
                             min={form.start_date > minimumDate ? form.start_date : minimumDate}
@@ -251,15 +289,19 @@ export default function EmployeeLeaveRequest({ open, employee, statusReady, bloc
                             align="right"
                             placeholder="Select end date"
                             onChange={date => set('end_date', date)}
-                        />
+                        />}
                     </div>
+
+                    {maternityLeave && <p id="employee-maternity-duration" role="status" className="rounded-md border border-accent/20 bg-accent-subtle/40 px-3 py-2 text-xs text-slate-700">
+                        <strong>{maternityDays} calendar days</strong> · Includes weekends and holidays · Subject to HR verification
+                    </p>}
 
                     {form.start_date && form.end_date && rangeError && (
                         <p role="alert" className="text-xs text-danger-ink">{rangeError}</p>
                     )}
 
                     {/* Real-time Workdays Estimation */}
-                    {preview.data && preview.data.days > 0 && (
+                    {!maternityLeave && preview.data && preview.data.days > 0 && (
                         <div className="flex items-center justify-between px-3 py-1.5 rounded-md bg-accent-subtle/40 border border-accent/20 text-xs">
                             <span className="text-slate-700 font-medium flex items-center gap-1.5">
                                 <i className="ti ti-calendar-stats text-accent" />
@@ -286,7 +328,7 @@ export default function EmployeeLeaveRequest({ open, employee, statusReady, bloc
                         </div>
                     )}
 
-                    {!creditType && (
+                    {!creditType && !maternityLeave && (
                         <p className="text-[11px] text-slate-500 bg-slate-50 p-2 rounded-md border border-slate-100">
                             This benefit has separate statutory entitlement rules. HR will verify your qualification upon review.
                         </p>

@@ -5,6 +5,7 @@ import { fetchWithAuth } from '../utils/api';
 import { getUser } from '../routes/guards';
 import { getDisciplinaryCache } from '../utils/disciplinaryCache';
 import { useCurrentTime } from '../utils/useCurrentTime';
+import { VACATION_MONETIZATION_EXEMPT_DAY_CAP } from '../../../shared/statutoryLeave.mjs';
 import {
     calculateSilConversion,
     validateCashOutRequest,
@@ -30,7 +31,7 @@ const STATUTORY_BASIS_OPTIONS = [
         label: 'DOLE Book III Art. 95 (Standard SIL Encashment)',
         citation: 'Labor Code of the Philippines, Book III, Article 95 & Omnibus Rules',
         description:
-            'Statutory exemption: Excluded from SSS, PhilHealth, Pag-IBIG salary credits and 13th-month basic pay. De minimis tax-exempt up to 10 days.',
+            `Documented payroll exclusions require HR review. BIR RR 29-2025 permits qualifying unused vacation-credit monetization up to ${VACATION_MONETIZATION_EXEMPT_DAY_CAP} days per year; other cash-outs require their own tax assessment.`,
         sss: 'Excluded',
         philhealth: 'Excluded',
         pagibig: 'Excluded',
@@ -741,7 +742,7 @@ export default function LeaveCreditsPanel({
                                 setCustomBasis('');
                                 setForm(p => ({
                                     ...p,
-                                    taxable_amount: '0.00',
+                                    taxable_amount: '',
                                     basis: STATUTORY_BASIS_OPTIONS[0].value,
                                     reason: '',
                                     confirmed: false,
@@ -832,8 +833,7 @@ export default function LeaveCreditsPanel({
                                         placeholder="0.00"
                                     />
                                     <p className="text-[10px] text-slate-500 mt-1">
-                                        Under BIR RR 5-2011 / RR 11-2018, monetization of unused vacation / SIL credits up to 10
-                                        days is de minimis tax-exempt.
+                                        BIR RR 29-2025: qualifying unused vacation-credit monetization ceiling is {VACATION_MONETIZATION_EXEMPT_DAY_CAP} days per year. SIL cash-out tax treatment requires review.
                                     </p>
                                 </div>
 

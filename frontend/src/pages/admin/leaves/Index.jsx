@@ -10,6 +10,12 @@ import useEmployeeLeaveCredits, { readLeaveCreditResponse } from '../../../utils
 import { CASH_OUT_LABELS, isCreditLeaveType, getDefaultLeaveCreditPool, getLeaveApprovalBlock, isPendingLeave } from '../../../../../shared/leavePolicy.js';
 import { Link, useSearchParams } from 'react-router-dom';
 import SilSettings from '../payroll/components/SilSettings';
+import StatutoryLeaveReviewFields from '../../../components/StatutoryLeaveReviewFields';
+import MaternityApprovalReview from '../../../components/MaternityApprovalReview';
+import { isStatutoryLeaveType, getManilaWorkDate } from '../../../../../shared/leavePolicy.js';
+import { validateStatutoryReview } from '../../../../../shared/statutoryLeave.mjs';
+
+const newStatutoryReview = () => ({ eligibility_confirmed: false, basis: '', contingency_reference: '', daily_rate: '', married_cohabiting: false, delivery_number: 1, event: 'live_birth', allocated_days: 0, full_pay: '', sss_benefit: '', differential_exemption: '', sss_paid_externally: 0, differential_paid_externally: 0, external_reference: '', external_paid_on: getManilaWorkDate(), payable_on: getManilaWorkDate() });
 
 function RequestedPayBadge({ leave }) {
     const paid = leave.requested_pay_type === 'with_pay';
@@ -92,6 +98,7 @@ export default function LeavesIndex() {
                 queryClient.invalidateQueries({ queryKey: ['adminLeaves', actorId] });
                 queryClient.invalidateQueries({ queryKey: ['leaveCreditPreview', actorId] });
                 queryClient.invalidateQueries({ queryKey: ['silCashOutQueue', actorId] });
+                queryClient.invalidateQueries({ queryKey: ['maternityReviewDraft', actorId] });
             }, 150);
         };
         const channel = supabase.channel('admin-leaves-sync')
@@ -101,6 +108,7 @@ export default function LeavesIndex() {
             .on('postgres_changes', { event: '*', schema: 'public', table: 'sil_cash_out_requests' }, handleRefresh)
             .on('postgres_changes', { event: '*', schema: 'public', table: 'employees' }, handleRefresh)
             .on('postgres_changes', { event: '*', schema: 'public', table: 'holidays' }, handleRefresh)
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'maternity_review_sources' }, handleRefresh)
             .subscribe(status => {
                 if (stopped) return;
                 if (status === 'SUBSCRIBED') handleRefresh();
@@ -119,10 +127,12 @@ export default function LeavesIndex() {
     const setApprovalModalLeave = leave => setApprovalLeaveId(leave?.id ?? null);
     const [legacyPayType, setLegacyPayType] = useState('with_pay');
     const [reviewAction, setReviewAction] = useState('Approved');
+    const [statutoryReview, setStatutoryReview] = useState(newStatutoryReview);
     const [decisionError, setDecisionError] = useState('');
     const reviewDialog = useRef(null);
     const [isSubmittingApproval, setIsSubmittingApproval] = useState(false);
-    const approvalPayType = approvalModalLeave?.requested_pay_type || legacyPayType;
+    const statutoryLeave = isStatutoryLeaveType(approvalModalLeave?.type);
+    const approvalPayType = statutoryLeave ? 'with_pay' : approvalModalLeave?.requested_pay_type || legacyPayType;
     const approvalCreditPool = approvalModalLeave && reviewAction === 'Approved' && approvalPayType === 'with_pay' ? getDefaultLeaveCreditPool(approvalModalLeave) : '';
     const submitting = useRef(false);
     const approvalRequest = useRef(null);
@@ -142,8 +152,10 @@ export default function LeavesIndex() {
         checking: credits.isFetching || credits.isLoading || preview.isFetching || preview.isLoading,
         error: credits.error?.message || preview.error?.message || '',
     }));
-    const creditBlocked = Boolean(approvalBlock);
-    const reviewDays = usesCredits ? preview.data?.days : approvalModalLeave?.scheduled_workdays;
+    const maternityLeave = approvalModalLeave?.type === 'Maternity Leave';
+    const maternityBlocked = maternityLeave && reviewAction === 'Approved' && (!statutoryReview?.source_revision || statutoryReview?.eligibility_confirmed !== true);
+    const creditBlocked = Boolean(approvalBlock) || maternityBlocked;
+    const reviewDays = maternityLeave ? approvalModalLeave.calendar_days : usesCredits ? preview.data?.days : approvalModalLeave?.scheduled_workdays;
 
 
 
@@ -152,6 +164,7 @@ export default function LeavesIndex() {
     const handleOpenApproveModal = (leave, action = 'Approved') => {
         if (submitting.current || leavesError || refreshingLeaves || !isPendingLeave(leave.status)) return;
         setReviewAction(action);
+        setStatutoryReview(newStatutoryReview());
         setDecisionError('');
         approvalRequest.current = null;
         setApprovalModalLeave(leave);
@@ -168,7 +181,8 @@ export default function LeavesIndex() {
         submitting.current = true;
         setIsSubmittingApproval(true);
         try {
-            const payload = { status: 'Approved', pay_type: approvalPayType, is_paid: isPaid, credit_pool: usesCredits ? approvalCreditPool : null, expected_status: leave.status };
+            const payload = { status: 'Approved', pay_type: approvalPayType, is_paid: isPaid, credit_pool: usesCredits ? approvalCreditPool : null, expected_status: leave.status,
+                ...(statutoryLeave ? { statutory_review: { ...validateStatutoryReview(leave, statutoryReview, { workDates: leave.scheduled_work_dates }), ...(maternityLeave ? { source_revision: statutoryReview.source_revision } : {}) } } : {}) };
             const fingerprint = JSON.stringify({ id: leave.id, ...payload });
             if (approvalRequest.current?.fingerprint !== fingerprint) approvalRequest.current = { fingerprint, id: crypto.randomUUID() };
             const res = await fetchWithAuth(`/api/leaves/${leave.id}/status`, {
@@ -904,9 +918,9 @@ export default function LeavesIndex() {
             {/* Leave Approval Modal */}
             {approvalModalLeave && (
                 <div className="fixed inset-0 z-50 bg-slate-950/70 flex items-center justify-center p-4">
-                    <div ref={reviewDialog} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby="leave-approval-title" className="bg-white rounded-lg shadow-xl border border-slate-200 w-full max-w-lg max-h-[90dvh] overflow-y-auto">
+                    <div ref={reviewDialog} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby="leave-approval-title" className={`w-full max-h-[90dvh] overflow-y-auto rounded-lg border border-slate-200 bg-white shadow-xl ${maternityLeave ? 'max-w-3xl' : 'max-w-lg'}`}>
                         {/* Header */}
-                        <div className="p-6 border-b border-slate-100 bg-slate-50 flex items-center justify-between">
+                        <div className="sticky top-0 z-10 flex items-center justify-between gap-3 border-b border-slate-100 bg-slate-50 p-4 sm:p-6">
                             <div className="flex items-center gap-3">
                                 <div className="w-9 h-9 rounded-md bg-accent-subtle text-accent flex items-center justify-center border border-accent/20 shrink-0">
                                     <i className="ti ti-calendar-check text-lg" />
@@ -918,14 +932,14 @@ export default function LeavesIndex() {
                         </div>
 
                         {/* Body */}
-                        <div className="p-6 space-y-5">
+                        <div className="space-y-5 p-4 sm:p-6">
                             {/* Employee Info Box */}
                             <div className="bg-slate-50 rounded-md p-4 border border-slate-200 space-y-3">
-                                <div className="flex items-center justify-between">
-                                    <div className="flex items-center gap-2.5">
+                                <div className="flex flex-wrap items-center justify-between gap-3">
+                                    <div className="flex min-w-0 items-center gap-2.5">
                                         <EmployeeAvatar employee={approvalModalLeave.employees} size="h-9 w-9" />
-                                        <div>
-                                            <p className="text-xs font-bold text-slate-800">
+                                        <div className="min-w-0">
+                                            <p className="break-words text-xs font-bold text-slate-800">
                                                 {approvalModalLeave.employees ? `${approvalModalLeave.employees.first_name} ${approvalModalLeave.employees.last_name}` : 'Employee'}
                                             </p>
                                             <p className="text-[10px] text-slate-400 font-semibold uppercase tracking-wider">
@@ -934,28 +948,25 @@ export default function LeavesIndex() {
                                         </div>
                                     </div>
                                     <span className="px-2.5 py-1 rounded-md bg-accent-subtle text-accent font-bold text-xs border border-accent/20">
-                                        {reviewDays ?? '--'} workday(s)
+                                        {reviewDays ?? '--'} {maternityLeave ? 'calendar days' : 'workday(s)'}
                                     </span>
                                 </div>
 
-                                <div className="text-xs text-slate-600 flex items-center justify-between border-t border-slate-200/60 pt-2 font-medium">
+                                <div className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-200/60 pt-2 text-xs font-medium text-slate-600">
                                     <span>Duration:</span>
                                     <span className="font-bold text-slate-800">
                                         {new Date(approvalModalLeave.start_date).toLocaleDateString('en-US', { timeZone: 'UTC', month: 'short', day: 'numeric', year: 'numeric' })} &rarr; {new Date(approvalModalLeave.end_date).toLocaleDateString('en-US', { timeZone: 'UTC', month: 'short', day: 'numeric', year: 'numeric' })}
                                     </span>
                                 </div>
-                                {approvalModalLeave.notes && (
-                                    <p className="text-xs text-slate-500 italic bg-white p-2.5 rounded-md border border-slate-200">
-                                        "{approvalModalLeave.notes}"
-                                    </p>
-                                )}
                             </div>
 
                             <div className="rounded-md border border-slate-200 bg-white p-3 text-sm"><p className="mb-1 text-xs font-semibold text-slate-500">Reason for request</p><p className="whitespace-pre-wrap break-words text-slate-700">{approvalModalLeave.notes || 'No reason provided.'}</p></div>
                             {reviewAction === 'Rejected' && <p className="rounded-md bg-danger-subtle p-3 text-sm text-danger-ink">Rejecting closes this request. The employee can submit revised dates or payment terms. Rejection does not deduct leave credits.</p>}
                             {approvalModalLeave.requested_pay_type && <p className="rounded-md bg-slate-50 p-3 text-xs text-slate-700">Employee requested {approvalModalLeave.requested_pay_type === 'with_pay' ? `paid SIL leave (${approvalModalLeave.requested_credit_days} workdays at filing)` : 'unpaid leave'}. Approve these terms after review, or reject for revision. Current work dates and credits are rechecked on approval.</p>}
                             {/* Compensation Choices */}
-                            {reviewAction === 'Approved' && !approvalModalLeave.requested_pay_type && <div className="space-y-2.5">
+                            {reviewAction === 'Approved' && maternityLeave && <MaternityApprovalReview key={approvalModalLeave.id} leave={approvalModalLeave} actorId={actorId} value={statutoryReview} onChange={setStatutoryReview} disabled={isSubmittingApproval} />}
+                            {reviewAction === 'Approved' && statutoryLeave && !maternityLeave && <StatutoryLeaveReviewFields leave={approvalModalLeave} value={statutoryReview} onChange={setStatutoryReview} disabled={isSubmittingApproval} />}
+                            {reviewAction === 'Approved' && !statutoryLeave && !approvalModalLeave.requested_pay_type && <div className="space-y-2.5">
                                 <label className="text-xs font-bold text-slate-700 uppercase tracking-wider block">
                                     {isCreditLeaveType(approvalModalLeave.type) ? 'Confirm payment' : "Review this benefit's payment entitlement"}
                                 </label>
@@ -1022,15 +1033,15 @@ export default function LeavesIndex() {
                                 {creditBlocked && <p role="alert" className="text-danger-ink">{approvalBlock}</p>}
                                 {!credits.data?.account && !credits.isLoading && <Link className="font-semibold text-accent underline" to={`/admin/employees/${approvalModalLeave.employee_id}`}>Review employee eligibility and opening balances</Link>}
                             </div>}
-                            {!usesCredits && <p className="text-xs text-slate-500">{approvalPayType === 'with_pay' ? 'Use this source only for a separate HR-confirmed existing benefit. Its existing pay calculation is preserved; no SIL credits are deducted.' : 'Unpaid leave does not deduct SIL credits.'}</p>}
-                            {!isCreditLeaveType(approvalModalLeave.type) && <p className="text-xs text-slate-500">This leave type has its own benefit rules and is not charged to SIL credits.</p>}
+                            {!usesCredits && !statutoryLeave && <p className="text-xs text-slate-500">{approvalPayType === 'with_pay' ? 'Use this source only for a separate HR-confirmed existing benefit. Its existing pay calculation is preserved; no SIL credits are deducted.' : 'Unpaid leave does not deduct SIL credits.'}</p>}
+                            {!isCreditLeaveType(approvalModalLeave.type) && !maternityLeave && <p className="text-xs text-slate-500">This leave type has its own benefit rules and is not charged to SIL credits.</p>}
                             {credits.isError && <p className="text-xs text-slate-500">{credits.error.message}</p>}
                         </div>}
 
                         {decisionError && <p role="alert" className="px-5 pb-3 text-sm text-danger-ink">{decisionError}</p>}
                         {!usesCredits && approvalBlock && <p role="alert" className="px-5 pb-3 text-xs text-danger-ink">{approvalBlock}</p>}
                         {/* Footer */}
-                        <div className="p-4 bg-slate-50 border-t border-slate-100 flex items-center justify-end gap-2.5">
+                        <div className="sticky bottom-0 z-10 flex flex-wrap items-center justify-end gap-2.5 border-t border-slate-100 bg-slate-50 p-4">
                             <button
                                 type="button"
                                 onClick={() => { if (!submitting.current) setApprovalModalLeave(null); }}
@@ -1057,7 +1068,7 @@ export default function LeavesIndex() {
                                 ) : (
                                     <>
                                         <i className="ti ti-check font-bold" />
-                                        {reviewAction === 'Rejected' ? 'Confirm rejection' : `Confirm Approval (${approvalPayType === 'with_pay' ? 'With Pay' : 'Without Pay'})`}
+                                        {reviewAction === 'Rejected' ? 'Confirm rejection' : maternityLeave ? 'Approve maternity leave' : `Confirm Approval (${approvalPayType === 'with_pay' ? 'With Pay' : 'Without Pay'})`}
                                     </>
                                 )}
                             </button>

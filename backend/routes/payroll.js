@@ -2,12 +2,14 @@ import express from 'express';
 import { validateRecordId, validateUuidParam } from '../middleware/requestValidation.js';
 import { calculateBIRWithholdingTax } from '../../shared/payrollTax.mjs';
 import { getSssMsc } from '../../shared/sssContribution.mjs';
-import { isFirstCutoffOfMonth, previousMonthRange, averageMonthlyBase } from '../../shared/statutoryTiming.mjs';
+import { isFirstCutoffOfMonth, previousMonthRange, averageMonthlyBase, computeEmployeeStatutory } from '../../shared/statutoryTiming.mjs';
 import { computeFactoryHolidayPayAdow, FACTORY_ADOW_LOOKBACK_DAYS } from '../../shared/factoryHolidayPay.mjs';
 import { isLastCutoffOfDecember } from '../../shared/thirteenthMonth.mjs';
 import { isCreditUuid, isLeaveDate, assertCreditAttendanceConsistent, getCreditAttendanceConflicts } from '../../shared/leaveCredits.mjs';
 import { fetchPendingSilCash, cashPayForEmployee, fetchPayrollLeavePay, payrollLeaveSignature } from '../utils/payrollCalculations.js';
 import { refreshLeaveCredits, sendCreditError } from './leaves.js';
+import { fetchStatutoryLeavePayroll, statutoryPayForEmployee, assertStatutoryPreview } from '../utils/statutoryLeavePayroll.js';
+import { getMaternitySalaryReplacement, isMaternityCoveredDate, validateFactoryMaternityOutput } from '../../shared/statutoryLeave.mjs';
 import { hasVerifiedManagerRole } from '../middleware/authMiddleware.js';
 import { supabase } from '../supabaseClient.js';
 import { parseListQuery, payrollListRecord } from '../utils/listViews.js';
@@ -19,14 +21,13 @@ import {
     round2,
     computeHolidayPayForPeriod,
     UNPAID_BREAK_HOURS,
-    calculateMaternityDifferential,
     calculateStatutoryLeavePay,
     aggregate13thMonthPay,
     THIRTEENTH_MONTH_TAX_EXEMPT_CEILING,
     getEffectiveMonthlySalary,
     MULTIPLIERS,
 } from '../utils/payrollCalculations.js';
-import { getLeaveSummaryForPeriod } from '../utils/leaveUtils.js';
+import { getLeaveSummaryForPeriod, getPaidLeaveDates } from '../utils/leaveUtils.js';
 
 import { getEmployeeRestDays, getScheduledWorkDates, getWorkPolicy, calculateTardiness } from '../../shared/workPolicy.mjs';
 import { STATUTORY_INPUT_LIMITS, getStatutorySettingsError } from '../../shared/statutorySettings.mjs';
@@ -119,20 +120,6 @@ export const getActiveWorkPolicy = async () => {
     return getWorkPolicy(settings);
 };
 
-// Employee-share SSS / PhilHealth / Pag-IBIG for one pay cycle, computed from the monthly base.
-// /batch uses this so saved deductions never come from the browser.
-const computeEmployeeStatutory = (monthlyBase, divisor, rates) => {
-    if (!(monthlyBase > 0)) return { sss: 0, philHealth: 0, pagIbig: 0 };
-    const sssMsc = getSssMsc(monthlyBase, rates.sss_max_msc);
-    const phSalaryBase = Math.min(Math.max(monthlyBase, rates.philhealth_min_salary), rates.philhealth_max_salary);
-    const monthlyPagIbig = Math.min(round2(monthlyBase * (rates.pagibig_employee_rate / 100)), rates.pagibig_max_contribution);
-    return {
-        sss: round2((sssMsc * (rates.sss_employee_rate / 100)) / divisor),
-        philHealth: round2(((phSalaryBase * (rates.philhealth_rate / 100)) / 2) / divisor),
-        pagIbig: round2(monthlyPagIbig / divisor)
-    };
-};
-
 // Monthly average of each employee's weekly pay over the previous calendar month (weeks that ended in it).
 // Only looked up in the first cutoff of a month, when the contribution is taken. Missing = no earlier payslips.
 const fetchPreviousMonthBases = async (supabase, employees, periodEnd) => {
@@ -182,19 +169,23 @@ const OPTIONAL_PAYROLL_COLUMNS = [
 ];
 
 const insertPayrollRow = async (payload, cash, actorId, frequency = 'weekly') => {
-    if (cash?.available) {
-        const result = await supabase.rpc('post_payroll_with_sil', {
+    if (cash?.available || cash?.statutory?.available) {
+        const statutory = cash?.statutory?.available && (cash.statutory.signature.lines.length > 0 || cash.statutory.signature.coverage.length > 0);
+        const result = await supabase.rpc(statutory ? 'post_payroll_with_statutory_leave' : 'post_payroll_with_sil', {
             p_actor_id: actorId,
             p_employee_id: payload.employee_id,
             p_payroll: payload,
             p_payout_ids: cash.payout_ids || [],
             p_frequency: frequency,
-            p_leave_signature: cash.leave_signature || []
+            p_leave_signature: cash.leave_signature || [],
+            ...(statutory ? { p_statutory_signature: cash.statutory.signature } : {})
         });
         if (result.error?.code === 'PGRST202') {
-            result.error = { ...result.error, status: 503, message: 'Install the SIL payroll migration before posting this payslip.' };
+            result.error = { ...result.error, status: 503, message: statutory ? 'Install the statutory leave payroll migration before posting this payslip.' : 'Install the SIL payroll migration before posting this payslip.' };
         }
         const conflicts = {
+            STATUTORY_PAYROLL_CHANGED: 'Statutory leave payments changed. Refresh the preview before saving.',
+            STATUTORY_REVIEW_REQUIRED: 'Install and complete the statutory leave benefit review before posting this payslip.',
             PAYROLL_ALREADY_EXISTS: 'A payslip already exists for this employee and period.',
             SIL_PAYOUT_CHANGED: 'Cash-out payments changed. Refresh the preview before saving.',
             PAYROLL_LEAVE_CHANGED: 'Approved leave changed. Refresh the preview before saving.',
@@ -282,25 +273,6 @@ const evaluateAttendanceEligibility = ({
             ? `No attendance and no approved paid leave for ${range}, so payroll cannot be processed. Only days with both a clock-in and a clock-out count as attendance.`
             : null,
     };
-};
-
-// Expands approved PAID leave records (start_date..end_date) into individual YYYY-MM-DD dates.
-const getPaidLeaveDates = (leaveRecords = []) => {
-    const dates = new Set();
-    for (const leave of leaveRecords || []) {
-        if (!leave || !leave.is_paid || !leave.start_date || !leave.end_date) continue;
-        if (leave.credit_pool) {
-            for (const date of leave.credit_dates || []) dates.add(date);
-            continue;
-        }
-        let cursor = String(leave.start_date).substring(0, 10);
-        const end = String(leave.end_date).substring(0, 10);
-        for (let i = 0; i < 62 && cursor <= end; i++) {
-            dates.add(cursor);
-            cursor = shiftDateStr(cursor, 1);
-        }
-    }
-    return Array.from(dates);
 };
 
 // DOLE Labor Advisories: an unworked Special (Non-Working) Day is "no work, no pay" UNLESS a
@@ -554,7 +526,10 @@ const fetchApprovedPaidLeaves = async (employeeId, start, end) => {
         });
 
         return {
-            totalPaidLeaveDays: summary.paid_leave_days || 0,
+            totalPaidLeaveDays: (summary.paid_leave_days || 0) + (summary.paternity_days || 0),
+            attendanceCoveredDays: (summary.paid_leave_days || 0) + (summary.paternity_days || 0) + summary.leaves.filter(leave => leave.type === 'Maternity Leave').reduce((sum, leave) => sum + (leave.statutory_review.work_dates || []).filter(date => date >= start && date <= end).length, 0),
+            ordinaryPaidLeaveDays: summary.paid_leave_days || 0,
+            paternityDays: summary.paternity_days || 0,
             leaveRecords: summary.leaves || []
         };
     } catch (err) {
@@ -605,11 +580,12 @@ router.post('/factory-holiday-preview', requirePayrollManager, async (req, res) 
         if (ids.length === 0) return res.json({ success: true, holidays: {}, thirteenth: {} });
 
         await ensureHolidaysGeneratedForRange(pStart, pEnd);
-        const [{ data: holidays, error: holidayError }, { data: empList, error: employeeError }, ctx, settings] = await Promise.all([
+        const [{ data: holidays, error: holidayError }, { data: empList, error: employeeError }, ctx, settings, statutoryPreview] = await Promise.all([
             supabase.from('holidays').select('*').gte('date', pStart).lte('date', pEnd),
             supabase.from('employees').select('*').in('id', ids),
             fetchFactoryHolidayContext(ids, pStart, pEnd),
             getStatutorySettings(),
+            fetchStatutoryLeavePayroll(supabase, ids, pStart, pEnd),
         ]);
         if (holidayError || employeeError) throw holidayError || employeeError;
 
@@ -628,7 +604,7 @@ router.post('/factory-holiday-preview', requirePayrollManager, async (req, res) 
             const holiday = computeFactoryHolidayPay({
                 employee,
                 ctx,
-                holidays: holidays || [],
+                holidays: (holidays || []).filter(holiday => !isMaternityCoveredDate(holiday.date, statutoryPreview.data[employee.id]?.coverage)),
                 periodStart: pStart,
                 periodEnd: pEnd,
                 piecePay,
@@ -1196,23 +1172,27 @@ router.post('/preview', async (req, res) => {
             allAttendanceLogs,
             paidLeaveInfo,
             lookbackLeaveInfo,
-            { data: lookbackHolidays }
+            { data: lookbackHolidays },
+            statutoryPreview
         ] = await Promise.all([
             fetchPayrollAttendance(supabase, [employee_id], lookbackStart, pEnd),
             fetchApprovedPaidLeaves(employee_id, pStart, pEnd),
             fetchApprovedPaidLeaves(employee_id, lookbackStart, pEnd),
-            supabase.from('holidays').select('*').gte('date', lookbackStart).lte('date', pEnd)
+            supabase.from('holidays').select('*').gte('date', lookbackStart).lte('date', pEnd),
+            fetchStatutoryLeavePayroll(supabase, [employee_id], pStart, pEnd)
         ]);
         // Period-only view for display; the wider lookback set is used for holiday eligibility only.
         const attendanceLogs = (allAttendanceLogs || []).filter(l => getRecordDateKey(l) >= pStart);
         const creditAttendanceConflicts = getCreditAttendanceConflicts(lookbackLeaveInfo?.leaveRecords, allAttendanceLogs || []);
-        const paidLeaveDates = getPaidLeaveDates(lookbackLeaveInfo?.leaveRecords);
+        const paidLeaveDates = getPaidLeaveDates(lookbackLeaveInfo?.leaveRecords, lookbackStart, pEnd);
 
         const restDays = getEmployeeRestDays(employee);
 
         const empDept = (employee?.department || '').toLowerCase();
         const empShift = (employee?.shift || '').toLowerCase();
         const isFactoryWorker = empDept.includes('factory') || empShift.includes('factory');
+        const statutory = statutoryPayForEmployee(statutoryPreview, employee_id, { factory: isFactoryWorker, dailyRate: getContractualDailyRate(employee) || round2(effectiveMonthlySalary * 12 / 261) });
+        const payableHolidays = (holidayList || []).filter(holiday => !isMaternityCoveredDate(holiday.date, statutory.signature.coverage));
 
         let preview;
         if (isFactoryWorker) {
@@ -1222,7 +1202,7 @@ router.post('/preview', async (req, res) => {
             const factoryHoliday = computeFactoryHolidayPay({
                 employee,
                 ctx: factoryCtx,
-                holidays: holidayList || [],
+                holidays: payableHolidays,
                 periodStart: pStart,
                 periodEnd: pEnd,
                 piecePay: toSafeNumber(req.body?.piece_pay),
@@ -1238,7 +1218,7 @@ router.post('/preview', async (req, res) => {
                 periodStart: pStart,
                 periodEnd: pEnd,
                 monthlySalary: effectiveMonthlySalary,
-                holidayList: lookbackHolidays || holidayList || [],
+                holidayList: (lookbackHolidays || holidayList || []).filter(holiday => !isMaternityCoveredDate(holiday.date, statutory.signature.coverage)),
                 attendanceLogs: allAttendanceLogs || [],
                 paidLeaveDates,
                 restDays,
@@ -1256,10 +1236,10 @@ router.post('/preview', async (req, res) => {
         const activeWorkPolicy = await getActiveWorkPolicy();
         const baseEligibility = evaluateAttendanceEligibility({
             attendanceLogs,
-            approvedPaidLeaveDays: paidLeaveInfo?.totalPaidLeaveDays,
+            approvedPaidLeaveDays: paidLeaveInfo?.attendanceCoveredDays,
             periodStart: pStart,
             periodEnd: pEnd,
-            exempt: isFactoryWorker,
+            exempt: isFactoryWorker || statutory.maternity_sss_pay > 0 || statutory.maternity_salary_differential > 0,
         });
         const hasConflict = creditAttendanceConflicts.length > 0;
         const isBlocked = baseEligibility.blocked || hasConflict;
@@ -1269,9 +1249,10 @@ router.post('/preview', async (req, res) => {
 
         res.json({
             ...preview,
+            statutory,
             tardiness: calculateTardiness(attendanceLogs, activeWorkPolicy, restDays),
             workPolicy: activeWorkPolicy,
-            approvedPaidLeaveDays: paidLeaveInfo.totalPaidLeaveDays,
+            approvedPaidLeaveDays: paidLeaveInfo.attendanceCoveredDays,
             paidLeaveRecords: paidLeaveInfo.leaveRecords,
             attendanceCheck: {
                 ...baseEligibility,
@@ -1461,7 +1442,8 @@ router.post('/', requirePayrollManager, async (req, res) => {
             allAttendanceLogs,
             paidLeaveInfo,
             lookbackLeaveInfo,
-            { data: suspensionLogs }
+            { data: suspensionLogs },
+            statutoryPreview
         ] = await Promise.all([
             supabase.from('holidays').select('*').gte('date', lookbackStart).lte('date', pEnd),
             fetchPayrollAttendance(supabase, [employee_id], lookbackStart, pEnd),
@@ -1471,12 +1453,15 @@ router.post('/', requirePayrollManager, async (req, res) => {
                 .from('disciplinary_logs')
                 .select('id, date, reason, status')
                 .eq('employee_id', employee_id)
-                .eq('type', 'Suspension')
+                .eq('type', 'Suspension'),
+            fetchStatutoryLeavePayroll(supabase, [employee_id], pStart, pEnd)
         ]);
 
         // Period-only views drive absences, lateness and the holiday list; the wider lookback set
         // (allHolidays / allAttendanceLogs / paidLeaveDates) is only used for holiday eligibility.
-        const holidayList = (allHolidays || []).filter(h => h?.date && String(h.date).substring(0, 10) >= pStart);
+        const statutory = statutoryPayForEmployee(statutoryPreview, employee_id, { factory: isFactory, dailyRate });
+        assertStatutoryPreview(req.body.expected_statutory_signature, statutory);
+        const holidayList = (allHolidays || []).filter(h => h?.date && String(h.date).substring(0, 10) >= pStart && !isMaternityCoveredDate(String(h.date).slice(0, 10), statutory.signature.coverage));
         const attendanceLogs = (allAttendanceLogs || []).filter(l => getRecordDateKey(l) >= pStart);
         const creditAttendanceConflicts = getCreditAttendanceConflicts(lookbackLeaveInfo?.leaveRecords, allAttendanceLogs || []);
         if (creditAttendanceConflicts.length > 0) {
@@ -1484,9 +1469,14 @@ router.post('/', requirePayrollManager, async (req, res) => {
                 error: `Approved credited leave conflicts with attendance punches on ${creditAttendanceConflicts.join(', ')}. Reconcile the leave or attendance before calculating payroll.`
             });
         }
-        const paidLeaveDates = getPaidLeaveDates(lookbackLeaveInfo?.leaveRecords);
+        const paidLeaveDates = getPaidLeaveDates(lookbackLeaveInfo?.leaveRecords, lookbackStart, pEnd);
 
 
+
+        const productionDates = isFactory ? validateFactoryMaternityOutput(basicPay, statutory.signature.coverage, {
+            periodStart: pStart, periodEnd: pEnd, restDays, declaredDates: req.body.output_work_dates,
+            workedDates: attendanceLogs.filter(log => log.time_in && log.time_out).map(getRecordDateKey)
+        }) : [];
 
         // Holiday pay is computed BEFORE the absence step so the absence step can see which
         // Regular Holidays were forfeited under DOLE Art. 94 (see forfeitedHolidayDates below).
@@ -1511,7 +1501,7 @@ router.post('/', requirePayrollManager, async (req, res) => {
                 periodStart: pStart,
                 periodEnd: pEnd,
                 monthlySalary: effectiveMonthlySalary,
-                holidayList: allHolidays || [],
+                holidayList: (allHolidays || []).filter(holiday => !isMaternityCoveredDate(holiday.date, statutory.signature.coverage)),
                 attendanceLogs: allAttendanceLogs || [],
                 paidLeaveDates,
                 restDays,
@@ -1543,6 +1533,10 @@ router.post('/', requirePayrollManager, async (req, res) => {
 
             const expectedDates = getScheduledWorkDates(pStart, pEnd, restDays);
             const expectedWorkDays = expectedDates.length;
+            const maternityDates = expectedDates.filter(date => isMaternityCoveredDate(date, statutory.signature.coverage));
+            const maternityReplacement = getMaternitySalaryReplacement(basicPay, statutory.signature.coverage, expectedDates);
+            basicPay = Math.max(0, round2(basicPay - maternityReplacement));
+            if (maternityReplacement > 0) absenceNote += ` [Maternity ordinary wages replaced by statutory benefit: PHP ${maternityReplacement.toFixed(2)}]`;
             const daysPresent = expectedDates.filter(date => completedAttendanceDates.has(date)).length;
 
             // Declared Special Non-Working Days and Regular Holidays are non-working by law; unworked days are not absences
@@ -1571,7 +1565,7 @@ router.post('/', requirePayrollManager, async (req, res) => {
                 }
             });
 
-            const unworkedDays = Math.max(0, expectedWorkDays - daysPresent - approvedPaidLeaveDays - unworkedHolidays);
+            const unworkedDays = Math.max(0, expectedWorkDays - daysPresent - approvedPaidLeaveDays - unworkedHolidays - maternityDates.length);
             if (unworkedDays > 0) {
                 absenceDeduction = round2(unworkedDays * dailyRate);
                 basicPay = Math.max(0, round2(basicPay - absenceDeduction));
@@ -1638,24 +1632,17 @@ router.post('/', requirePayrollManager, async (req, res) => {
 
 
         // Compute HR Approved Paid Leave Pay (Bypasses absence / missing timecard punches)
-        const approvedPaidLeaveDays = paidLeaveInfo.totalPaidLeaveDays;
+        const approvedPaidLeaveDays = paidLeaveInfo.ordinaryPaidLeaveDays;
         const paidLeavePay = round2(approvedPaidLeaveDays * dailyRate);
 
-        const paternityPay = calculateStatutoryLeavePay({ monthlySalary: effectiveMonthlySalary, leaveType: 'Paternity', daysTaken: paternity_days, dailyRate }).leavePay;
+        if (toSafeNumber(paternity_days) > 0 || toSafeNumber(maternity_leave_days) > 0 || toSafeNumber(sss_cash_benefit) > 0) return res.status(400).json({ error: 'Use an HR-reviewed Maternity Leave or Paternity Leave request. Manual statutory amounts cannot be added to payroll.' });
+        const paternityPay = statutory.paternity_additional_pay;
         const soloParentPay = calculateStatutoryLeavePay({ monthlySalary: effectiveMonthlySalary, leaveType: 'Solo Parent', daysTaken: solo_parent_days, dailyRate }).leavePay;
         if (toSafeNumber(sil_days) > 0) return res.status(400).json({ error: 'SIL pay comes from approved leave requests. Use a cash-out request for unused credits.' });
         const silPay = 0;
         const totalOtherLeavePay = round2(toSafeNumber(paternityPay) + toSafeNumber(soloParentPay) + toSafeNumber(silPay));
 
-        let matDiffPay = 0;
-        if (toSafeNumber(maternity_leave_days) > 0) {
-            const matResult = calculateMaternityDifferential({
-                monthlySalary: effectiveMonthlySalary,
-                sssCashBenefit: sss_cash_benefit,
-                leaveDays: maternity_leave_days,
-            });
-            matDiffPay = toSafeNumber(matResult.salaryDifferential);
-        }
+        const matDiffPay = statutory.maternity_salary_differential;
 
         const safeBasic = toSafeNumber(basicPay);
         const safeOt = toSafeNumber(overtimePay);
@@ -1664,7 +1651,7 @@ router.post('/', requirePayrollManager, async (req, res) => {
         const safeMatDiff = toSafeNumber(matDiffPay);
         const safePaidLeavePay = toSafeNumber(paidLeavePay);
         const pendingCash = await fetchPendingSilCash(supabase, [employee_id], pEnd);
-        const cash = { ...cashPayForEmployee(pay_frequency === 'weekly' ? pendingCash.requests : [], employee_id), available: pendingCash.available, leave_signature: payrollLeaveSignature(paidLeaveInfo.leaveRecords) };
+        const cash = { ...cashPayForEmployee(pay_frequency === 'weekly' ? pendingCash.requests : [], employee_id), available: pendingCash.available, leave_signature: payrollLeaveSignature(paidLeaveInfo.leaveRecords), statutory };
         if ((req.body.expected_paid_leave_pay != null && Number(req.body.expected_paid_leave_pay) !== safePaidLeavePay) || (req.body.expected_sil_cash_pay != null && Number(req.body.expected_sil_cash_pay) !== cash.cash_pay)) return res.status(409).json({ error: 'Leave payments changed. Refresh the preview before saving.' });
 
         // 13th month pay: this year's basic pay / 12, added once, in the last cutoff of December.
@@ -1673,7 +1660,7 @@ router.post('/', requirePayrollManager, async (req, res) => {
             : 0;
 
         // Combined Gross Pay: Basic + OT + Holiday Pay + Statutory Leaves + Maternity Differential + HR Approved Paid Leaves + 13th month
-        const grossPay = round2(safeBasic + safeOt + safeHoliday + safeLeave + safeMatDiff + (isFactory ? safePaidLeavePay : 0) + cash.cash_pay + thirteenthMonthPay);
+        const grossPay = round2(safeBasic + safeOt + safeHoliday + safeLeave + safeMatDiff + statutory.maternity_sss_pay + (isFactory ? safePaidLeavePay : 0) + cash.cash_pay + thirteenthMonthPay);
 
         // Deductions schedule: prorated contributions apply per cycle for weekly/semi-monthly, or month-end for monthly
         const periodEndDay = new Date(`${pEnd}T00:00:00`).getDate();
@@ -1702,7 +1689,7 @@ router.post('/', requirePayrollManager, async (req, res) => {
             let contributionSalaryBase = effectiveMonthlySalary;
             if (isFactory && effectiveMonthlySalary <= 0) {
                 const previousBases = pay_frequency === 'weekly' ? await fetchPreviousMonthBases(supabase, [employee], pEnd) : new Map();
-                contributionSalaryBase = previousBases.get(String(employee.id)) ?? ((grossPay - cash.cash_pay - thirteenthMonthPay) * 4);
+                contributionSalaryBase = previousBases.get(String(employee.id)) ?? ((safeBasic + safeHoliday + safePaidLeavePay + safeLeave) * 4);
             }
 
             // Frequency Divisor (Weekly = 1: the full monthly amount is taken once, Semi-Monthly = 2, Monthly = 1)
@@ -1712,16 +1699,16 @@ router.post('/', requirePayrollManager, async (req, res) => {
             const statRates = await getStatutorySettings();
 
             // 1. SSS (EE/ER rates and max MSC from settings; EC fee P30/P10)
-            const sssMsc = getSssMsc(contributionSalaryBase, statRates.sss_max_msc);
+            const sssMsc = contributionSalaryBase > 0 ? getSssMsc(contributionSalaryBase, statRates.sss_max_msc) : 0;
             sssEE = round2((sssMsc * (statRates.sss_employee_rate / 100)) / divisor);
             sssER = round2((sssMsc * (statRates.sss_employer_rate / 100)) / divisor);
-            sssEC = sssMsc >= 15000 ? 30 : 10;
+            sssEC = sssMsc > 0 ? (sssMsc >= 15000 ? 30 : 10) : 0;
 
             // 2. PhilHealth (total premium rate split 50/50, salary floor & ceiling from settings)
-            const phSalaryBase = Math.min(
+            const phSalaryBase = contributionSalaryBase > 0 ? Math.min(
                 Math.max(contributionSalaryBase, statRates.philhealth_min_salary),
                 statRates.philhealth_max_salary
-            );
+            ) : 0;
             philHealthEE = round2(((phSalaryBase * (statRates.philhealth_rate / 100)) / 2) / divisor);
             philHealthER = round2(((phSalaryBase * (statRates.philhealth_rate / 100)) / 2) / divisor);
 
@@ -1736,7 +1723,7 @@ router.post('/', requirePayrollManager, async (req, res) => {
 
         // BIR Taxable Income & Withholding Tax (passed with pay_frequency)
         // 13th month pay is tax-exempt up to the ceiling; only the excess is taxable.
-        const taxableGross = Math.max(0, grossPay - safeMatDiff - cash.cash_pay + cash.taxable_cash - Math.min(thirteenthMonthPay, THIRTEENTH_MONTH_TAX_EXEMPT_CEILING));
+        const taxableGross = Math.max(0, grossPay - safeMatDiff - statutory.maternity_sss_pay - cash.cash_pay + cash.taxable_cash - Math.min(thirteenthMonthPay, THIRTEENTH_MONTH_TAX_EXEMPT_CEILING));
         const taxableIncome = Math.max(0, round2(taxableGross - totalStatutoryContributions - lateDed));
         const tax = calculateBIRWithholdingTax(taxableIncome, pay_frequency);
 
@@ -1758,7 +1745,7 @@ router.post('/', requirePayrollManager, async (req, res) => {
         const tardinessNote = tardiness.minutes > 0
             ? ` [Late: PHP ${appliedLateDed.toFixed(2)}; Tardiness calculation: ${tardiness.minutes} whole minute(s) beyond ${activeWorkPolicy.gracePeriodMinutes}m grace x PHP ${activeWorkPolicy.lateRatePerMinute} = PHP ${lateDed.toFixed(2)}${appliedLateDed < lateDed ? '; capped to available earnings' : ''}]`
             : '';
-        const remarks = `${baseRemarks}${tardinessNote}${absenceNote}${suspensionNote}${paidLeaveNote}${matDiffNote}${thirteenthNote}${otPolicyNote}${cash.cash_pay > 0 ? ` [SIL cash payout: PHP ${cash.cash_pay.toFixed(2)}]` : ''}`;
+        const remarks = `${baseRemarks}${tardinessNote}${absenceNote}${suspensionNote}${paidLeaveNote}${matDiffNote}${thirteenthNote}${otPolicyNote}${cash.cash_pay > 0 ? ` [SIL cash payout: PHP ${cash.cash_pay.toFixed(2)}]` : ''}${productionDates.length ? ` [Verified production work dates: ${productionDates.join(', ')}]` : ''}`;
 
         let insertPayload = {
             employee_id,
@@ -1771,6 +1758,7 @@ router.post('/', requirePayrollManager, async (req, res) => {
             sil_cash_pay: cash.cash_pay,
             leave_pay: safeLeave,
             maternity_salary_differential: safeMatDiff,
+            ...(statutory.available ? { maternity_sss_pay: statutory.maternity_sss_pay } : {}),
             thirteenth_month_pay: thirteenthMonthPay,
             overtime_pay: isFactory ? 0 : safeOt,
             holiday_pay: safeHoliday,
@@ -1844,6 +1832,7 @@ router.post('/', requirePayrollManager, async (req, res) => {
             paid_leave_pay: safePaidLeavePay,
             approved_paid_leave_days: approvedPaidLeaveDays,
             maternity_differential: safeMatDiff,
+            statutory,
             thirteenth_month_pay: thirteenthMonthPay,
             employer_contributions: {
                 sss_er: sssER,
@@ -1938,6 +1927,16 @@ router.post('/batch', requirePayrollManager, async (req, res) => {
             const frequency = entry.pay_frequency || pay_frequency || 'weekly';
             const basicPay = Math.max(0, round2(toSafeNumber(entry.gross_pay)));
             const cash = { ...leavePay.data[employee_id], available: leavePay.cash_out_available };
+            try { assertStatutoryPreview(entry.expected_statutory_signature, cash.statutory); }
+            catch (error) { skipped.push({ employee_id, reason: error.message }); continue; }
+            let productionDates;
+            try {
+                productionDates = validateFactoryMaternityOutput(basicPay, cash.statutory.signature.coverage, {
+                    periodStart: pStart, periodEnd: pEnd, restDays: getEmployeeRestDays(empMap.get(String(employee_id))),
+                    declaredDates: entry.output_work_dates,
+                    workedDates: (attendanceByEmployee.get(String(employee_id)) || []).filter(log => log.time_in && log.time_out).map(getRecordDateKey)
+                });
+            } catch (error) { skipped.push({ employee_id, reason: error.message }); continue; }
             if (frequency !== 'weekly') { cash.cash_pay = 0; cash.taxable_cash = 0; cash.payout_ids = []; }
             if ((entry.expected_paid_leave_pay != null && Number(entry.expected_paid_leave_pay) !== cash.paid_leave_pay)
                 || (entry.expected_sil_cash_pay != null && Number(entry.expected_sil_cash_pay) !== cash.cash_pay)) {
@@ -1955,7 +1954,7 @@ router.post('/batch', requirePayrollManager, async (req, res) => {
             const holiday = computeFactoryHolidayPay({
                 employee: empMap.get(String(employee_id)),
                 ctx: batchFactoryCtx,
-                holidays: batchHolidays || [],
+                holidays: (batchHolidays || []).filter(holiday => !isMaternityCoveredDate(holiday.date, cash.statutory.signature.coverage)),
                 periodStart: pStart,
                 periodEnd: pEnd,
                 piecePay: basicPay,
@@ -1974,7 +1973,7 @@ router.post('/batch', requirePayrollManager, async (req, res) => {
                 continue;
             }
             const thirteenthSummary = thirteenthMonthPay > 0 ? ` | 13th Month Pay: ₱${thirteenthMonthPay.toFixed(2)}` : '';
-            const grossPay = round2(basicPay + holiday.total + cash.paid_leave_pay + cash.cash_pay + thirteenthMonthPay);
+            const grossPay = round2(basicPay + holiday.total + cash.paid_leave_pay + cash.cash_pay + thirteenthMonthPay + cash.statutory.total_additional_pay);
 
             const divisor = frequency === 'weekly' ? 4 : (frequency === 'semi-monthly' ? 2 : 1);
 
@@ -1983,7 +1982,7 @@ router.post('/batch', requirePayrollManager, async (req, res) => {
             // the month: the full monthly amount, based on the salary or last month's average weekly pay.
             // SIL cash is not contribution pay.
             const isWeekly = frequency === 'weekly';
-            const thisCyclePay = basicPay + holiday.total + cash.paid_leave_pay;
+            const thisCyclePay = basicPay + holiday.total + cash.paid_leave_pay + cash.statutory.paternity_additional_pay;
             let statutory = { sss: 0, philHealth: 0, pagIbig: 0 };
             if (!isWeekly || isFirstCutoffOfMonth(pEnd)) {
                 const monthlyBase = getStatutoryMonthlyBase(empMap.get(String(employee_id)), batchPrevBases) ?? thisCyclePay * (isWeekly ? 4 : divisor);
@@ -1992,7 +1991,7 @@ router.post('/batch', requirePayrollManager, async (req, res) => {
             const sssDed = statutory.sss;
             const phDed = statutory.philHealth;
             const pgbDed = statutory.pagIbig;
-            const taxDed = calculateBIRWithholdingTax(Math.max(0, basicPay + holiday.total + cash.paid_leave_pay + cash.taxable_cash + Math.max(0, thirteenthMonthPay - THIRTEENTH_MONTH_TAX_EXEMPT_CEILING) - sssDed - phDed - pgbDed - tardiness.deduction), frequency);
+            const taxDed = calculateBIRWithholdingTax(Math.max(0, basicPay + holiday.total + cash.paid_leave_pay + cash.statutory.paternity_additional_pay + cash.taxable_cash + Math.max(0, thirteenthMonthPay - THIRTEENTH_MONTH_TAX_EXEMPT_CEILING) - sssDed - phDed - pgbDed - tardiness.deduction), frequency);
 
             const appliedLateDed = Math.min(tardiness.deduction, Math.max(0, round2(grossPay - sssDed - phDed - pgbDed - taxDed)));
             const rawDeductions = round2(sssDed + phDed + pgbDed + taxDed + tardiness.deduction);
@@ -2028,6 +2027,9 @@ router.post('/batch', requirePayrollManager, async (req, res) => {
                 paid_leave_days: cash.paid_leave_days,
                 paid_leave_pay: cash.paid_leave_pay,
                 paid_leave_in_basic: false,
+                leave_pay: cash.statutory.paternity_additional_pay,
+                maternity_salary_differential: cash.statutory.maternity_salary_differential,
+                ...(cash.statutory.available ? { maternity_sss_pay: cash.statutory.maternity_sss_pay } : {}),
                 sil_cash_pay: cash.cash_pay,
                 holiday_pay: holiday.total,
                 holiday_breakdown: holiday.items,
@@ -2038,7 +2040,7 @@ router.post('/batch', requirePayrollManager, async (req, res) => {
                 philhealth_deduction: phDed,
                 pagibig_deduction: pgbDed,
                 tax_deduction: taxDed,
-                remarks,
+                remarks: remarks + (productionDates.length ? ` | Verified production work dates: ${productionDates.join(', ')}` : ''),
                 net_pay: netPay,
                 status: 'Paid'
             };

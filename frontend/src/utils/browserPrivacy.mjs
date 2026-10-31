@@ -6,6 +6,7 @@ export const clearProfileCache = key => profileCache.delete(key);
 export function minimalLoginSession(value = {}) {
   const employee = value.employeeData;
   const state = { email: value.email, step: value.step, otpMethod: value.otpMethod, expiresAt: value.expiresAt };
+  if (typeof value.challengeId === 'string' && /^[a-f0-9]{32}$/.test(value.challengeId)) state.challengeId = value.challengeId;
   if (employee && typeof employee === 'object') {
     state.employeeData = {};
     for (const key of ['id', 'company_id', 'email', 'first_name', 'last_name', 'role', 'requires_password_change']) {

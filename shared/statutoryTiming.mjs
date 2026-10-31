@@ -1,6 +1,17 @@
 // When statutory contributions (SSS, PhilHealth, Pag-IBIG) are deducted, and what monthly amount they use.
 // Client policy: for weekly payroll they are taken once a month, in the first cutoff that ends in that month.
 // Shared by the server (payroll.js) and the factory batch preview (Create.jsx) so both agree.
+import { getSssMsc } from './sssContribution.mjs';
+
+export function computeEmployeeStatutory(monthlyBase, divisor, rates) {
+    if (!(monthlyBase > 0)) return { sss: 0, philHealth: 0, pagIbig: 0 };
+    const round = value => Math.round((value + Number.EPSILON) * 100) / 100;
+    const sssMsc = getSssMsc(monthlyBase, rates.sss_max_msc);
+    const phBase = Math.min(Math.max(monthlyBase, rates.philhealth_min_salary), rates.philhealth_max_salary);
+    const pagIbig = Math.min(round(monthlyBase * rates.pagibig_employee_rate / 100), rates.pagibig_max_contribution);
+    return { sss: round(sssMsc * rates.sss_employee_rate / 100 / divisor),
+        philHealth: round(phBase * rates.philhealth_rate / 100 / 2 / divisor), pagIbig: round(pagIbig / divisor) };
+}
 
 // Weekly cutoffs end 7 days apart, so the first one ending in a month always ends on day 1 to 7.
 export const FIRST_CUTOFF_LAST_END_DAY = 7;
@@ -29,7 +40,7 @@ export function previousMonthRange(periodEnd) {
 // Pay that counts toward contributions for one saved payslip (SIL cash is excluded).
 export function cycleCompensation(row) {
     const n = (v) => Number(v) || 0;
-    return n(row?.basic_pay) + n(row?.holiday_pay) + (row?.paid_leave_in_basic ? 0 : n(row?.paid_leave_pay));
+    return n(row?.basic_pay) + n(row?.holiday_pay) + n(row?.leave_pay) + (row?.paid_leave_in_basic ? 0 : n(row?.paid_leave_pay));
 }
 
 // Average weekly pay of the given payslips, as a monthly figure (x4, the same factor used everywhere else).
