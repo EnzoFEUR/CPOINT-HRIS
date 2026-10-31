@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { fetchWithAuth } from '../utils/api';
-import { calculateMaternityAssessment, getMaternityWindows } from '../../../shared/maternityAssessment.mjs';
+import { calculateMaternityAssessment, getMaternityWindows, previewMaternityAssessment } from '../../../shared/maternityAssessment.mjs';
 import { isLeaveDate, getManilaWorkDate } from '../../../shared/leavePolicy.js';
 import { isBoundedDecimalInput } from '../../../shared/inputLimits.mjs';
 
@@ -49,8 +49,9 @@ export default function MaternityApprovalReview({ leave, actorId, value, onChang
     };
     const moneyField = (name, label) => <label className="block text-xs font-semibold text-slate-700">{label}<input type="text" inputMode="decimal" maxLength={12} value={sources?.[name] ?? ''} onChange={event => { if (isBoundedDecimalInput(event.target.value, 100000000, true)) update(name, event.target.value); }} className={inputClass} /></label>;
     const recordField = (collection, index, field, next) => update(collection, sources[collection].map((row, i) => i === index ? { ...row, [field]: next } : row));
-    let draft = null, missing = '';
+    let draft = null, estimates = null, missing = '';
     if (data && sources) {
+        estimates = previewMaternityAssessment(data.request, sources);
         try { draft = calculateMaternityAssessment(data.request, sources); } catch (error) { missing = error.message; }
     }
     const discard = async () => {
@@ -73,6 +74,17 @@ export default function MaternityApprovalReview({ leave, actorId, value, onChang
     const open = editing || !data.revision;
     const outside = outsideEnabled ?? Boolean(Number(sources.sss_paid_externally) || Number(sources.differential_paid_externally));
     const exemption = exemptionEnabled ?? Boolean(sources.differential_exemption);
+    const basicOnly = !draft && estimates?.full_pay == null && estimates?.basic_pay_estimate != null;
+    const totals = [
+        [basicOnly ? 'Basic-pay estimate' : !draft ? 'Gross full-pay estimate' : 'Gross full-pay entitlement', draft?.review.full_pay ?? estimates?.full_pay ?? estimates?.basic_pay_estimate,
+            !draft ? estimates?.wage_message || 'Estimate; wage evidence still needs confirmation.' : ''],
+        [!draft && estimates?.sss_benefit != null ? 'SSS benefit estimate' : 'SSS benefit', draft?.review.sss_benefit ?? estimates?.sss_benefit,
+            !draft ? estimates?.sss_message || 'Estimate; SSS evidence still needs confirmation.' : ''],
+        ['Employer differential (gross)', draft?.review.salary_differential ?? estimates?.salary_differential,
+            !draft ? estimates?.salary_differential == null ? 'Requires confirmed full pay and SSS amounts.' : 'Estimate; source evidence still needs confirmation.' : ''],
+        ['Remaining gross advance', draft?.remaining_advance ?? estimates?.remaining_advance,
+            !draft ? estimates?.remaining_advance == null ? 'Requires the benefit calculation and valid payment offsets.' : 'Estimate; payment details still need confirmation.' : ''],
+    ];
     return <section aria-label="Maternity calculation" className="space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-2">
             <h4 className="text-sm font-bold text-slate-900">Maternity benefit calculation</h4>
@@ -80,8 +92,10 @@ export default function MaternityApprovalReview({ leave, actorId, value, onChang
         </div>
         <p className={`text-xs font-semibold ${advanceDue < getManilaWorkDate() ? 'text-danger-ink' : 'text-slate-600'}`}>Advance due by: {advanceDue} · No SIL deduction</p>
         <dl className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            {[['Gross full-pay entitlement', draft?.review.full_pay], ['SSS benefit', draft?.review.sss_benefit], ['Employer differential (gross)', draft?.review.salary_differential], ['Remaining gross advance', draft?.remaining_advance]].map(([label, amount]) => <div key={label} className="min-w-0 rounded-lg border border-slate-200 bg-slate-50 p-3"><dt className="text-xs text-slate-500">{label}</dt><dd className="mt-1 break-words text-lg font-bold tabular-nums text-slate-900">{currency(amount)}</dd></div>)}
+            {totals.map(([label, amount, note]) => <div key={label} className="min-w-0 rounded-lg border border-slate-200 bg-slate-50 p-3"><dt className="text-xs text-slate-500">{label}</dt><dd className="mt-1 break-words text-lg font-bold tabular-nums text-slate-900">{currency(amount)}</dd>{note && <p className="mt-1 text-xs text-slate-600">{note}</p>}</div>)}
         </dl>
+        {!draft && sources.wage_mode === 'daily' && Number(sources.daily_rate) > 0 && <p className="text-xs text-slate-600">Recorded daily basic rate: {currency(Number(sources.daily_rate))}. Confirm the annual paid-day factor in source records.</p>}
+        {missing && <p role="status" className="rounded-md bg-warning-subtle p-3 text-sm text-warning-ink">Still required: {missing}</p>}
         <p className="text-xs text-slate-500">Gross components. Existing payroll contribution rules still apply; payroll deductions are not proof of SSS remittance.</p>
         {(data.stale || changed) && <div role="alert" className="rounded-md bg-warning-subtle p-3 text-sm text-warning-ink">Source or wage records changed. Review the latest data before approval.<button type="button" onClick={discard} className="mt-2 block font-semibold underline">Discard edits and reload</button></div>}
         {query.isError && <p role="alert" className="text-sm text-danger-ink">{query.error.message}</p>}
@@ -111,7 +125,6 @@ export default function MaternityApprovalReview({ leave, actorId, value, onChang
             {outside && <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">{moneyField('sss_paid_externally', 'SSS benefit already paid (PHP)')}{moneyField('differential_paid_externally', 'Differential already paid (PHP)')}<label className="text-xs font-semibold text-slate-700">Actual external payment date<input type="date" value={sources.external_paid_on || ''} onChange={event => update('external_paid_on', event.target.value)} className={inputClass} /></label><label className="text-xs font-semibold text-slate-700">External payment reference<input maxLength={120} value={sources.external_reference || ''} onChange={event => update('external_reference', event.target.value)} className={inputClass} /></label></div>}
             <label className="flex items-start gap-2 text-sm text-slate-700"><input type="checkbox" checked={exemption} onChange={event => { setExemptionEnabled(event.target.checked); update('differential_exemption', event.target.checked ? sources.differential_exemption : ''); }} className="mt-1" />A documented employer differential exemption applies</label>
             {exemption && <label className="block text-xs font-semibold text-slate-700">Exemption evidence / approval reference<input maxLength={500} value={sources.differential_exemption || ''} onChange={event => update('differential_exemption', event.target.value)} className={inputClass} /></label>}
-            {missing && <p role="status" className="rounded-md bg-warning-subtle p-3 text-sm text-warning-ink">{missing}</p>}
             <div className="flex flex-wrap justify-end gap-2"><button type="button" onClick={discard} disabled={saving} className="h-10 rounded-md border border-slate-300 px-3 text-sm font-semibold text-slate-700">Discard edits and reload</button><button type="button" onClick={save} disabled={saving || !draft || changed || query.isFetching || (outside && !(Number(sources.sss_paid_externally) || Number(sources.differential_paid_externally))) || (exemption && !sources.differential_exemption?.trim())} className="h-10 rounded-md bg-accent px-3 text-sm font-semibold text-white disabled:opacity-50">{saving ? 'Saving…' : 'Save calculation sources'}</button></div>
         </fieldset>}
         {error && <p role="alert" className="text-sm text-danger-ink">{error}</p>}
