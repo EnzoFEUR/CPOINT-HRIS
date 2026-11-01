@@ -2,7 +2,6 @@ import { useState, useEffect, useCallback, useRef, useImperativeHandle, forwardR
 import { fetchWithAuth } from '../../../utils/api';
 import { supabase } from '../../../supabaseClient';
 import { STATUTORY_INPUT_LIMITS, isValidStatutoryInput, getStatutorySettingsError, getWithholdingTableVersionError } from '../../../../../shared/statutorySettings.mjs';
-import { calculateBIRWithholdingTax } from '../../../../../shared/payrollTax.mjs';
 import BackButton from '../../../components/ui/BackButton';
 
 const DEFAULT_SETTINGS = {
@@ -92,7 +91,6 @@ const WithholdingTaxTables = forwardRef(function WithholdingTaxTables(_props, re
     const [drafts, setDrafts] = useState({}); // staged add/edit per frequency: { id, effective_from, rows }
     const [pendingDeletes, setPendingDeletes] = useState([]); // version ids removed when the page is saved
     const [error, setError] = useState('');
-    const [testIncome, setTestIncome] = useState('');
 
     const editor = drafts[frequency] || null;
     const setEditor = (updater) => setDrafts(prev => {
@@ -182,10 +180,7 @@ const WithholdingTaxTables = forwardRef(function WithholdingTaxTables(_props, re
         },
     }), [drafts, pendingDeletes, today, unsaved, load]);
 
-    const switchFrequency = (next) => {
-        setFrequency(next);
-        setTestIncome('');
-    };
+    const switchFrequency = (next) => setFrequency(next);
 
     const openNew = () => setEditor({ id: null, effective_from: '', rows: toRowDrafts(activeBrackets) });
     const openEdit = (version) => setEditor({ id: version.id, effective_from: version.effective_from, rows: toRowDrafts(version.brackets) });
@@ -198,35 +193,8 @@ const WithholdingTaxTables = forwardRef(function WithholdingTaxTables(_props, re
     const resetRows = () => setEditor(prev => ({ ...prev, rows: toRowDrafts(data.defaults[frequency]) }));
     const toggleDelete = (version) => setPendingDeletes(prev => (prev.includes(version.id) ? prev.filter(id => id !== version.id) : [...prev, version.id]));
 
-    const testTable = editor
-        ? editor.rows.map(row => ({ over: Number(row.over || 0), base: Number(row.base || 0), rate: Number(row.rate || 0) }))
-        : activeBrackets;
-    const testTax = testIncome !== '' && testTable.length ? calculateBIRWithholdingTax(Number(testIncome), testTable) : null;
-
     const inputClass = 'w-full h-9 bg-white border border-slate-200 rounded-md px-3 text-sm text-slate-800 font-semibold focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent transition-colors duration-100 shadow-2xs read-only:bg-slate-50 read-only:text-slate-500';
     const smallButton = 'h-8 px-3 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 font-semibold text-xs rounded-md transition-colors duration-100 cursor-pointer';
-
-    const tester = (
-        <div className="rounded-md border border-slate-200 bg-white p-3 space-y-2">
-            <label htmlFor="tax-test-income" className="block text-xs font-medium text-slate-700">
-                Test a {FREQUENCY_LABELS[frequency].toLowerCase()} taxable income (₱)
-            </label>
-            <input
-                id="tax-test-income"
-                inputMode="decimal"
-                maxLength={14}
-                value={testIncome}
-                onChange={(e) => { if (e.target.value === '' || AMOUNT_INPUT.test(e.target.value)) setTestIncome(e.target.value); }}
-                placeholder="e.g. 20000"
-                className={inputClass}
-            />
-            <p className="text-sm text-slate-600">
-                {testTax === null
-                    ? 'Enter an amount to see the tax this table would withhold.'
-                    : <>Withholding tax: <span className="font-mono font-bold text-slate-900">{formatPeso(testTax)}</span>{editor ? ' (using the rows you are editing)' : ''}</>}
-            </p>
-        </div>
-    );
 
     const pendingBadge = (
         <span className="text-[11px] font-semibold px-2 py-0.5 rounded border bg-warning-subtle text-warning-ink border-warning/20">Deleted when you save</span>
@@ -278,36 +246,33 @@ const WithholdingTaxTables = forwardRef(function WithholdingTaxTables(_props, re
                     </div>
 
                     {!editor && (
-                        <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_18rem] gap-5 items-start">
-                            <div className="space-y-3">
-                                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                                    <div className="flex items-center gap-2">
-                                        <p className="text-sm font-semibold text-slate-800">
-                                            {inEffect ? `In effect since ${formatDate(inEffect.effective_from)}` : 'In effect now'}
-                                        </p>
-                                        {inEffect && isPendingDelete(inEffect) ? pendingBadge : (
-                                            <span className={`text-[11px] font-semibold px-2 py-0.5 rounded border ${inEffect ? 'bg-accent-subtle text-accent border-accent/20' : 'bg-slate-50 text-slate-500 border-slate-200'}`}>
-                                                {inEffect ? 'Custom' : 'Built-in BIR 2023'}
-                                            </span>
-                                        )}
-                                    </div>
-                                    <div className="flex gap-2">
-                                        {inEffect && canChange(inEffect) && (isPendingDelete(inEffect) ? (
-                                            <button type="button" onClick={() => toggleDelete(inEffect)} className={smallButton}>Undo delete</button>
-                                        ) : (
-                                            <>
-                                                <button type="button" onClick={() => openEdit(inEffect)} className={smallButton}>Edit</button>
-                                                <button type="button" onClick={() => toggleDelete(inEffect)} className={`${smallButton} text-danger-ink`}>Delete</button>
-                                            </>
-                                        ))}
-                                        <button type="button" onClick={openNew} className="h-8 px-3 bg-accent hover:bg-accent-hover text-white font-semibold text-xs rounded-md shadow-2xs transition-colors duration-100 cursor-pointer">
-                                            New version
-                                        </button>
-                                    </div>
+                        <div className="space-y-3">
+                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                                <div className="flex items-center gap-2">
+                                    <p className="text-sm font-semibold text-slate-800">
+                                        {inEffect ? `In effect since ${formatDate(inEffect.effective_from)}` : 'In effect now'}
+                                    </p>
+                                    {inEffect && isPendingDelete(inEffect) ? pendingBadge : (
+                                        <span className={`text-[11px] font-semibold px-2 py-0.5 rounded border ${inEffect ? 'bg-accent-subtle text-accent border-accent/20' : 'bg-slate-50 text-slate-500 border-slate-200'}`}>
+                                            {inEffect ? 'Custom' : 'Built-in BIR 2023'}
+                                        </span>
+                                    )}
                                 </div>
-                                <BracketTable brackets={activeBrackets} />
+                                <div className="flex gap-2">
+                                    {inEffect && canChange(inEffect) && (isPendingDelete(inEffect) ? (
+                                        <button type="button" onClick={() => toggleDelete(inEffect)} className={smallButton}>Undo delete</button>
+                                    ) : (
+                                        <>
+                                            <button type="button" onClick={() => openEdit(inEffect)} className={smallButton}>Edit</button>
+                                            <button type="button" onClick={() => toggleDelete(inEffect)} className={`${smallButton} text-danger-ink`}>Delete</button>
+                                        </>
+                                    ))}
+                                    <button type="button" onClick={openNew} className="h-8 px-3 bg-accent hover:bg-accent-hover text-white font-semibold text-xs rounded-md shadow-2xs transition-colors duration-100 cursor-pointer">
+                                        New version
+                                    </button>
+                                </div>
                             </div>
-                            {tester}
+                            <BracketTable brackets={activeBrackets} />
                         </div>
                     )}
 
@@ -381,7 +346,6 @@ const WithholdingTaxTables = forwardRef(function WithholdingTaxTables(_props, re
                                     <button type="button" onClick={() => setEditor(null)} className={smallButton}>Discard changes</button>
                                 </div>
                             </div>
-                            <div className="sm:max-w-xs">{tester}</div>
                         </>
                     )}
 
