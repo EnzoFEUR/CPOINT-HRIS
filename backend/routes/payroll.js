@@ -1,6 +1,6 @@
 import express from 'express';
 import { validateRecordId, validateUuidParam } from '../middleware/requestValidation.js';
-import { calculateBIRWithholdingTax } from '../../shared/payrollTax.mjs';
+import { calculateBIRWithholdingTax, pickWithholdingTable, DEFAULT_WITHHOLDING_TABLES } from '../../shared/payrollTax.mjs';
 import { getSssMsc } from '../../shared/sssContribution.mjs';
 import { isFirstCutoffOfMonth, previousMonthRange, averageMonthlyBase, computeEmployeeStatutory } from '../../shared/statutoryTiming.mjs';
 import { computeFactoryHolidayPayAdow, FACTORY_ADOW_LOOKBACK_DAYS } from '../../shared/factoryHolidayPay.mjs';
@@ -30,7 +30,7 @@ import {
 import { getLeaveSummaryForPeriod, getPaidLeaveDates } from '../utils/leaveUtils.js';
 
 import { getEmployeeRestDays, getScheduledWorkDates, getWorkPolicy, calculateTardiness } from '../../shared/workPolicy.mjs';
-import { STATUTORY_INPUT_LIMITS, getStatutorySettingsError } from '../../shared/statutorySettings.mjs';
+import { STATUTORY_INPUT_LIMITS, getStatutorySettingsError, getWithholdingTableVersionError, normalizeWithholdingBrackets } from '../../shared/statutorySettings.mjs';
 import { getFactoryRowsError } from '../../shared/inputLimits.mjs';
 import { fetchPayrollAttendance } from '../utils/payrollAttendance.js';
 import { getOfflinePayrollVersions } from '../utils/offlinePayrollVersion.js';
@@ -112,6 +112,33 @@ export const getStatutorySettings = async () => {
     statutorySettingsCache = merged;
     statutorySettingsCacheExpires = now + 60000; // 60-second in-memory cache
     return merged;
+};
+
+// Withholding tax table versions saved by HR (each has a frequency, an effective date and its brackets).
+// Until the table exists or HR saves a version, the built-in BIR tables are used. Any other read error is
+// thrown on purpose: silently falling back to default rates could mis-withhold tax.
+const WITHHOLDING_TABLE_MISSING_CODES = new Set(['42P01', 'PGRST205']);
+let withholdingVersionsCache = null;
+let withholdingVersionsCacheExpires = 0;
+
+export const invalidateWithholdingTablesCache = () => {
+    withholdingVersionsCache = null;
+    withholdingVersionsCacheExpires = 0;
+};
+
+export const loadWithholdingTaxVersions = async () => {
+    const now = Date.now();
+    if (withholdingVersionsCache && now < withholdingVersionsCacheExpires) return withholdingVersionsCache;
+
+    const { data, error } = await supabase
+        .from('withholding_tax_tables')
+        .select('id, frequency, effective_from, brackets')
+        .order('effective_from', { ascending: false });
+    if (error && !WITHHOLDING_TABLE_MISSING_CODES.has(error.code)) throw error;
+
+    withholdingVersionsCache = error ? [] : (data || []);
+    withholdingVersionsCacheExpires = now + 60000; // 60-second in-memory cache
+    return withholdingVersionsCache;
 };
 
 // Work policy (grace period, late rate, call time) as saved on the Statutory Settings screen.
@@ -684,6 +711,132 @@ router.put('/statutory-settings', requirePayrollManager, async (req, res) => {
 });
 
 // 2. Holidays
+// 2. Withholding tax tables, versioned by effective date (HR / admin only).
+// A version applies to payrolls whose period end date is on or after its effective date. Payslips already saved keep their amounts.
+const manilaToday = () => new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' });
+const isTableId = (value) => typeof value === 'string' && /^[0-9a-f-]{36}$/i.test(value);
+const WITHHOLDING_TABLE_COLUMNS = 'id, frequency, effective_from, brackets, created_by, created_at, updated_at';
+
+const afterWithholdingTableChange = (req, event, description, properties) => {
+    invalidateWithholdingTablesCache();
+    broadcastPayrollUpdate('WITHHOLDING_TAX_TABLES_UPDATED', { admin_id: req.user.id });
+    createAuditLog({
+        log_name: 'payroll',
+        description,
+        subject_type: 'App\\Models\\WithholdingTaxTable',
+        subject_id: null,
+        event,
+        causer_id: req.user.id,
+        properties
+    }).catch((err) => console.warn('[PAYROLL_AUDIT_WARN]', err.message));
+};
+
+router.get('/withholding-tax-tables', requirePayrollManager, async (req, res) => {
+    try {
+        const { data, error } = await supabase
+            .from('withholding_tax_tables')
+            .select(WITHHOLDING_TABLE_COLUMNS)
+            .order('effective_from', { ascending: false });
+        const setupRequired = Boolean(error) && WITHHOLDING_TABLE_MISSING_CODES.has(error.code);
+        if (error && !setupRequired) throw error;
+        res.json({ today: manilaToday(), defaults: DEFAULT_WITHHOLDING_TABLES, versions: data || [], setup_required: setupRequired });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+router.post('/withholding-tax-tables', requirePayrollManager, async (req, res) => {
+    try {
+        const { frequency, effective_from, brackets } = req.body || {};
+        const validationError = getWithholdingTableVersionError({ frequency, effective_from, brackets });
+        if (validationError) return res.status(400).json({ success: false, code: 'INVALID_WITHHOLDING_TABLE', error: validationError });
+        if (effective_from < manilaToday()) {
+            return res.status(400).json({ success: false, code: 'INVALID_WITHHOLDING_TABLE', error: 'The effective date cannot be in the past. Payslips already issued keep their amounts.' });
+        }
+
+        const cleanBrackets = normalizeWithholdingBrackets(brackets);
+        const { data, error } = await supabase
+            .from('withholding_tax_tables')
+            .insert([{ frequency, effective_from, brackets: cleanBrackets, created_by: req.user.id }])
+            .select(WITHHOLDING_TABLE_COLUMNS)
+            .single();
+        if (error) {
+            if (error.code === '23505') return res.status(409).json({ success: false, error: `A ${frequency} table already starts on ${effective_from}. Edit that version instead.` });
+            throw error;
+        }
+
+        afterWithholdingTableChange(req, 'created', `Added ${frequency} withholding tax table effective ${effective_from}`, { frequency, effective_from, brackets: cleanBrackets });
+        res.status(201).json({ success: true, message: 'Withholding tax table saved.', data });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+router.put('/withholding-tax-tables/:id', requirePayrollManager, async (req, res) => {
+    try {
+        if (!isTableId(req.params.id)) return res.status(400).json({ error: 'Invalid table version ID.' });
+        const { effective_from, brackets } = req.body || {};
+
+        const { data: existing, error: readError } = await supabase
+            .from('withholding_tax_tables')
+            .select(WITHHOLDING_TABLE_COLUMNS)
+            .eq('id', req.params.id)
+            .maybeSingle();
+        if (readError) throw readError;
+        if (!existing) return res.status(404).json({ error: 'Table version not found.' });
+        if (existing.effective_from < manilaToday()) {
+            return res.status(409).json({ success: false, error: 'This version is already in effect and cannot be edited. Add a new version instead.' });
+        }
+
+        const validationError = getWithholdingTableVersionError({ frequency: existing.frequency, effective_from, brackets });
+        if (validationError) return res.status(400).json({ success: false, code: 'INVALID_WITHHOLDING_TABLE', error: validationError });
+        if (effective_from < manilaToday()) {
+            return res.status(400).json({ success: false, code: 'INVALID_WITHHOLDING_TABLE', error: 'The effective date cannot be in the past.' });
+        }
+
+        const cleanBrackets = normalizeWithholdingBrackets(brackets);
+        const { data, error } = await supabase
+            .from('withholding_tax_tables')
+            .update({ effective_from, brackets: cleanBrackets, updated_at: new Date().toISOString() })
+            .eq('id', existing.id)
+            .select(WITHHOLDING_TABLE_COLUMNS)
+            .single();
+        if (error) {
+            if (error.code === '23505') return res.status(409).json({ success: false, error: `A ${existing.frequency} table already starts on ${effective_from}.` });
+            throw error;
+        }
+
+        afterWithholdingTableChange(req, 'updated', `Edited ${existing.frequency} withholding tax table effective ${effective_from}`, { frequency: existing.frequency, effective_from, brackets: cleanBrackets, previous: { effective_from: existing.effective_from, brackets: existing.brackets } });
+        res.json({ success: true, message: 'Withholding tax table updated.', data });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+router.delete('/withholding-tax-tables/:id', requirePayrollManager, async (req, res) => {
+    try {
+        if (!isTableId(req.params.id)) return res.status(400).json({ error: 'Invalid table version ID.' });
+        const { data: existing, error: readError } = await supabase
+            .from('withholding_tax_tables')
+            .select(WITHHOLDING_TABLE_COLUMNS)
+            .eq('id', req.params.id)
+            .maybeSingle();
+        if (readError) throw readError;
+        if (!existing) return res.status(404).json({ error: 'Table version not found.' });
+        if (existing.effective_from < manilaToday()) {
+            return res.status(409).json({ success: false, error: 'This version is already in effect and cannot be deleted. It stays in the history.' });
+        }
+
+        const { error } = await supabase.from('withholding_tax_tables').delete().eq('id', existing.id);
+        if (error) throw error;
+
+        afterWithholdingTableChange(req, 'deleted', `Deleted ${existing.frequency} withholding tax table effective ${existing.effective_from}`, { frequency: existing.frequency, effective_from: existing.effective_from, brackets: existing.brackets });
+        res.json({ success: true, message: 'Withholding tax table deleted.' });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
 router.get('/holidays', cacheResponse(60), async (req, res) => {
     try {
         let query = supabase.from('holidays').select('*').order('date', { ascending: true });
@@ -1725,7 +1878,7 @@ router.post('/', requirePayrollManager, async (req, res) => {
         // 13th month pay is tax-exempt up to the ceiling; only the excess is taxable.
         const taxableGross = Math.max(0, grossPay - safeMatDiff - statutory.maternity_sss_pay - cash.cash_pay + cash.taxable_cash - Math.min(thirteenthMonthPay, THIRTEENTH_MONTH_TAX_EXEMPT_CEILING));
         const taxableIncome = Math.max(0, round2(taxableGross - totalStatutoryContributions - lateDed));
-        const tax = calculateBIRWithholdingTax(taxableIncome, pay_frequency);
+        const tax = calculateBIRWithholdingTax(taxableIncome, pickWithholdingTable(await loadWithholdingTaxVersions(), pay_frequency, pEnd));
 
         // DEDUCTION CAP GUARDRAIL: Deductions can never exceed Gross Pay
         const rawDeductions = round2(totalStatutoryContributions + tax + lateDed);
@@ -1905,6 +2058,7 @@ router.post('/batch', requirePayrollManager, async (req, res) => {
         // Validate every worker before any inserts; a corrupt punch must not cause a partial batch.
         const tardinessByEmployee = new Map((empList || []).map(emp => [String(emp.id), calculateTardiness(attendanceByEmployee.get(String(emp.id)) || [], activeWorkPolicy, getEmployeeRestDays(emp))]));
         const batchStatRates = await getStatutorySettings();
+        const batchTaxVersions = await loadWithholdingTaxVersions();
         const batchPrevBases = await fetchPreviousMonthBases(supabase, empList || [], pEnd);
         const batchFactoryCtx = await fetchFactoryHolidayContext(empIds, pStart, pEnd);
         const batchYearPayslips = isLastCutoffOfDecember(pEnd) ? await fetchYearPayslips(empIds, pStart, pEnd) : new Map();
@@ -1991,7 +2145,7 @@ router.post('/batch', requirePayrollManager, async (req, res) => {
             const sssDed = statutory.sss;
             const phDed = statutory.philHealth;
             const pgbDed = statutory.pagIbig;
-            const taxDed = calculateBIRWithholdingTax(Math.max(0, basicPay + holiday.total + cash.paid_leave_pay + cash.statutory.paternity_additional_pay + cash.taxable_cash + Math.max(0, thirteenthMonthPay - THIRTEENTH_MONTH_TAX_EXEMPT_CEILING) - sssDed - phDed - pgbDed - tardiness.deduction), frequency);
+            const taxDed = calculateBIRWithholdingTax(Math.max(0, basicPay + holiday.total + cash.paid_leave_pay + cash.statutory.paternity_additional_pay + cash.taxable_cash + Math.max(0, thirteenthMonthPay - THIRTEENTH_MONTH_TAX_EXEMPT_CEILING) - sssDed - phDed - pgbDed - tardiness.deduction), pickWithholdingTable(batchTaxVersions, frequency, pEnd));
 
             const appliedLateDed = Math.min(tardiness.deduction, Math.max(0, round2(grossPay - sssDed - phDed - pgbDed - taxDed)));
             const rawDeductions = round2(sssDed + phDed + pgbDed + taxDed + tardiness.deduction);
