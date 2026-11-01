@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect, useRef } from 'react';
-import { Link } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { createPortal } from 'react-dom';
 import { CASH_OUT_LABELS } from '../../../shared/leavePolicy.js';
 import Badge from './ui/Badge';
@@ -27,6 +27,7 @@ export default function MyRequestsModal({
     cashEvents = [],
     onRequestNewLeave,
 }) {
+    const navigate = useNavigate();
     const dialogRef = useRef(null);
     const now = useCurrentTime();
     const [categoryFilter, setCategoryFilter] = useState('all'); // 'all' | 'leave' | 'cashout'
@@ -181,12 +182,23 @@ export default function MyRequestsModal({
                             <h2 id="my-requests-title" className="text-base sm:text-lg font-bold text-slate-900 tracking-tight">
                                 My Applications &amp; Requests
                             </h2>
-                            <p className="text-xs text-slate-500">Track and review submitted leaves and cash-out requests</p>
                         </div>
                     </div>
                 </div>
 
-                <Link to="/employee/employment-exit" onClick={onClose} className="px-5 py-3 text-sm font-semibold text-accent underline border-b border-slate-100">Retirement inquiries, resignation notices and exit receipts</Link>
+                <div className="border-b border-slate-100 px-4 py-3 sm:px-5">
+                    <button
+                        type="button"
+                        onClick={() => { onClose(); navigate('/employee/employment-exit'); }}
+                        className="inline-flex min-h-11 w-full items-center justify-between gap-3 rounded-lg border border-slate-900 bg-slate-900 px-4 py-3 text-left text-sm font-semibold text-white shadow-2xs transition-colors hover:border-slate-800 hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2"
+                    >
+                        <span className="flex min-w-0 items-center gap-2.5">
+                            <i className="ti ti-file-description shrink-0 text-lg" aria-hidden="true" />
+                            <span className="break-words">Retirement inquiries, resignation notices and exit receipts</span>
+                        </span>
+                        <i className="ti ti-chevron-right shrink-0" aria-hidden="true" />
+                    </button>
+                </div>
                 {/* Filter Controls & Interactive Metrics */}
                 <div className="p-4 sm:p-5 border-b border-slate-100 space-y-3.5 bg-slate-50/50">
                     {/* Clickable Status Metric Tabs */}
