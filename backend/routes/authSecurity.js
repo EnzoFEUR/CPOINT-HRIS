@@ -41,7 +41,7 @@ setInterval(() => {
             resetTicketStore.delete(ticket);
         }
     }
-}, 5 * 60 * 1000);
+}, 5 * 60 * 1000).unref();
 
 // Helper: Check & update rate limit
 function checkRateLimit(key) {
