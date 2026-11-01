@@ -5,7 +5,6 @@ import BackButton from '../../../components/ui/BackButton';
 import toast from 'react-hot-toast';
 import { supabase } from '../../../supabaseClient';
 import { fetchWithAuth } from '../../../utils/api';
-import SilPaymentCard from '../../../components/SilPaymentCard';
 import OfficialPayslipDocument from '../../../components/OfficialPayslipDocument';
 
 const isValidUUID = (str) => /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(str);
@@ -133,11 +132,6 @@ export default function PayrollShow() {
 
     return (
         <div className="payslip-outer-wrapper max-w-4xl mx-auto py-4 sm:py-8 px-3 sm:px-6 pb-[calc(2.5rem+env(safe-area-inset-bottom))] print:p-0 print:m-0 print:max-w-none">
-            {/* Payment Settlement Alert if pending SIL payout */}
-            <div className="print:hidden">
-                <SilPaymentCard variant="confirm" payroll={payroll} />
-            </div>
-
             {/* Official Enterprise Payslip Document */}
             <OfficialPayslipDocument
                 payroll={payroll}

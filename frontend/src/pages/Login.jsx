@@ -1,5 +1,6 @@
 import { isBiometricSetupTestAccess } from '../utils/biometricSetupTestAccess.mjs';
 import { useState, useEffect, useRef } from 'react';
+import { BACKUP_CODE_MAX_LENGTH, isAuthenticatorBackupCode, normalizeAuthenticatorCode } from '../../../shared/authenticatorPolicy.mjs';
 import { supabase } from '../supabaseClient';
 import { useNavigate, Link } from 'react-router-dom';
 import toast from 'react-hot-toast';
@@ -81,6 +82,8 @@ export default function Login() {
     const [step, setStep] = useState(savedSession?.step || 1);
     const [employeeData, setEmployeeData] = useState(savedSession?.employeeData || null);
     const [otpCode, setOtpCode] = useState(['', '', '', '', '', '']);
+    const [backupMode, setBackupMode] = useState(false);
+    const [backupCode, setBackupCode] = useState('');
     const [otpMethod, setOtpMethod] = useState(savedSession?.otpMethod || '');
     const [, setGeneratedOtp] = useState(savedSession?.generatedOtp || null);
     const [challengeId, setChallengeId] = useState(savedSession?.challengeId || null);
@@ -263,6 +266,8 @@ export default function Login() {
     }, [step, email, startCooldown]);
 
     function handleReturnToLogin() {
+        setBackupMode(false);
+        setBackupCode('');
         try {
             sessionStorage.removeItem('cpoint_login_2fa_session');
         } catch { /* Retain the existing fallback when optional browser state is unavailable. */ }
@@ -275,6 +280,8 @@ export default function Login() {
     };
 
     function handleSwitchMethod() {
+        setBackupMode(false);
+        setBackupCode('');
         setStep(2);
         setError(null);
         try {
@@ -503,8 +510,8 @@ export default function Login() {
         if (otpVerifyLockRef.current || loading) return;
         otpVerifyLockRef.current = true;
 
-        const enteredOtp = typeof codeToVerify === 'string' ? codeToVerify : otpCode.join('');
-        if (enteredOtp.length < 6) {
+        const enteredOtp = normalizeAuthenticatorCode(typeof codeToVerify === 'string' ? codeToVerify : otpCode.join(''));
+        if (!(otpMethod === 'totp' && isAuthenticatorBackupCode(enteredOtp)) && !/^\d{6}$/.test(enteredOtp)) {
             otpVerifyLockRef.current = false;
             return setError("Please enter the complete 6-digit code.");
         }
@@ -515,12 +522,12 @@ export default function Login() {
         const sanitizedEmail = email.trim().toLowerCase();
 
         try {
-            const res = await fetchWithAuth('/api/auth/otp/verify', {
+            const res = await fetchWithAuth(otpMethod === 'totp' ? '/api/auth/totp/verify' : '/api/auth/otp/verify', {
                 method: 'POST',
                 body: JSON.stringify({
                     email: sanitizedEmail,
                     identifier: sanitizedEmail,
-                    otp: enteredOtp,
+                    ...(otpMethod === 'totp' ? { code: enteredOtp } : { otp: enteredOtp }),
                     purpose: 'login_2fa',
                     challengeId
                 })
@@ -643,7 +650,7 @@ export default function Login() {
 
     const verifyOtp = (e) => {
         if (e && e.preventDefault) e.preventDefault();
-        verifyOtpDirect(otpCode.join(''));
+        verifyOtpDirect(otpMethod === 'totp' && backupMode ? backupCode : otpCode.join(''));
     };
 
     const handleOtpChange = (index, e) => {
@@ -1064,7 +1071,12 @@ export default function Login() {
                             </p>
 
                             <form onSubmit={verifyOtp}>
-                                <div className="flex justify-center gap-1.5 sm:gap-2 mb-3">
+                                {otpMethod === 'totp' && backupMode ? (
+                                    <div className="mb-3 text-left">
+                                        <label htmlFor="login-backup-code" className="block mb-1 text-xs font-semibold text-slate-700">Single-use backup code</label>
+                                        <input id="login-backup-code" value={backupCode} onChange={e => setBackupCode(e.target.value)} maxLength={BACKUP_CODE_MAX_LENGTH} autoComplete="one-time-code" className="w-full h-10 px-3 border border-slate-300 rounded-md text-xs font-mono" />
+                                    </div>
+                                ) : <div className="flex justify-center gap-1.5 sm:gap-2 mb-3">
                                     {otpCode.map((digit, idx) => (
                                         <input maxLength={1}
                                             key={idx}
@@ -1082,7 +1094,8 @@ export default function Login() {
                                             autoFocus={idx === 0}
                                         />
                                     ))}
-                                </div>
+                                </div>}
+                                {otpMethod === 'totp' && <button type="button" disabled={loading} onClick={() => { setBackupMode(!backupMode); setBackupCode(''); setOtpCode(['', '', '', '', '', '']); setError(null); }} className="mb-3 text-xs font-semibold text-slate-700 underline disabled:opacity-50">{backupMode ? 'Use authenticator code' : 'Use a backup code'}</button>}
 
                                 {error && (
                                     <div role="alert" className="mb-3 p-2.5 rounded-md bg-danger-subtle border border-danger/20 text-danger-ink text-xs font-medium flex items-center gap-2 text-left shadow-2xs">

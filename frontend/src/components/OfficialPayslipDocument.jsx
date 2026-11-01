@@ -5,6 +5,7 @@ import { SilCashEarnings } from './SilPaymentCard';
 import { HOLIDAY_LABELS, parsePayrollFinancials, formatCurrency } from '../utils/payslipUtils';
 import { printHtmlElement } from '../utils/printDocument';
 import BackButton from './ui/BackButton';
+import PayrollPaymentReceipt from './PayrollPaymentReceipt';
 
 /**
  * C-Point HRIS - Universal Official Payslip Document Component
@@ -142,6 +143,7 @@ export default function OfficialPayslipDocument({ payroll, employee: employeeOve
             </div>
 
             {/* OFFICIAL PAYSLIP DOCUMENT CONTAINER */}
+            <PayrollPaymentReceipt key={payroll.id} payroll={payroll} />
             <div
                 id="official-payslip-document"
                 className="bg-white rounded-lg border border-slate-200 shadow-2xs overflow-hidden print:border-none print:shadow-none print:rounded-none"

@@ -105,9 +105,7 @@ export default function PolicyIncidentReports() {
     return (
         <div className="max-w-5xl mx-auto space-y-5 pb-20 px-4 sm:px-6">
             <PageHeader
-                title="Policy & Incident Reports"
                 breadcrumbs={['Employee', 'Policy & Incident Reports']}
-                description="Review your official notices and report history."
                 showBack
                 backFallback="/employee/dashboard"
                 actions={

@@ -1,4 +1,5 @@
 import crypto from 'crypto';
+import { normalizeAuthenticatorCode } from '../../shared/authenticatorPolicy.mjs';
 
 const BASE32_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
 
@@ -167,8 +168,8 @@ export function generateBackupCodes(count = 8) {
     const hashedCodes = [];
 
     for (let i = 0; i < count; i++) {
-        const raw = crypto.randomBytes(4).toString('hex').toUpperCase();
-        const code = `CP-${raw.slice(0, 4)}-${raw.slice(4, 8)}`;
+        const raw = crypto.randomBytes(16).toString('hex').toUpperCase();
+        const code = `CP2-${raw.match(/.{8}/g).join('-')}`;
         const hashed = crypto.createHash('sha256').update(code.trim().toUpperCase()).digest('hex');
         plainCodes.push(code);
         hashedCodes.push(hashed);
@@ -187,7 +188,7 @@ export function verifyAndConsumeBackupCode(inputCode, hashedCodes = []) {
     if (!inputCode || !Array.isArray(hashedCodes) || hashedCodes.length === 0) {
         return { valid: false };
     }
-    const cleanInput = inputCode.trim().toUpperCase();
+    const cleanInput = normalizeAuthenticatorCode(inputCode);
     const inputHash = crypto.createHash('sha256').update(cleanInput).digest('hex');
 
     const index = hashedCodes.findIndex((storedHash) => {

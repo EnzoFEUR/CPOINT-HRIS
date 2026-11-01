@@ -11,6 +11,7 @@ import { supabase } from './supabaseClient.js';
 import employeeRoutes from './routes/employees.js';
 import attendanceRoutes from './routes/attendance.js';
 import payrollRoutes from './routes/payroll.js';
+import payrollPaymentRoutes from './routes/payrollPayments.js';
 import retirementPayRoutes from './routes/retirementPay.js';
 import employmentExitRoutes from './routes/employmentExit.js';
 import leaveRoutes, { createLeaveCreditsRouter } from './routes/leaves.js';
@@ -88,6 +89,8 @@ app.use('/api/documents', verifyToken, documentRouter);
 app.use('/api/storage', verifyToken, storageRoutes);
 app.use('/api/employees', verifyToken, checkVerifiedManagerOrOwnership, employeeRoutes);
 app.use('/api/attendance', verifyToken, attendanceRoutes);
+// Payment commands enforce persisted payroll ownership instead of treating a payroll ID as an employee ID.
+app.use('/api/payroll/payment-receipts', verifyToken, payrollPaymentRoutes);
 app.use('/api/payroll', verifyToken, checkVerifiedManagerOrOwnership, payrollRoutes);
 app.use('/api/retirement-pay', verifyToken, retirementPayRoutes);
 app.use('/api/employment-exit', verifyToken, employmentExitRoutes);
