@@ -813,7 +813,7 @@ export default function OfflineAttendanceReview() {
                         <div className="flex items-center justify-end gap-1.5">
                           {canResolveMissingTimeOut(event) && (
                             <button type="button" onClick={() => openInspectDrawer(event)} disabled={actionBusy}
-                              className="h-7 rounded border border-line bg-surface px-2.5 text-xs font-semibold text-ink hover:bg-canvas disabled:opacity-50">
+                              className="inline-flex h-7 shrink-0 items-center justify-center whitespace-nowrap rounded border border-line bg-surface px-2.5 text-xs font-semibold text-ink hover:bg-canvas disabled:opacity-50">
                               Resolve Time Out
                             </button>
                           )}
@@ -893,7 +893,7 @@ export default function OfflineAttendanceReview() {
             </div>
 
             {/* Modal Body */}
-            <div className="p-6 overflow-y-auto space-y-5 text-xs text-slate-700">
+            <div className="min-h-0 min-w-0 space-y-5 overflow-y-auto p-4 text-xs text-slate-700 sm:p-6">
               {/* Employee Snapshot */}
               <div className="p-3.5 rounded-lg bg-slate-50 border border-slate-200 flex items-center justify-between gap-3">
                 <div className="flex items-center gap-3">
@@ -997,11 +997,17 @@ export default function OfflineAttendanceReview() {
               </div>
 
               {/* Decision History Audit Trail */}
-              <div className="rounded-md border border-line bg-canvas p-3 text-xs text-ink">
-                {selectedEvent.review_pair?.complete ? <>
-                  <p>Time In: {new Date(selectedEvent.review_pair.time_in).toLocaleString('en-US', { timeZone: 'Asia/Manila' })}</p>
-                  <p>Time Out{selectedEvent.review_pair.correction ? ' (HR verified)' : ''}: {new Date(selectedEvent.review_pair.time_out).toLocaleString('en-US', { timeZone: 'Asia/Manila' })}</p>
-                </> : <p>{selectedEvent.review_pair?.issue || 'Waiting for a complete attendance pair.'}</p>}
+              <div className="min-w-0 rounded-md border border-line bg-canvas p-3 text-xs text-ink">
+                {selectedEvent.review_pair?.complete ? <dl aria-label="Recorded attendance times" className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2">
+                  <div className="min-w-0">
+                    <dt className="font-semibold">Time In</dt>
+                    <dd className="mt-1 break-words leading-relaxed"><time dateTime={selectedEvent.review_pair.time_in}>{new Date(selectedEvent.review_pair.time_in).toLocaleString('en-US', { timeZone: 'Asia/Manila' })}</time></dd>
+                  </div>
+                  <div className="min-w-0">
+                    <dt className="font-semibold">Time Out{selectedEvent.review_pair.correction ? ' (HR verified)' : ''}</dt>
+                    <dd className="mt-1 break-words leading-relaxed"><time dateTime={selectedEvent.review_pair.time_out}>{new Date(selectedEvent.review_pair.time_out).toLocaleString('en-US', { timeZone: 'Asia/Manila' })}</time></dd>
+                  </div>
+                </dl> : <p>{selectedEvent.review_pair?.issue || 'Waiting for a complete attendance pair.'}</p>}
               </div>
               <div className="space-y-2">
                 <h4 className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
@@ -1015,7 +1021,7 @@ export default function OfflineAttendanceReview() {
                   <div className="space-y-2 border-l-2 border-slate-200 pl-3">
                     {drawerHistory.map((item, idx) => (
                       <div key={item.id || idx} className="text-xs space-y-0.5">
-                        <div className="flex items-center gap-2">
+                        <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
                           <span className={`font-semibold uppercase tracking-wider text-[10px] ${
                             item.decision === 'approve' ? 'text-emerald-700' : item.decision === 'reject' ? 'text-rose-700' : 'text-blue-700'
                           }`}>
@@ -1041,17 +1047,17 @@ export default function OfflineAttendanceReview() {
               {(['needs_review', 'needs_verification'].includes(selectedEvent.status) || canResolveMissingTimeOut(selectedEvent)) && (
                 <div className="p-4 rounded-lg bg-slate-50 border border-slate-200 space-y-3">
                   {canResolveMissingTimeOut(selectedEvent) && (
-                    <div className="space-y-2">
+                    <div className="min-w-0 space-y-2">
                       <label className="block text-xs font-semibold text-ink" htmlFor="verified-missing-time-out">Verified Time Out (Philippine time)</label>
                       <input id="verified-missing-time-out" type="datetime-local" value={verifiedTimeOut}
                         onChange={event => setVerifiedTimeOut(event.target.value)} disabled={actionBusy || !isResolutionReady}
                         min={manilaDateTimeInput(selectedEvent.payload?.captured_at)}
                         max={manilaDateTimeInput(Math.min(now, Date.parse(selectedEvent.payload?.captured_at) + 18 * 3600000))}
-                        className="w-full rounded border border-line bg-surface p-2 text-sm text-ink" />
+                        className="block h-10 w-full min-w-0 max-w-full rounded border border-line bg-surface px-2 text-xs text-ink sm:text-sm" />
                       <p className="text-xs text-muted">{isResolutionReady ? 'Enter the actual departure time verified by HR.' : 'Install the missing Time Out database update to enable corrections.'}</p>
                     </div>
                   )}
-                  <div className="flex items-center justify-between">
+                  <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
                     <label className="text-xs font-semibold text-slate-800">
                       HR Verification & Audit Reason <span className="text-rose-600">*</span>
                     </label>
@@ -1085,7 +1091,7 @@ export default function OfflineAttendanceReview() {
                   <div className="flex flex-wrap items-center justify-end gap-2 pt-1">
                     {canResolveMissingTimeOut(selectedEvent) && <button type="button" onClick={handleResolveTimeOut}
                       disabled={actionBusy || !isResolutionReady || !verifiedTimeOut || !reviewReason.trim()}
-                      className="h-9 rounded border border-line bg-surface px-4 text-xs font-semibold text-ink hover:bg-canvas disabled:cursor-not-allowed disabled:opacity-50">
+                      className="inline-flex min-h-10 w-full items-center justify-center rounded border border-line bg-surface px-3 py-2 text-center text-xs font-semibold leading-snug text-ink hover:bg-canvas disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto">
                       Save verified Time Out
                     </button>}
                     {reviewCanDecide(selectedEvent, 'approve') && <button

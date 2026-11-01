@@ -211,7 +211,7 @@ export default function EmployeeLeaveRequest({ open, employee, statusReady, bloc
             <form onSubmit={submit} className="space-y-3.5 pt-3">
                 <fieldset disabled={saving || Boolean(blockedReason) || !statusReady} className="space-y-3 disabled:opacity-60">
                     {/* Row 1: Leave Type & Payment Preference */}
-                    <div className={`grid grid-cols-1 ${creditType ? 'sm:grid-cols-2' : ''} gap-3`}>
+                    <div className={`grid grid-cols-1 items-end ${creditType ? 'sm:grid-cols-2' : ''} gap-3`}>
                         <div>
                             <label htmlFor="employee-leave-type" className="block text-xs font-semibold text-slate-700 mb-1">Leave Type</label>
                             <select
@@ -244,7 +244,7 @@ export default function EmployeeLeaveRequest({ open, employee, statusReady, bloc
                         )}
                     </div>
 
-                    {maternityLeave && <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    {maternityLeave && <div className="grid grid-cols-1 items-end gap-3 sm:grid-cols-2">
                         <label className="block text-xs font-semibold text-slate-700">Maternity entitlement
                             <select value={form.maternity_event} onChange={event => set('maternity_event', event.target.value)} className="mt-1 h-9 w-full rounded-md border border-slate-200 bg-white px-2 text-xs text-slate-800">
                                 <option value="live_birth">Live childbirth — 105 calendar days</option>
@@ -263,7 +263,7 @@ export default function EmployeeLeaveRequest({ open, employee, statusReady, bloc
                     </div>}
 
                     {/* Row 2: Start Date & End Date with directional alignment */}
-                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    <div className="grid grid-cols-1 items-end gap-3 sm:grid-cols-2">
                         <LeaveDatePicker
                             label="Start Date"
                             value={form.start_date}
@@ -337,10 +337,11 @@ export default function EmployeeLeaveRequest({ open, employee, statusReady, bloc
                     {/* Row 3: Reason for Leave */}
                     <div>
                         <div className="flex items-center justify-between mb-1">
-                            <label className="block text-xs font-semibold text-slate-700">Reason for Leave</label>
+                            <label htmlFor="employee-leave-reason" className="block text-xs font-semibold text-slate-700">Reason for Leave</label>
                             <span className="text-[10px] text-slate-400 font-mono">{form.reason.length}/255</span>
                         </div>
                         <textarea
+                            id="employee-leave-reason"
                             required
                             maxLength={255}
                             rows={2}

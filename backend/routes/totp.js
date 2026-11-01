@@ -33,7 +33,7 @@ async function confirmManagementCode(user, code) {
     const emailProof = verifyOtpCode(['authenticator_manage_' + user.email.toLowerCase(), 'authenticator_manage_' + user.id], code);
     if (emailProof.valid) return;
     const proof = await authenticatorService.verify(user.id, code);
-    if (!proof.valid) throw failure(proof.error || 'Invalid verification code.', proof.retryAfterSeconds ? 429 : 400);
+    if (!proof.valid) throw Object.assign(failure(proof.error || 'Invalid verification code.', proof.retryAfterSeconds ? 429 : 400), { code: proof.code });
 }
 
 function audit(req, userId, event) {

@@ -25,6 +25,7 @@ export function decryptAuthenticatorSecret(value, userId, key) {
     } catch { throw unavailable(); }
 }
 function matchingCounter(secret, code) {
+    code = code.replace(/\s+/g, '');
     if (!/^\d{6}$/.test(code)) return null;
     const current = Math.floor(Date.now() / 30000);
     for (let delta = -1; delta <= 1; delta++) {
@@ -75,8 +76,18 @@ export function createAuthenticatorService(client = supabase, getKey = () => pro
             const code = String(value || '').trim().toUpperCase();
             const backup = /^CP-[A-F0-9]{4}-[A-F0-9]{4}$/.test(code);
             const counter = backup ? null : matchingCounter(decryptAuthenticatorSecret(row.secret, userId, getKey()), code);
-            return command(userId, 'consume', { version: row.version, counter,
+            const result = await command(userId, 'consume', { version: row.version, counter,
                 backup_hash: backup ? crypto.createHash('sha256').update(code).digest('hex') : null });
+            if (!result.valid && !backup && !result.retryAfterSeconds) {
+                return {
+                    ...result,
+                    code: counter === null ? 'AUTHENTICATOR_CODE_MISMATCH' : 'AUTHENTICATOR_CODE_REJECTED',
+                    error: counter === null
+                        ? 'This code does not match your active authenticator. Check the C-Point HRIS account entry and your phone\'s automatic date and time.'
+                        : 'This code expired or was already used. Wait for a new authenticator code and submit it once.'
+                };
+            }
+            return result;
         },
         disable: (userId, version) => command(userId, 'disable', { version })
     };

@@ -164,8 +164,8 @@ export default function AuditLogsIndex() {
 
             <div className="space-y-4 sm:space-y-6">
                 {/* FILTER BAR */}
-                <div className="flex flex-col md:flex-row gap-2.5 sm:gap-3">
-                    <div className="flex-1 bg-white p-2 sm:p-2.5 rounded-lg shadow-2xs border border-slate-200 relative flex items-center">
+                <div className="grid min-w-0 grid-cols-1 gap-2.5 sm:gap-3 xl:grid-cols-2">
+                    <div className="min-w-0 bg-white p-2 sm:p-2.5 rounded-lg shadow-2xs border border-slate-200 relative flex items-center">
                         <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
                         <input maxLength={200}
                             type="text" 
@@ -186,19 +186,21 @@ export default function AuditLogsIndex() {
                         )}
                     </div>
 
-                    <div className="flex flex-wrap sm:flex-nowrap bg-white p-2 rounded-lg shadow-2xs border border-slate-200 w-full md:w-auto gap-2 items-center">
+                    <div className="grid min-w-0 grid-cols-1 bg-white p-2 rounded-lg shadow-2xs border border-slate-200 gap-2 items-center sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]">
                         <input 
                             type="date" 
                             value={filterDate} 
                             onChange={(e) => handleDateChange(e.target.value)}
-                            className="h-9 px-3 bg-slate-50 border border-slate-200 rounded-md text-xs font-medium text-slate-700 outline-none flex-1 sm:w-auto cursor-pointer"
+                            className="h-10 w-full min-w-0 max-w-full px-3 bg-slate-50 border border-slate-200 rounded-md text-xs font-medium text-slate-700 outline-none focus-visible:ring-2 focus-visible:ring-accent cursor-pointer"
                             title="Filter by event date"
+                            aria-label="Filter by event date"
                         />
                         <select 
                             value={filterUserId} 
                             onChange={(e) => handleUserChange(e.target.value)}
-                            className="h-9 px-3 bg-slate-50 border border-slate-200 rounded-md text-xs font-medium text-slate-700 outline-none flex-1 sm:w-auto cursor-pointer"
+                            className="h-10 w-full min-w-0 max-w-full truncate px-3 bg-slate-50 border border-slate-200 rounded-md text-xs font-medium text-slate-700 outline-none focus-visible:ring-2 focus-visible:ring-accent cursor-pointer"
                             title="Filter by operator"
+                            aria-label="Filter by operator"
                         >
                             <option value="">All users and system</option>
                             {users.map(u => (
@@ -211,11 +213,12 @@ export default function AuditLogsIndex() {
                             <button 
                                 type="button" 
                                 onClick={handleResetFilters} 
-                                className="h-9 px-3 flex items-center gap-1.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-md text-xs font-semibold transition-colors duration-100 cursor-pointer"
+                                className="h-10 px-3 flex items-center justify-center gap-1.5 whitespace-nowrap bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-md text-xs font-semibold transition-colors duration-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent cursor-pointer"
                                 title="Reset all filters"
+                                aria-label="Reset all filters"
                             >
                                 <RotateCcw className="w-3.5 h-3.5" />
-                                <span className="hidden sm:inline">Reset</span>
+                                <span>Reset</span>
                             </button>
                         )}
                     </div>
