@@ -13,15 +13,17 @@ export default function QRCode({
   level = 'H',
   margin = 2,
   showLogo = true,
-  className = '' 
+  className = '',
+  ariaLabel = 'QR code',
+  cache = true
 }) {
   const cacheKey = `${value}_${size}_${fgColor}_${bgColor}_${level}_${margin}`;
   const [generated, setGenerated] = useState(null);
-  const dataUrl = !value ? '' : generated?.key === cacheKey ? generated.url : qrCache.get(cacheKey) || '';
+  const dataUrl = !value ? '' : generated?.key === cacheKey ? generated.url : cache ? qrCache.get(cacheKey) || '' : '';
 
   useEffect(() => {
     let isMounted = true;
-    if (!value || qrCache.has(cacheKey)) return;
+    if (!value || (cache && qrCache.has(cacheKey))) return;
 
     QRCodeLib.toDataURL(String(value), {
       width: size * 2, // 2x supersampling for high optical scanner clarity
@@ -33,7 +35,7 @@ export default function QRCode({
       errorCorrectionLevel: level || 'H'
     })
       .then(url => {
-        qrCache.set(cacheKey, url);
+        if (cache) qrCache.set(cacheKey, url);
         if (isMounted) setGenerated({ key: cacheKey, url });
       })
       .catch(err => {
@@ -43,7 +45,7 @@ export default function QRCode({
     return () => {
       isMounted = false;
     };
-  }, [value, size, fgColor, bgColor, level, margin, cacheKey]);
+  }, [value, size, fgColor, bgColor, level, margin, cacheKey, cache]);
 
   // Optical golden ratio: 22% container occupies ~4.8% of QR area, safely preserving >25% error correction headroom
   const logoBoxSize = Math.max(24, Math.round(size * 0.22));
@@ -58,7 +60,7 @@ export default function QRCode({
         <>
           <img 
             src={dataUrl} 
-            alt={`QR Code for ${value}`} 
+            alt={ariaLabel}
             width={size} 
             height={size} 
             className="w-full h-full object-contain select-none max-w-full" 

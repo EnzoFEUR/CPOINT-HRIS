@@ -41,7 +41,7 @@ setInterval(() => {
             resetTicketStore.delete(ticket);
         }
     }
-}, 5 * 60 * 1000);
+}, 5 * 60 * 1000).unref();
 
 // Helper: Check & update rate limit
 function checkRateLimit(key) {
@@ -462,11 +462,13 @@ router.post('/verify-reset-otp', async (req, res) => {
         let verifiedVia = 'OTP';
         let isValid = false;
         let errorMessage = 'Invalid or expired verification code.';
+        let authenticatorRetryAfter = 0;
 
         // PATH A: Authenticator TOTP verification
         if (method === 'totp' || method === 'authenticator') {
             const targetUserId = emp.auth_user_id || emp.id;
             const proof = await authenticatorService.verify(targetUserId, otp);
+            authenticatorRetryAfter = proof.retryAfterSeconds || 0;
             isValid = proof.valid;
             if (proof.valid) verifiedVia = proof.verifiedVia;
             else errorMessage = proof.error;
@@ -496,6 +498,7 @@ router.post('/verify-reset-otp', async (req, res) => {
                 // Seamless fallback: check if user entered active TOTP code
                 const targetUserId = emp.auth_user_id || emp.id;
                 const proof = await authenticatorService.verify(targetUserId, otp);
+                authenticatorRetryAfter = proof.retryAfterSeconds || 0;
                 if (proof.valid) { isValid = true; verifiedVia = proof.verifiedVia; }
                 if (!isValid) {
                     errorMessage = verifyResult.error;
@@ -504,7 +507,8 @@ router.post('/verify-reset-otp', async (req, res) => {
         }
 
         if (!isValid) {
-            return res.status(400).json({ success: false, error: errorMessage });
+            if (authenticatorRetryAfter) res.setHeader('Retry-After', String(authenticatorRetryAfter));
+            return res.status(authenticatorRetryAfter ? 429 : 400).json({ success: false, error: errorMessage, retryAfterSeconds: authenticatorRetryAfter });
         }
 
         // Issue single-use cryptographic Reset Ticket
@@ -541,8 +545,8 @@ router.post('/verify-reset-otp', async (req, res) => {
         });
 
     } catch (err) {
-        console.error('[AUTH_SECURITY_VERIFY_ERROR]', err);
-        res.status(500).json({ success: false, error: 'Verification failed. Please try again.' });
+        console.error('[AUTH_SECURITY_VERIFY_ERROR]', { code: err.code || 'VERIFICATION_UNAVAILABLE', ...err.diagnostic });
+        res.status(503).json({ success: false, error: 'Verification is temporarily unavailable. Try again or use email verification.' });
     }
 });
 

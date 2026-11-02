@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { BACKUP_CODE_MAX_LENGTH, isAuthenticatorBackupCode, normalizeAuthenticatorCode } from '../../../shared/authenticatorPolicy.mjs';
 import toast from 'react-hot-toast';
 import { useOtpCooldown } from '../utils/useOtpCooldown';
 import { API_BASE_URL } from '../utils/apiBaseUrl.mjs';
@@ -252,7 +253,7 @@ function OtpVerificationContent({
         verifyLockRef.current = true;
 
         const isTotpMethod = method === 'totp';
-        const targetCode = backupMode ? backupCode.trim() : (codeToVerify || digits.join(''));
+        const targetCode = backupMode ? normalizeAuthenticatorCode(backupCode) : (codeToVerify || digits.join(''));
 
         if (!backupMode && targetCode.length !== 6) {
             verifyLockRef.current = false;
@@ -260,7 +261,7 @@ function OtpVerificationContent({
             return;
         }
 
-        if (backupMode && !targetCode) {
+        if (backupMode && !isAuthenticatorBackupCode(targetCode)) {
             verifyLockRef.current = false;
             setErrorMessage('Please enter an emergency backup code.');
             return;
@@ -271,7 +272,7 @@ function OtpVerificationContent({
 
         try {
             if (isTotpMethod) {
-                // Route to TOTP verification endpoint (<15ms response)
+                // Verify against the authenticated account's private factor.
                 const response = await fetchWithAuth(`${API_BASE_URL}/api/auth/totp/verify`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -280,7 +281,7 @@ function OtpVerificationContent({
                         email: email || sessionUser?.email,
                         code: targetCode,
                         purpose,
-                        isBackupCode: backupMode || targetCode.startsWith('CP-') || targetCode.length > 6
+                        isBackupCode: isAuthenticatorBackupCode(targetCode)
                     })
                 });
 
@@ -632,7 +633,7 @@ function OtpVerificationContent({
                                     <p className="text-xs text-slate-500 font-medium leading-relaxed">
                                         {method === 'totp'
                                             ? (backupMode
-                                                ? 'Enter one of your 8 emergency backup codes (CP-XXXX-XXXX)'
+                                                ? 'Paste one of your saved single-use backup codes'
                                                 : 'Enter the 6-digit code displayed in Google Authenticator')
                                             : `Enter the 6-digit code sent to ${email}`}
                                     </p>
@@ -650,9 +651,9 @@ function OtpVerificationContent({
                                 <div className="space-y-3">
                                     {backupMode ? (
                                         <div>
-                                            <input maxLength={14}
+                                            <input maxLength={BACKUP_CODE_MAX_LENGTH}
                                                 type="text"
-                                                placeholder="CP-XXXX-XXXX"
+                                                placeholder="Saved backup code"
                                                 value={backupCode}
                                                 onChange={(e) => {
                                                     setBackupCode(e.target.value.toUpperCase());

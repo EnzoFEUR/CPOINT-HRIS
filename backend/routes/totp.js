@@ -1,4 +1,5 @@
 import express from 'express';
+import crypto from 'node:crypto';
 import { supabase, createIsolatedAuthClient } from '../supabaseClient.js';
 import { closePasswordSession } from '../services/passwordService.js';
 import { authenticatorService } from '../services/authenticatorService.js';
@@ -9,8 +10,17 @@ import { loginSessionService } from '../services/loginSessionService.js';
 import { createAuditLog } from './auditLogs.js';
 
 const router = express.Router();
+router.use((req, res, next) => {
+    req.authenticatorRequestId = crypto.randomUUID();
+    res.setHeader('X-Request-ID', req.authenticatorRequestId);
+    next();
+});
 const failure = (message, status = 400) => Object.assign(new Error(message), { status });
-const respondError = (res, error) => res.status(error.status || 503).json({ success: false, code: error.code, error: error.status ? error.message : 'Authenticator service is temporarily unavailable. Use email verification.' });
+const respondError = (res, error, req) => {
+    if (error.retryAfterSeconds) res.setHeader('Retry-After', String(error.retryAfterSeconds));
+    if (!error.status || error.status >= 500) console.error('[AUTHENTICATOR_ERROR]', { requestId: req?.authenticatorRequestId, code: error.code || 'AUTHENTICATOR_UNAVAILABLE', ...error.diagnostic });
+    return res.status(error.status || 503).json({ success: false, code: error.code, error: error.status ? error.message : 'Authenticator service is temporarily unavailable. Use email verification.', ...(error.retryAfterSeconds ? { retryAfterSeconds: error.retryAfterSeconds } : {}) });
+};
 
 async function sessionUser(req) {
     const authId = req.user?._auth_user_id || req.user?.auth_user_id || req.user?.id;
@@ -24,7 +34,7 @@ async function confirmPassword(user, password) {
     const client = createIsolatedAuthClient();
     try {
         const { data, error } = await client.auth.signInWithPassword({ email: user.email, password });
-        if (error || data?.user?.id !== user.id) throw failure('Incorrect account password.', 401);
+        if (error || data?.user?.id !== user.id) throw Object.assign(failure('Incorrect account password.'), { code: 'AUTHENTICATOR_PASSWORD_INVALID' });
     } finally { await closePasswordSession(client); }
 }
 
@@ -33,7 +43,7 @@ async function confirmManagementCode(user, code) {
     const emailProof = verifyOtpCode(['authenticator_manage_' + user.email.toLowerCase(), 'authenticator_manage_' + user.id], code);
     if (emailProof.valid) return;
     const proof = await authenticatorService.verify(user.id, code);
-    if (!proof.valid) throw Object.assign(failure(proof.error || 'Invalid verification code.', proof.retryAfterSeconds ? 429 : 400), { code: proof.code });
+    if (!proof.valid) throw Object.assign(failure(proof.error || 'Invalid verification code.', proof.retryAfterSeconds ? 429 : 400), { code: proof.code, retryAfterSeconds: proof.retryAfterSeconds });
 }
 
 function audit(req, userId, event) {
@@ -49,7 +59,7 @@ router.get('/status', verifyIdentityToken, async (req, res) => {
         const user = { id: req.user._auth_user_id, user_metadata: req.user.user_metadata };
         const status = await authenticatorService.status(user.id);
         res.json({ success: true, ...status, requiresReenrollment: !status.enabled && Boolean(user.user_metadata?.totp_enabled) });
-    } catch (error) { respondError(res, error); }
+    } catch (error) { respondError(res, error, req); }
 });
 
 router.post('/setup', verifyToken, async (req, res) => {
@@ -58,18 +68,18 @@ router.post('/setup', verifyToken, async (req, res) => {
         await confirmPassword(user, req.body?.password);
         const factor = await authenticatorService.read(user.id);
         if (factor.enabled) await confirmManagementCode(user, req.body?.code);
-        const setup = await authenticatorService.begin(user.id, user.email, factor.version);
+        const setup = await authenticatorService.begin(user.id, user.email, factor.version, req.body?.restart ?? false);
         res.json({ success: true, ...setup });
-    } catch (error) { respondError(res, error); }
+    } catch (error) { respondError(res, error, req); }
 });
 
 router.post('/enable', verifyToken, async (req, res) => {
     try {
-        const user = await sessionUser(req);
-        const enabled = await authenticatorService.enable(user.id, req.body?.code);
+        const user = { id: req.user._auth_user_id };
+        const enabled = await authenticatorService.enable(user.id, req.body?.code, { setupId: req.body?.setupId, version: req.body?.version });
         audit(req, user.id, 'enabled');
         res.json({ success: true, message: 'Authenticator enabled successfully.', ...enabled });
-    } catch (error) { respondError(res, error); }
+    } catch (error) { respondError(res, error, req); }
 });
 
 router.post('/verify', bindOwnLoginChallenge, async (req, res) => {
@@ -85,11 +95,11 @@ router.post('/verify', bindOwnLoginChallenge, async (req, res) => {
         const result = await authenticatorService.verify(user.id, code);
         if (!result.valid) {
             if (result.retryAfterSeconds) res.setHeader('Retry-After', String(result.retryAfterSeconds));
-            return res.status(result.retryAfterSeconds ? 429 : 400).json({ success: false, error: result.error, retryAfterSeconds: result.retryAfterSeconds || 0 });
+            return res.status(result.retryAfterSeconds ? 429 : 400).json({ success: false, code: result.code, error: result.error, retryAfterSeconds: result.retryAfterSeconds || 0 });
         }
         const verifiedUntil = purpose === 'login_2fa' ? await loginSessionService.markVerified(req, String(result.verifiedVia).toUpperCase().includes('BACKUP') ? 'BACKUP_CODE' : 'TOTP') : undefined;
         res.json({ success: true, message: 'Authenticator code verified successfully.', verifiedVia: result.verifiedVia, remainingCodes: result.remainingCodes, verifiedUntil });
-    } catch (error) { respondError(res, error); }
+    } catch (error) { respondError(res, error, req); }
 });
 
 router.post('/disable', verifyToken, async (req, res) => {
@@ -102,7 +112,7 @@ router.post('/disable', verifyToken, async (req, res) => {
         await authenticatorService.disable(user.id, factor.version);
         audit(req, user.id, 'disabled');
         res.json({ success: true, message: 'Authenticator disabled successfully.' });
-    } catch (error) { respondError(res, error); }
+    } catch (error) { respondError(res, error, req); }
 });
 
 export default router;

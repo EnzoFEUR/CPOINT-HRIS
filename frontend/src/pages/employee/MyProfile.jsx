@@ -15,6 +15,7 @@ import { sanitizePersonnelText } from '../../../../shared/personnelInput.mjs';
 import { PASSWORD_REUSE_MESSAGE, isPasswordReuseError } from '../../../../shared/passwordPolicy.mjs';
 import { formatPhDisplay } from '../../utils/phoneUtils';
 import { useOtpCooldown } from '../../utils/useOtpCooldown';
+import { BACKUP_CODE_MAX_LENGTH, isAuthenticatorBackupCode, normalizeAuthenticatorCode } from '../../../../shared/authenticatorPolicy.mjs';
 import PhilippineAddressSelector from '../../components/PhilippineAddressSelector';
 
 
@@ -73,6 +74,16 @@ export default function MyProfile() {
     const [totpSubmitting, setTotpSubmitting] = useState(false);
     const [totpBackupCodes, setTotpBackupCodes] = useState([]);
     const [totpStep, setTotpStep] = useState(1); // 1 = QR & Code, 2 = Backup Codes
+    const [totpError, setTotpError] = useState('');
+    const [restartTotpSetup, setRestartTotpSetup] = useState(false);
+    const [setupClock, setSetupClock] = useState(Date.now);
+    const { cooldown: enrollmentCooldown, isCooldown: enrollmentLocked, startCooldown: startEnrollmentCooldown } = useOtpCooldown('authenticator_enrollment_' + (storedUser?.id || 'self'));
+    const setupSeconds = totpSetupData ? Math.max(0, Math.ceil((Date.parse(totpSetupData.expiresAt) - setupClock - totpSetupData.clockOffset) / 1000)) : 0;
+    useEffect(() => {
+        if (!showTotpModal || totpStep !== 1) return;
+        const timer = setInterval(() => setSetupClock(Date.now()), 1000);
+        return () => clearInterval(timer);
+    }, [showTotpModal, totpStep]);
 
     const fetchTotpStatus = useCallback(async () => {
         try {
@@ -112,9 +123,11 @@ export default function MyProfile() {
     }, [storedUser?.id, storedUser?.email, fetchTotpStatus]);
 
     const executeTotpSetup = async (pwd = '') => {
+        if (totpSubmitting || enrollmentLocked) return;
+        setTotpError('');
         setTotpSubmitting(true);
         try {
-            const bodyPayload = JSON.stringify({ password: pwd, code: reconfigureCode });
+            const bodyPayload = JSON.stringify({ password: pwd, code: reconfigureCode, restart: restartTotpSetup });
             const res = await fetchWithAuth('/api/auth/totp/setup', {
                 method: 'POST',
                 headers: bodyPayload ? { 'Content-Type': 'application/json' } : undefined,
@@ -122,26 +135,46 @@ export default function MyProfile() {
             });
             const data = await res.json();
             if (!res.ok || !data.success) {
+                if (data.retryAfterSeconds) startEnrollmentCooldown(data.retryAfterSeconds);
                 throw new Error(data.error || 'Failed to start authenticator setup.');
+            }
+            if (!data.setupId || !Number.isSafeInteger(data.version) || !Number.isFinite(Date.parse(data.expiresAt)) || !Number.isFinite(Date.parse(data.serverTime))) {
+                throw new Error('Authenticator setup requires a server update. Refresh and try again.');
             }
             setShowReconfigureModal(false);
             setReconfigurePassword('');
             setReconfigureCode('');
-            setTotpSetupData(data);
+            const receivedAt = Date.now();
+            setSetupClock(receivedAt);
+            setTotpSetupData({ ...data, clockOffset: Date.parse(data.serverTime) - receivedAt });
             setTotpVerifyCode('');
             setTotpStep(1);
             setShowTotpModal(true);
         } catch (err) {
+            setTotpError(err.message || 'Setup error');
             toast.error(err.message || 'Setup error');
         } finally {
             setTotpSubmitting(false);
         }
     };
 
-    const handleStartTotpSetup = () => {
+    const handleStartTotpSetup = (restart = false) => {
+        setRestartTotpSetup(restart === true);
+        setTotpError('');
+        setShowTotpModal(false);
+        setTotpSetupData(null);
+        setTotpBackupCodes([]);
         setReconfigurePassword('');
         setReconfigureCode('');
         setShowReconfigureModal(true);
+    };
+
+    const closeTotpSetup = () => {
+        setShowTotpModal(false);
+        setTotpSetupData(null);
+        setTotpBackupCodes([]);
+        setTotpVerifyCode('');
+        setTotpError('');
     };
 
     const sendManagementOtp = async () => {
@@ -159,26 +192,33 @@ export default function MyProfile() {
 
     const handleConfirmTotp = async (e) => {
         e?.preventDefault();
+        if (totpSubmitting || enrollmentLocked || !setupSeconds) return;
         if (totpVerifyCode.trim().length !== 6) {
             toast.error('Please enter the 6-digit confirmation code.');
             return;
         }
         setTotpSubmitting(true);
+        setTotpError('');
         try {
             const res = await fetchWithAuth('/api/auth/totp/enable', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ code: totpVerifyCode.trim() })
+                body: JSON.stringify({ code: totpVerifyCode.trim(), setupId: totpSetupData.setupId, version: totpSetupData.version })
             });
             const data = await res.json();
             if (!res.ok || !data.success) {
+                if (data.retryAfterSeconds) startEnrollmentCooldown(data.retryAfterSeconds);
                 throw new Error(data.error || 'Failed to verify confirmation code.');
             }
             toast.success('Google Authenticator 2FA activated!');
             setTotpBackupCodes(data.backupCodes || []);
             setTotpStep(2);
+            setTotpSetupData(null);
+            setTotpVerifyCode('');
             fetchTotpStatus();
         } catch (err) {
+            setTotpError(err.message || 'Invalid code.');
+            setTotpVerifyCode('');
             toast.error(err.message || 'Invalid code.');
         } finally {
             setTotpSubmitting(false);
@@ -583,12 +623,12 @@ const normalizeJobTitle = (title, isAdmin) => {
             toast.error('New passwords do not match.');
             return;
         }
-        const cleanOtp = passwordOtp.trim();
+        const cleanOtp = normalizeAuthenticatorCode(passwordOtp);
         if (!cleanOtp) {
             toast.error('Please enter the 6-digit verification code from your email or Google Authenticator.');
             return;
         }
-        if (!cleanOtp.startsWith('CP') && (cleanOtp.length !== 6 || !/^\d{6}$/.test(cleanOtp))) {
+        if (!isAuthenticatorBackupCode(cleanOtp) && !/^\d{6}$/.test(cleanOtp)) {
             toast.error('Verification code must be exactly 6 digits.');
             return;
         }
@@ -1670,7 +1710,7 @@ const normalizeJobTitle = (title, isAdmin) => {
                             </div>
                             <button
                                 type="button"
-                                onClick={() => setShowTotpModal(false)}
+                                onClick={closeTotpSetup}
                                 className="text-slate-400 hover:text-slate-600 p-1 rounded-md cursor-pointer"
                             >
                                 <i className="ti ti-x text-lg" />
@@ -1680,7 +1720,7 @@ const normalizeJobTitle = (title, isAdmin) => {
                         {totpStep === 1 && totpSetupData && (
                             <div className="p-5 sm:p-6 space-y-4">
                                 <div className="flex justify-center p-3 bg-slate-50 border border-slate-200 rounded-lg">
-                                    <QRCode value={totpSetupData.uri} size={160} />
+                                    <QRCode value={totpSetupData.uri} size={160} ariaLabel="Authenticator setup QR code" cache={false} showLogo={false} />
                                 </div>
 
                                 <div className="space-y-1">
@@ -1708,11 +1748,17 @@ const normalizeJobTitle = (title, isAdmin) => {
                                 </div>
 
                                 <form onSubmit={handleConfirmTotp} className="space-y-3 pt-2 border-t border-slate-100">
+                                    <p className="text-xs text-slate-600 break-all">{totpSetupData.accountName}</p>
+                                    <p className="text-xs text-slate-600">{setupSeconds > 0 ? `Setup expires in ${Math.floor(setupSeconds / 60)}:${String(setupSeconds % 60).padStart(2, '0')}` : 'Setup expired. Start again.'}</p>
+                                    {totpError && <p role="alert" className="text-xs text-red-700">{totpError}</p>}
+                                    {enrollmentLocked && <p role="status" className="text-xs text-slate-600">Try again in {enrollmentCooldown}s.</p>}
                                     <div>
-                                        <label className="block text-xs font-semibold text-slate-800 mb-1">
+                                        <label htmlFor="authenticator-confirmation" className="block text-xs font-semibold text-slate-800 mb-1">
                                             Enter 6-digit confirmation code:
                                         </label>
                                         <input
+                                            id="authenticator-confirmation"
+                                            autoComplete="one-time-code"
                                             type="text"
                                             inputMode="numeric"
                                             maxLength={6}
@@ -1727,14 +1773,14 @@ const normalizeJobTitle = (title, isAdmin) => {
                                     <div className="flex items-center justify-end gap-2 pt-1">
                                         <button
                                             type="button"
-                                            onClick={() => setShowTotpModal(false)}
+                                            onClick={closeTotpSetup}
                                             className="h-9 px-3.5 bg-white hover:bg-slate-100 text-slate-700 border border-slate-300 rounded-md text-xs font-medium cursor-pointer"
                                         >
                                             Cancel
                                         </button>
                                         <button
                                             type="submit"
-                                            disabled={totpSubmitting || totpVerifyCode.length !== 6}
+                                            disabled={totpSubmitting || enrollmentLocked || !setupSeconds || totpVerifyCode.length !== 6}
                                             className="h-9 px-4 bg-slate-900 hover:bg-slate-800 text-white rounded-md text-xs font-semibold shadow-2xs disabled:opacity-50 cursor-pointer flex items-center gap-1.5"
                                         >
                                             {totpSubmitting ? (
@@ -1747,6 +1793,7 @@ const normalizeJobTitle = (title, isAdmin) => {
                                             )}
                                         </button>
                                     </div>
+                                    <button type="button" disabled={totpSubmitting || enrollmentLocked} onClick={() => handleStartTotpSetup(true)} className="text-xs font-semibold text-slate-700 underline disabled:opacity-50">Start a new setup</button>
                                 </form>
                             </div>
                         )}
@@ -1765,7 +1812,7 @@ const normalizeJobTitle = (title, isAdmin) => {
 
                                 <div className="grid grid-cols-2 gap-2 p-3 bg-slate-100 rounded-md border border-slate-200 font-mono text-xs font-bold text-slate-900">
                                     {totpBackupCodes.map((code, idx) => (
-                                        <div key={idx} className="p-1.5 bg-white rounded border border-slate-200 text-center tracking-wider">
+                                        <div key={idx} className="min-w-0 break-all p-1.5 bg-white rounded border border-slate-200 text-center">
                                             {code}
                                         </div>
                                     ))}
@@ -1796,7 +1843,7 @@ const normalizeJobTitle = (title, isAdmin) => {
 
                                     <button
                                         type="button"
-                                        onClick={() => setShowTotpModal(false)}
+                                        onClick={closeTotpSetup}
                                         className="h-8 px-4 bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold rounded-md shadow-2xs cursor-pointer"
                                     >
                                         Done
@@ -1819,7 +1866,6 @@ const normalizeJobTitle = (title, isAdmin) => {
                                 </div>
                                 <div>
                                     <h3 className="font-bold text-slate-900 text-sm">{totpStatus.enabled ? 'Reconfigure 2FA' : 'Set Up Authenticator'}</h3>
-                                    <p className="text-[11px] text-slate-500">Pair a new authenticator device</p>
                                 </div>
                             </div>
                             <button
@@ -1849,10 +1895,12 @@ const normalizeJobTitle = (title, isAdmin) => {
                             </div>
                             {totpStatus.enabled && <div className="space-y-2">
                                 <label htmlFor="reconfigure-verification-code" className="block text-[11px] font-semibold text-slate-700">Authenticator, backup, or emailed code</label>
-                                <input id="reconfigure-verification-code" value={reconfigureCode} onChange={e => setReconfigureCode(e.target.value)} maxLength={20} autoComplete="one-time-code" className="w-full h-8 px-2.5 text-xs rounded-md border border-slate-300" />
+                                <input id="reconfigure-verification-code" value={reconfigureCode} onChange={e => setReconfigureCode(e.target.value)} maxLength={BACKUP_CODE_MAX_LENGTH} autoComplete="one-time-code" className="w-full h-8 px-2.5 text-xs rounded-md border border-slate-300" />
                                 <button type="button" disabled={managementOtpSending || managementIsCooldown} onClick={sendManagementOtp} className="text-xs font-semibold underline disabled:opacity-50">{managementIsCooldown ? 'Resend in ' + managementCooldown + 's' : 'Email me a verification code'}</button>
                             </div>}
                         </div>
+                        {totpError && <p role="alert" className="px-4 pb-3 text-xs text-red-700">{totpError}</p>}
+                        {enrollmentLocked && <p role="status" className="px-4 pb-3 text-xs text-slate-600">Try again in {enrollmentCooldown}s.</p>}
                         <div className="p-4 bg-slate-50 border-t border-slate-100 flex items-center justify-end gap-2">
                             <button
                                 type="button"
@@ -1871,7 +1919,7 @@ const normalizeJobTitle = (title, isAdmin) => {
                                     if (totpStatus.enabled && !reconfigureCode.trim()) { toast.error('Enter a verification code.'); return; }
                                     executeTotpSetup(reconfigurePassword);
                                 }}
-                                disabled={totpSubmitting}
+                                disabled={totpSubmitting || enrollmentLocked}
                                 className="h-8 px-3.5 bg-slate-900 hover:bg-slate-800 disabled:opacity-50 text-white text-xs font-semibold rounded-md shadow-2xs cursor-pointer flex items-center gap-1.5"
                             >
                                 {totpSubmitting ? (
@@ -1902,7 +1950,6 @@ const normalizeJobTitle = (title, isAdmin) => {
                                 </div>
                                 <div>
                                     <h3 className="font-bold text-slate-900 text-sm">Disable Authenticator 2FA</h3>
-                                    <p className="text-[11px] text-slate-500">Step-up security verification</p>
                                 </div>
                             </div>
                             <button
@@ -1938,11 +1985,11 @@ const normalizeJobTitle = (title, isAdmin) => {
                                 <label className="block text-[11px] font-semibold text-slate-700">
                                     Authenticator, Backup, or Emailed Code (Required)
                                 </label>
-                                <input maxLength={14}
+                                <input maxLength={BACKUP_CODE_MAX_LENGTH}
                                     type="text"
                                     value={disableCode}
                                     onChange={(e) => setDisableCode(e.target.value)}
-                                    placeholder="e.g. CP-XXXX-XXXX or 6-digit token"
+                                    placeholder="Authenticator, backup, or emailed code"
                                     className="w-full h-8 px-2.5 text-xs rounded-md border border-slate-300 focus:outline-hidden focus:ring-1 focus:ring-slate-900 font-mono"
                                 />
                                 <button type="button" disabled={managementOtpSending || managementIsCooldown} onClick={sendManagementOtp} className="text-xs font-semibold underline disabled:opacity-50">{managementIsCooldown ? 'Resend in ' + managementCooldown + 's' : 'Email me a verification code'}</button>
@@ -2068,20 +2115,14 @@ const normalizeJobTitle = (title, isAdmin) => {
                                     <input
                                         type="text"
                                         required
-                                        inputMode={passwordOtp.startsWith('CP') ? 'text' : 'numeric'}
-                                        pattern={passwordOtp.startsWith('CP') ? undefined : '[0-9]*'}
+                                        inputMode="text"
                                         autoComplete="one-time-code"
-                                        maxLength={passwordOtp.startsWith('CP') ? 14 : 6}
+                                        maxLength={BACKUP_CODE_MAX_LENGTH}
                                         value={passwordOtp}
                                         onChange={(e) => {
-                                            const raw = e.target.value.trim().toUpperCase();
-                                            if (raw.startsWith('CP')) {
-                                                setPasswordOtp(raw.slice(0, 14));
-                                            } else {
-                                                setPasswordOtp(raw.replace(/\D/g, '').slice(0, 6));
-                                            }
+                                            setPasswordOtp(normalizeAuthenticatorCode(e.target.value).slice(0, BACKUP_CODE_MAX_LENGTH));
                                         }}
-                                        placeholder={passwordOtp.startsWith('CP') ? 'CP-XXXX-XXXX' : '123456'}
+                                        placeholder="Verification or backup code"
                                         className="flex-1 h-9 px-3 bg-white border border-slate-200 rounded-md focus:outline-none focus:border-accent text-xs text-slate-800 font-mono tracking-widest transition-colors shadow-2xs"
                                     />
                                     <button

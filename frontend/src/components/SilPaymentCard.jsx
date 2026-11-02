@@ -5,6 +5,7 @@ import { getUser } from '../routes/guards';
 import { isCreditManager, validateCreditCommand, getLeaveCreditAllocationMessage } from '../../../shared/leavePolicy.js';
 import { fetchWithAuth } from '../utils/api';
 import useEmployeeLeaveCredits, { leaveCreditKey, readLeaveCreditResponse } from '../utils/useEmployeeLeaveCredits';
+import PayrollPaymentReceipt from './PayrollPaymentReceipt';
 
 const inputClass = 'mt-1 w-full rounded-md border border-slate-300 bg-white px-2.5 py-1.5 text-xs';
 const money = amount => Number(amount).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -27,37 +28,7 @@ export function SilCashEarnings({ payroll }) {
  * 2. Payroll Payment Confirmation (Manager Net Pay Receipt)
  */
 export function SilPayrollPayment({ payroll }) {
-    const client = useQueryClient();
-    const [reference, setReference] = useState('');
-    const [confirmed, setConfirmed] = useState(false);
-    const [saving, setSaving] = useState(false);
-    const request = useRef(null);
-    const busy = useRef(false);
-    const canManage = isCreditManager(getUser());
-    if (!canManage || payroll?.status !== 'Pending' || !payroll?.sil_cash_lines?.length) return null;
-    const submit = async event => {
-        event.preventDefault();
-        if (busy.current || !confirmed || !reference.trim()) return;
-        const fingerprint = `${payroll.id}:${reference.trim()}`;
-        if (request.current?.fingerprint !== fingerprint) request.current = { fingerprint, id: crypto.randomUUID() };
-        busy.current = true; setSaving(true);
-        try {
-            await readLeaveCreditResponse(await fetchWithAuth(`/api/payroll/${payroll.id}/confirm-sil-payment`, {
-                method: 'POST', body: JSON.stringify({ operation_id: request.current.id, reference: reference.trim() }),
-            }));
-            await Promise.all(['payroll', 'adminPayrolls', 'employeeLeaveCredits', 'employeeDashboard', 'silCashOutQueue'].map(key => client.invalidateQueries({ queryKey: [key] })));
-            toast.success('Payment recorded.');
-        } catch (error) { toast.error(error.message || 'Unable to confirm payment. Retry with the same reference.'); }
-        finally { busy.current = false; setSaving(false); }
-    };
-    return <form onSubmit={submit} className="mb-4 space-y-3 rounded-lg border border-slate-200 bg-white p-4 print:hidden" aria-label="Confirm payroll payment">
-        <h3 className="text-sm font-semibold">Awaiting payment confirmation</h3>
-        <fieldset disabled={saving} className="space-y-3">
-            <label className="block text-xs font-medium">Completed payment reference<input required maxLength="120" value={reference} onChange={event => setReference(event.target.value)} className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2" /></label>
-            <label className="flex gap-2 text-xs"><input type="checkbox" required checked={confirmed} onChange={event => setConfirmed(event.target.checked)} />I confirm the employee received this payslip's net payment.</label>
-            <button type="submit" disabled={saving || !confirmed || !reference.trim()} className="rounded-md bg-slate-900 px-3 py-2 text-xs font-semibold text-white disabled:opacity-50">{saving ? 'Saving...' : 'Confirm payment received'}</button>
-        </fieldset>
-    </form>;
+    return payroll?.id ? <PayrollPaymentReceipt key={payroll.id} payroll={payroll} /> : null;
 }
 
 /**

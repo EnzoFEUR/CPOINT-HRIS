@@ -1,4 +1,5 @@
 import express from 'express';
+import { isAuthenticatorBackupCode, normalizeAuthenticatorCode } from '../../shared/authenticatorPolicy.mjs';
 import crypto from 'crypto';
 import { supabase, createIsolatedAuthClient } from '../supabaseClient.js';
 import { authenticatorService } from '../services/authenticatorService.js';
@@ -561,8 +562,8 @@ router.post('/change-password', verifyToken, async (req, res) => {
             });
         }
 
-        const cleanOtp = String(otp).trim();
-        if (cleanOtp.length > 14 || (!cleanOtp.startsWith('CP') && (cleanOtp.length !== 6 || !/^\d{6}$/.test(cleanOtp)))) {
+        const cleanOtp = normalizeAuthenticatorCode(otp);
+        if (!isAuthenticatorBackupCode(cleanOtp) && !/^\d{6}$/.test(cleanOtp)) {
             return res.status(400).json({
                 success: false,
                 message: 'Verification code must be exactly 6 digits.'
@@ -605,7 +606,7 @@ router.post('/change-password', verifyToken, async (req, res) => {
         }
 
         // Step 1: Verify current password via Supabase Auth
-        const targetAuthId = req.user.auth_user_id || req.user.id;
+        const targetAuthId = req.user._auth_user_id || req.user.auth_user_id || req.user.id;
         passwordClient = createIsolatedAuthClient();
         const { data: passwordAuth, error: signInErr } = await passwordClient.auth.signInWithPassword({
             email: userEmail,
@@ -659,11 +660,16 @@ router.post('/change-password', verifyToken, async (req, res) => {
         } else {
             // Check Google Authenticator TOTP or Backup code fallback
             try {
-                const targetAuthId = req.user.auth_user_id || req.user.id;
+                const targetAuthId = req.user._auth_user_id || req.user.auth_user_id || req.user.id;
                 const proof = await authenticatorService.verify(targetAuthId, cleanOtp);
                 if (proof.valid) { isCodeValid = true; verifiedVia = proof.verifiedVia === 'TOTP' ? 'TOTP_AUTHENTICATOR' : 'BACKUP_CODE'; }
-            } catch {
-                console.error('[PASSWORD_CHANGE_TOTP_CHECK_ERR] Private authenticator storage unavailable.');
+                else if (proof.retryAfterSeconds) {
+                    res.setHeader('Retry-After', String(proof.retryAfterSeconds));
+                    return res.status(429).json({ success: false, message: proof.error, retry_after: proof.retryAfterSeconds });
+                }
+            } catch (error) {
+                console.error('[PASSWORD_CHANGE_TOTP_CHECK_ERR]', { code: error.code || 'AUTHENTICATOR_UNAVAILABLE', ...error.diagnostic });
+                return res.status(503).json({ success: false, message: 'Authenticator verification is temporarily unavailable. Use an emailed verification code.' });
             }
         }
 

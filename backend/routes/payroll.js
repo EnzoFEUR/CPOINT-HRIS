@@ -54,6 +54,8 @@ router.post('/:id/confirm-sil-payment', requirePayrollManager, async (req, res) 
         const { data, error } = await supabase.rpc('confirm_sil_payroll_payment', { p_actor_id: req.user.id, p_payroll_id: req.params.id, p_operation_id: operation_id, p_reference: reference.trim() });
         if (error) throw error;
         refreshLeaveCredits(supabase, data.employee_id);
+        invalidateCache(['/api/payroll', '/api/dashboard']);
+        broadcastPayrollUpdate('PAYROLL_UPDATED', { id: req.params.id, employee_id: data.employee_id });
         res.json({ success: true, data });
     } catch (error) { sendCreditError(res, error); }
 });
@@ -450,7 +452,7 @@ class PayrollRealtimeManager {
             }
         }
 
-        const ch = this.client.channel(topic);
+        const ch = this.client.channel(topic, topic.startsWith('payroll-payment-') ? { config: { private: true } } : undefined);
         let resolveSub;
         const subPromise = new Promise(resolve => { resolveSub = resolve; });
 
@@ -495,14 +497,15 @@ class PayrollRealtimeManager {
 
     dispatch(event, payload = {}) {
         const enrichedPayload = { ...payload, broadcast_timestamp: new Date().toISOString() };
-        const topics = new Set(this.staticTopics);
+        const paymentOnly = event === 'PAYROLL_PAYMENT_UPDATED';
+        const topics = new Set(paymentOnly ? [] : this.staticTopics);
 
         const empIds = Array.isArray(payload.employee_ids)
             ? payload.employee_ids
             : (payload.employee_id ? [payload.employee_id] : []);
 
         empIds.forEach(id => {
-            if (id) {
+            if (id && !paymentOnly) {
                 topics.add(`employee-live-dashboard-${id}`);
                 topics.add(`myprofile-realtime-${id}`);
             }
@@ -513,7 +516,10 @@ class PayrollRealtimeManager {
             : (payload.id ? [payload.id] : []);
 
         payrollIds.forEach(id => {
-            if (id) topics.add(`payslip-live-${id}`);
+            if (id) {
+                if (!paymentOnly) topics.add(`payslip-live-${id}`);
+                if (event === 'PAYROLL_UPDATED' || event === 'PAYROLL_PAYMENT_UPDATED') topics.add(`payroll-payment-${id}`);
+            }
         });
 
         // Non-blocking fire-and-forget dispatch
@@ -2556,7 +2562,7 @@ router.post('/bulk-delete', requirePayrollManager, async (req, res) => {
         res.json({ success: true, deleted_count: deletedCount, message: `${deletedCount} payroll record(s) deleted successfully.` });
     } catch (err) {
         console.error('bulk-delete payroll error:', err);
-        const isConflict = err.code === '23503' || err.code === 'P0001' || err.message?.includes('SIL_PAYROLL_LOCKED');
+        const isConflict = ['23503', '23001', 'P0001'].includes(err.code) || err.message?.includes('SIL_PAYROLL_LOCKED');
         res.status(isConflict ? 409 : 500).json({
             error: isConflict
                 ? 'This payslip is locked or contains linked records that prevent deletion.'
@@ -2593,7 +2599,7 @@ router.delete('/:id', requirePayrollManager, async (req, res) => {
         res.json({ success: true, message: 'Payroll record deleted successfully.' });
     } catch (err) {
         console.error('delete payroll error:', err);
-        const isConflict = err.code === '23503' || err.code === 'P0001' || err.message?.includes('SIL_PAYROLL_LOCKED');
+        const isConflict = ['23503', '23001', 'P0001'].includes(err.code) || err.message?.includes('SIL_PAYROLL_LOCKED');
         res.status(isConflict ? 409 : 500).json({
             error: isConflict
                 ? 'This payslip is locked or contains linked records that prevent deletion.'
