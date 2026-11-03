@@ -83,7 +83,6 @@ function Calculation({ calculation }) {
         <div className="rounded-lg border border-slate-200 bg-slate-50/70 p-4 space-y-3.5">
             <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 pb-2.5">
                 <div className="flex items-center gap-2">
-                    <span className="w-2 h-2 rounded-full bg-accent" />
                     <span className="font-bold text-sm text-slate-900">
                         Statutory Calculation Breakdown
                     </span>
@@ -129,7 +128,7 @@ function Calculation({ calculation }) {
             ) : (
                 <div className="space-y-2 pt-1">
                     <div className="text-[11px] text-slate-500 font-medium flex items-center justify-between">
-                        <span>Statutory Components (RA 7641 Formula)</span>
+                        <span>Statutory Components</span>
                         <span className="font-mono text-slate-600">Daily × 22.5 days × {calculation.credited_years} yrs</span>
                     </div>
                     <dl className="space-y-1.5 text-xs sm:text-sm bg-white p-3 rounded-md border border-slate-200 shadow-2xs">
@@ -540,7 +539,6 @@ function RetirementPayWorkspace({ exitRequestId, exitLink }) {
                         </div>}
                     {employee && (
                             <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-accent-subtle text-accent border border-accent/20 flex items-center gap-1">
-                                <span className="w-1.5 h-1.5 rounded-full bg-accent" />
                                 <span>Selected employee</span>
                             </span>
                         )}
@@ -751,10 +749,6 @@ function RetirementPayWorkspace({ exitRequestId, exitLink }) {
                                             <div className="flex items-center gap-2">
                                                 <span className="text-[11px] font-bold text-slate-900 uppercase tracking-wider">
                                                     Enterprise Auto-Detection
-                                                </span>
-                                                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200/70">
-                                                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                                                    Real-Time Active
                                                 </span>
                                                 {autoDetect.isFetching && (
                                                     <span className="inline-flex items-center gap-1 text-[10px] text-accent font-medium">
