@@ -103,13 +103,8 @@ export default function RequestDocumentModal({
             <div className="bg-surface rounded-xl shadow-2xl border border-line w-full max-w-lg overflow-hidden flex flex-col max-h-[92vh] text-ink">
                 {/* Header */}
                 <div className="px-5 py-3.5 border-b border-line flex items-center justify-between bg-surface">
-                    <div className="flex items-center gap-2.5">
-                        <div className="w-8 h-8 rounded-lg bg-accent text-white flex items-center justify-center shadow-2xs shrink-0">
-                            <i className="ti ti-file-alert text-base" />
-                        </div>
-                        <div>
-                            <h3 className="text-sm font-semibold text-ink">Request Required Document</h3>
-                        </div>
+                    <div>
+                        <h3 className="text-sm font-semibold text-ink">Request Required Document</h3>
                     </div>
                     <button
                         type="button"

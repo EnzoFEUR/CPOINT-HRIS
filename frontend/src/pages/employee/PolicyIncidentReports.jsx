@@ -141,17 +141,11 @@ export default function PolicyIncidentReports() {
             ) : (
                 <div className="min-w-0 [overflow-wrap:anywhere] bg-white rounded-lg p-5 sm:p-6 shadow-2xs border border-slate-200 space-y-4">
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">
-                        <div className="flex items-center gap-2.5">
-                            <div className="h-9 w-9 rounded-md bg-warning-subtle text-warning-ink flex items-center justify-center border border-warning/20">
-                                <i className="ti ti-scale text-lg" />
-                            </div>
-
-                            <div>
-                                <h3 className="font-bold text-slate-900 text-sm sm:text-base">
+                        <div>
+                            <h3 className="font-bold text-slate-900 text-sm sm:text-base">
                                     Policy &amp; Incident Reports
                                 </h3>
                             </div>
-                        </div>
 
                         <div className="flex items-center gap-2">
                             <span

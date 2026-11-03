@@ -595,55 +595,6 @@ export default function ForgotPassword() {
                   }`}
                 />
               </div>
-
-              {/* Recovery eligibility feedback */}
-              {accountStatus === 'pending_registration' && accountInfo && (
-                <div className="mt-2 p-2.5 bg-warning-subtle border border-warning/20 rounded-md text-xs text-warning-ink flex items-start gap-2 shadow-2xs">
-                  <i className="ti ti-shield-lock text-warning-ink text-base shrink-0 mt-0.5" />
-                  <div>
-                    <span className="font-bold text-warning-ink block">Complete initial registration</span>
-                    <span className="text-[11px] text-warning-ink leading-relaxed block mt-0.5">
-                      This account is pending initial registration and must complete initial security setup with the temporary credentials provided by HR before self-service password recovery is enabled.
-                    </span>
-                  </div>
-                </div>
-              )}
-
-              {accountStatus === 'not_found' && (
-                <div className="mt-2 p-2.5 bg-danger-subtle border border-danger/20 rounded-md text-xs text-danger-ink flex items-start gap-2">
-                  <i className="ti ti-alert-circle text-danger-ink text-base shrink-0 mt-0.5" />
-                  <div>
-                    <span className="font-bold text-danger-ink block">No Registered Account Found</span>
-                    <span className="text-[11px] text-danger-ink leading-relaxed block mt-0.5">
-                      You can only reset your password if you have a registered workplace account. Please check your spelling or contact HR.
-                    </span>
-                  </div>
-                </div>
-              )}
-
-              {accountStatus === 'no_email' && accountInfo && (
-                <div className="mt-2 p-2.5 bg-warning-subtle border border-warning/20 rounded-md text-xs text-warning-ink flex items-start gap-2">
-                  <i className="ti ti-alert-triangle text-warning-ink text-base shrink-0 mt-0.5" />
-                  <div>
-                    <span className="font-bold text-warning-ink block">Workplace email required</span>
-                    <span className="text-[11px] text-warning-ink leading-relaxed block mt-0.5">
-                      This employee account does not have a registered workplace email on file. Please contact HR or your supervisor for an in-person credential reset.
-                    </span>
-                  </div>
-                </div>
-              )}
-
-              {accountStatus === 'inactive' && accountInfo && (
-                <div className="mt-2 p-2.5 bg-slate-100 border border-slate-300 rounded-md text-xs text-slate-700 flex items-start gap-2">
-                  <i className="ti ti-ban text-slate-500 text-base shrink-0 mt-0.5" />
-                  <div>
-                    <span className="font-bold text-slate-900 block">Recovery unavailable</span>
-                    <span className="text-[11px] text-slate-600 leading-relaxed block mt-0.5">
-                      This account is currently {accountInfo.status || 'inactive'}. Password recovery is disabled. Please contact System Administration.
-                    </span>
-                  </div>
-                </div>
-              )}
             </div>
 
             {/* Segmented Control for Recovery Method */}

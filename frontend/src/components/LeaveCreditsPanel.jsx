@@ -6,23 +6,28 @@ import { getUser } from '../routes/guards';
 import { getDisciplinaryCache } from '../utils/disciplinaryCache';
 import { useCurrentTime } from '../utils/useCurrentTime';
 import { VACATION_MONETIZATION_EXEMPT_DAY_CAP } from '../../../shared/statutoryLeave.mjs';
+import SilValuationFields from './SilValuationFields';
+import { findPreviousSilReview, silRateReviewItems } from '../utils/silRateAssistant.mjs';
+import useSilRateSources from '../utils/useSilRateSources';
 import {
     calculateSilConversion,
     validateCashOutRequest,
     validateCashOutDecision,
     validateCashOutTransition,
     CASH_OUT_LABELS,
+    formatSilEvidenceReference,
     isCreditManager,
     validateCreditCommand,
     getLeaveCreditAllocationMessage,
 } from '../../../shared/leavePolicy.js';
-import { getEmployeeRestDays } from '../../../shared/workPolicy.mjs';
+import { getEmployeeRestDays, getManilaWorkDate } from '../../../shared/workPolicy.mjs';
 import { isBoundedDecimalInput } from '../../../shared/inputLimits.mjs';
 import useEmployeeLeaveCredits, { leaveCreditKey, readLeaveCreditResponse } from '../utils/useEmployeeLeaveCredits';
 
 const days = value => Number(value).toLocaleString('en-PH', { maximumFractionDigits: 3 });
+const emptyValuation = () => ({ daily_rate: '', source_document_id: '', evidence_reference: '', calculation_basis: '', reference_start: '', reference_end: '', as_of: '', verified: false });
 const inputClass =
-    'w-full h-8 bg-white border border-slate-200 rounded-md px-2.5 text-xs text-slate-800 font-medium focus:outline-none focus:border-slate-400 focus:ring-1 focus:ring-slate-300 transition-colors shadow-2xs';
+    'w-full h-8 bg-surface border border-line rounded-md px-2.5 text-xs text-ink font-medium focus:outline-none focus:border-line-strong focus:ring-1 focus:ring-accent/20 transition-colors shadow-2xs';
 
 const STATUTORY_BASIS_OPTIONS = [
     {
@@ -145,6 +150,8 @@ export default function LeaveCreditsPanel({
     const cashRequests = query.data?.cash_out_requests || [];
     const cashEvents = query.data?.cash_events || [];
     const pendingCash = cashRequests.find(item => item.status === 'requested');
+    const valuedCash = cashRequests.find(item => item.valuation_basis);
+    const valuationBasis = valuedCash?.valuation_basis;
     const openCash = cashRequests.find(item =>
         ['requested', 'approved', 'queued_for_payroll', 'needs_correction', 'payment_failed'].includes(item.status)
     );
@@ -209,6 +216,30 @@ export default function LeaveCreditsPanel({
     const busy = useRef(false);
     const [basisSelection, setBasisSelection] = useState('dole_standard');
     const [customBasis, setCustomBasis] = useState('');
+    const [valuation, setValuation] = useState(emptyValuation);
+    const [taxTreatment, setTaxTreatment] = useState('');
+    const [approveStep, setApproveStep] = useState(1);
+    const [sourceRevision, setSourceRevision] = useState(0);
+    const [sourceNotice, setSourceNotice] = useState('');
+    const savedRate = Number(employee?.daily_rate) || Number(employee?.daily_pay) || 0;
+    const needsValuation = !Number.isFinite(savedRate) || savedRate <= 0;
+    const supportsValuation = query.data?.valuation_version === 3 && query.data?.workflow_version === 2;
+    const reviewedRate = needsValuation ? Number(valuation.daily_rate) : savedRate;
+    const conversionDate = getManilaWorkDate(now);
+    const previousWageReview = findPreviousSilReview(cashRequests, employeeId, conversionDate);
+    const approveSteps = needsValuation
+        ? [
+              { id: 1, title: 'Wage Rate' },
+              { id: 2, title: 'Tax & Compliance' },
+              { id: 3, title: 'Authorization' },
+          ]
+        : [
+              { id: 1, title: 'Tax & Compliance' },
+              { id: 2, title: 'Authorization' },
+          ];
+    const isStep1Valid =
+        !needsValuation ||
+        (supportsValuation && silRateReviewItems(valuation, conversionDate).every(item => item.complete));
     const [form, setForm] = useState({
         days: '',
         opening_sil: '',
@@ -219,16 +250,41 @@ export default function LeaveCreditsPanel({
     });
 
     let estimate = null;
+    let pendingEstimate = null;
     try {
-        estimate = calculateSilConversion(form.days || convertible, employee?.daily_rate || employee?.daily_pay || 0);
+        estimate = calculateSilConversion(action === 'cash-out-approve' ? pendingCash?.days : form.days || convertible, action === 'cash-out-approve' ? reviewedRate : savedRate);
     } catch {
         /* rate pending */
     }
+    try {
+        pendingEstimate = calculateSilConversion(pendingCash?.days, savedRate);
+    } catch {
+        /* pending HR valuation */
+    }
 
     const set = (name, value) => setForm(previous => ({ ...previous, [name]: value }));
+    const taxableAmount = taxTreatment === 'exempt' ? (estimate == null ? '' : '0')
+        : taxTreatment === 'taxable' ? (estimate == null ? '' : String(estimate)) : form.taxable_amount;
+    const isStep2Valid =
+        Boolean(taxTreatment) &&
+        String(taxableAmount ?? '').trim() !== '' &&
+        (basisSelection !== 'custom' || Boolean(customBasis.trim())) &&
+        (estimate == null || Number(taxableAmount) <= estimate);
+    const updateValuation = next => {
+        setValuation(next);
+        setTaxTreatment('');
+        setForm(previous => ({ ...previous, taxable_amount: '', confirmed: false }));
+    };
+    useSilRateSources(employeeId, action === 'cash-out-approve' && needsValuation && supportsValuation, () => {
+        setSourceRevision(previous => previous + 1);
+        setSourceNotice('Saved payroll, attendance or wage evidence changed, or the connection resumed. Refresh sources and review the rate again.');
+        updateValuation(previous => previous.source || previous.calculation ? emptyValuation() : { ...previous, verified: false });
+        setApproveStep(1);
+    }, valuation.source_document_id);
 
     const submit = async event => {
         event.preventDefault();
+        if (action === 'cash-out-approve' && approveStep < (needsValuation ? 3 : 2)) return;
         const reviewing = ['setup', 'reconcile'].includes(action);
         const requesting = action === 'cash-out-request';
         const deciding = ['cash-out-approve', 'cash-out-reject', 'cash-out-correct'].includes(action);
@@ -255,9 +311,11 @@ export default function LeaveCreditsPanel({
                     throw new Error('Choose days within your available SIL balance.');
                 }
                 if (action === 'cash-out-approve') {
-                    if (String(form.taxable_amount ?? '').trim() === '') {
+                    if (needsValuation && !supportsValuation) throw new Error('Install the linked SIL wage-evidence database update before approving this request.');
+                    if (!taxTreatment || String(taxableAmount ?? '').trim() === '') {
                         throw new Error('Review the amount subject to tax before approving.');
                     }
+                    if (estimate != null && Number(taxableAmount) > estimate) throw new Error('The taxable portion cannot exceed the SIL cash-out amount.');
                     if (basisSelection === 'custom' && !customBasis.trim()) {
                         throw new Error('Enter a valid custom statutory compliance citation.');
                     }
@@ -290,11 +348,12 @@ export default function LeaveCreditsPanel({
                     : {
                           request_id: target.id,
                           status: transition,
-                          taxable_amount: action === 'cash-out-approve' ? Number(form.taxable_amount) : null,
+                          taxable_amount: action === 'cash-out-approve' ? Number(taxableAmount) : null,
                           expected_daily_rate:
                               action === 'cash-out-approve'
-                                  ? Number(employee?.daily_rate || employee?.daily_pay || 0)
+                                  ? reviewedRate
                                   : null,
+                          ...(action === 'cash-out-approve' && needsValuation ? { valuation_basis: { ...valuation, method: 'documented_conversion_rate' } } : {}),
                           ...(query.data?.workflow_version === 2
                               ? {
                                     action: transition,
@@ -346,6 +405,8 @@ export default function LeaveCreditsPanel({
                 setAction('');
                 setBasisSelection('dole_standard');
                 setCustomBasis('');
+                setValuation(emptyValuation());
+                setTaxTreatment('');
                 setForm(previous => ({
                     ...previous,
                     days: '',
@@ -511,7 +572,7 @@ export default function LeaveCreditsPanel({
                                 <>
                                     <span className="text-slate-300">&bull;</span>
                                     <div>
-                                        <span className="text-slate-400">Value:</span>{' '}
+                                        <span className="text-slate-400">{needsValuation ? 'Preview:' : 'Value:'}</span>{' '}
                                         <span className="font-semibold text-slate-900">
                                             ₱
                                             {estimate.toLocaleString('en-PH', {
@@ -585,6 +646,15 @@ export default function LeaveCreditsPanel({
                 </div>
             )}
 
+            {valuationBasis && <details className="rounded-md border border-slate-200 p-3 text-xs">
+                    <summary className="cursor-pointer font-semibold text-slate-700">SIL valuation · PHP {Number(valuedCash.cash_amount).toFixed(2)} · {CASH_OUT_LABELS[valuedCash.status] || valuedCash.status}</summary>
+                    <dl className="mt-2 space-y-1 break-words text-slate-600">
+                        <div><dt className="inline font-medium">Rate: </dt><dd className="inline">{days(valuedCash.days)} days × PHP {Number(valuedCash.daily_rate).toFixed(2)} · as of {valuationBasis.as_of}</dd></div>
+                        <div><dt className="inline font-medium">Basis: </dt><dd className="inline whitespace-pre-wrap">{valuationBasis.calculation_basis}</dd></div>
+                        <div><dt className="inline font-medium">Review basis: </dt><dd className="inline">{valuationBasis.authority_reference}</dd></div>
+                        <div><dt className="inline font-medium">Evidence: </dt><dd className="inline">{formatSilEvidenceReference(valuationBasis.evidence_reference)}{valuationBasis.reference_start ? ` · ${valuationBasis.reference_start} to ${valuationBasis.reference_end}` : ''}</dd></div>
+                    </dl>
+                </details>}
             {/* Cash-Out Rejection Notice (Light Rose Alert) */}
             {!manage &&
                 recentRejectedCash &&
@@ -723,21 +793,24 @@ export default function LeaveCreditsPanel({
 
             {/* Admin Review Banner */}
             {canReviewCash && pendingCash && !action && (
-                <div className="bg-slate-50 border border-slate-200 rounded-lg p-3 text-xs flex items-center justify-between gap-2">
-                    <span className="font-semibold text-slate-800">
-                        Cash-out: {days(pendingCash.days)}d (₱
-                        {(
-                            Number(pendingCash.days) * Number(employee?.daily_rate || employee?.daily_pay || 0)
-                        ).toFixed(2)}
-                        )
-                    </span>
+                <div className="bg-surface-muted border border-line rounded-lg p-3 text-xs flex items-center justify-between gap-3 shadow-2xs">
+                    <div>
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-accent block">Pending Cash-Out Request</span>
+                        <span className="font-semibold text-ink">
+                            {days(pendingCash.days)} day(s) · {pendingEstimate == null ? 'HR valuation required' : `PHP ${pendingEstimate.toFixed(2)}`}
+                        </span>
+                    </div>
                     <div className="flex items-center gap-2 shrink-0">
                         <button
                             type="button"
                             disabled={saving}
-                            className="h-7 px-3 bg-slate-900 hover:bg-slate-800 text-white font-semibold rounded text-xs transition-colors cursor-pointer"
+                            className="h-7 px-3 bg-ink hover:bg-slate-800 text-white font-semibold rounded text-xs transition-colors cursor-pointer shadow-2xs"
                             onClick={() => {
                                 setAction('cash-out-approve');
+                                setApproveStep(1);
+                                setValuation(emptyValuation());
+                                setSourceNotice('');
+                                setTaxTreatment('');
                                 setBasisSelection('dole_standard');
                                 setCustomBasis('');
                                 setForm(p => ({
@@ -754,7 +827,7 @@ export default function LeaveCreditsPanel({
                         <button
                             type="button"
                             disabled={saving}
-                            className="h-7 px-2.5 border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 rounded text-xs font-semibold transition-colors cursor-pointer"
+                            className="h-7 px-2.5 border border-line bg-surface hover:bg-surface-muted text-ink-muted rounded text-xs font-semibold transition-colors cursor-pointer shadow-2xs"
                             onClick={() => {
                                 setAction('cash-out-reject');
                                 setForm(p => ({ ...p, reason: '', confirmed: false }));
@@ -770,17 +843,26 @@ export default function LeaveCreditsPanel({
             {((canRequestCash && action === 'cash-out-request') ||
                 (showCashRequest && openCash && ['cash-out-resubmit', 'cash-out-cancel'].includes(action)) ||
                 (canReviewCash && pendingCash && ['cash-out-approve', 'cash-out-reject', 'cash-out-correct'].includes(action))) && (
-                <form onSubmit={submit} className="space-y-3 rounded-lg border border-slate-200 bg-slate-50/70 p-3.5 text-xs">
-                    <fieldset disabled={saving} className="space-y-2.5">
+                <form onSubmit={submit} className="space-y-3 rounded-lg border border-line bg-surface p-3.5 text-xs shadow-xs">
+                    <fieldset disabled={saving} className="space-y-3">
                         {action !== 'cash-out-request' && (
-                            <div className="flex items-center justify-between border-b border-slate-200 pb-1.5">
-                                <h4 className="font-semibold text-slate-900">
-                                    {action === 'cash-out-approve'
-                                        ? 'Approve Cash-Out'
-                                        : action === 'cash-out-reject'
-                                        ? 'Reject Cash-Out'
-                                        : 'Update Cash-Out'}
-                                </h4>
+                            <div className="flex items-center justify-between border-b border-line pb-2">
+                                <div>
+                                    <h4 className="font-bold text-xs uppercase tracking-wider text-ink">
+                                        {action === 'cash-out-approve'
+                                            ? 'Approve SIL Cash-Out'
+                                            : action === 'cash-out-reject'
+                                            ? 'Reject SIL Cash-Out'
+                                            : 'Update SIL Cash-Out'}
+                                    </h4>
+                                    <p className="text-[11px] text-ink-subtle">
+                                        {action === 'cash-out-approve'
+                                            ? 'Authorize statutory conversion and reviewed tax treatment.'
+                                            : action === 'cash-out-reject'
+                                            ? 'Provide an official reason for rejection.'
+                                            : 'Adjust pending cash-out parameters.'}
+                                    </p>
+                                </div>
                             </div>
                         )}
 
@@ -802,7 +884,7 @@ export default function LeaveCreditsPanel({
                                     placeholder={`Up to ${days(convertible)}`}
                                 />
                                 <div className="flex justify-between text-[11px] text-slate-500 mt-1">
-                                    <span>₱{Number(employee?.daily_rate || employee?.daily_pay || 0).toFixed(2)}/day</span>
+                                    <span>{needsValuation ? 'HR valuation required' : `PHP ${savedRate.toFixed(2)}/day`}</span>
                                     <span>
                                         Est:{' '}
                                         <strong className="text-slate-800">
@@ -814,115 +896,367 @@ export default function LeaveCreditsPanel({
                         )}
 
                         {action === 'cash-out-approve' && (
-                            <div className="space-y-3">
-                                <div>
-                                    <label htmlFor="taxable-amount-input" className="block font-medium text-slate-700 mb-1">
-                                        Amount Subject to Tax (PHP) <span className="text-rose-500">*</span>
-                                    </label>
-                                    <input
-                                        id="taxable-amount-input"
-                                        type="text"
-                                        inputMode="decimal"
-                                        maxLength={12}
-                                        required
-                                        min="0"
-                                        step="0.01"
-                                        className={inputClass}
-                                        value={form.taxable_amount}
-                                        onChange={e => { if (isBoundedDecimalInput(e.target.value, 366000000, true)) set('taxable_amount', e.target.value); }}
-                                        placeholder="0.00"
-                                    />
-                                    <p className="text-[10px] text-slate-500 mt-1">
-                                        BIR RR 29-2025: qualifying unused vacation-credit monetization ceiling is {VACATION_MONETIZATION_EXEMPT_DAY_CAP} days per year. SIL cash-out tax treatment requires review.
-                                    </p>
+                            <div className="space-y-3.5">
+                                {/* Stepper Header */}
+                                <div className="flex items-center justify-between pb-2.5 border-b border-line">
+                                    <div className="flex items-center gap-2">
+                                        {approveSteps.map((s, idx) => {
+                                            const isActive = approveStep === s.id;
+                                            const isDone = approveStep > s.id;
+                                            return (
+                                                <div key={s.id} className="flex items-center gap-2">
+                                                    {idx > 0 && <span className="text-line-strong text-xs">/</span>}
+                                                    <button
+                                                        type="button"
+                                                        disabled={!isDone}
+                                                        onClick={() => isDone && setApproveStep(s.id)}
+                                                        className={`flex items-center gap-1.5 text-xs transition-colors ${
+                                                            isActive
+                                                                ? 'font-bold text-ink'
+                                                                : isDone
+                                                                ? 'font-medium text-ink-muted hover:text-ink cursor-pointer'
+                                                                : 'font-normal text-ink-subtle opacity-60 cursor-not-allowed'
+                                                        }`}
+                                                    >
+                                                        <span
+                                                            className={`w-4.5 h-4.5 rounded-full flex items-center justify-center text-[10px] font-bold ${
+                                                                isActive
+                                                                    ? 'bg-ink text-white shadow-2xs'
+                                                                    : isDone
+                                                                    ? 'bg-success text-white'
+                                                                    : 'bg-surface-muted text-ink-subtle border border-line'
+                                                            }`}
+                                                        >
+                                                            {isDone ? '✓' : s.id}
+                                                        </span>
+                                                        <span className="hidden sm:inline">{s.title}</span>
+                                                    </button>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                    <span className="text-[10px] font-semibold uppercase tracking-wider text-ink-muted bg-surface-muted px-2 py-0.5 rounded border border-line">
+                                        Step {approveStep} of {approveSteps.length}
+                                    </span>
                                 </div>
 
-                                <div>
-                                    <label htmlFor="approve-basis-select" className="block font-medium text-slate-700 mb-1">
-                                        Statutory Compliance Basis <span className="text-rose-500">*</span>
-                                    </label>
-                                    <select
-                                        id="approve-basis-select"
-                                        required
-                                        className={inputClass}
-                                        value={basisSelection}
-                                        onChange={e => {
-                                            const val = e.target.value;
-                                            setBasisSelection(val);
-                                            if (val === 'custom') {
-                                                set('basis', customBasis);
-                                            } else {
-                                                const match = STATUTORY_BASIS_OPTIONS.find(opt => opt.id === val);
-                                                set('basis', match ? match.value : '');
-                                            }
-                                        }}
-                                    >
-                                        {STATUTORY_BASIS_OPTIONS.map(opt => (
-                                            <option key={opt.id} value={opt.id}>
-                                                {opt.label}
-                                            </option>
-                                        ))}
-                                    </select>
-                                </div>
-
-                                {basisSelection === 'custom' && (
-                                    <div>
-                                        <label htmlFor="custom-basis-input" className="block font-medium text-slate-700 mb-1">
-                                            Custom Citation <span className="text-rose-500">*</span>
-                                        </label>
-                                        <input
-                                            id="custom-basis-input"
-                                            type="text"
-                                            required
-                                            maxLength={500}
-                                            className={inputClass}
-                                            value={customBasis}
-                                            onChange={e => {
-                                                setCustomBasis(e.target.value);
-                                                set('basis', e.target.value);
-                                            }}
-                                            placeholder="e.g. Board Resolution No. 2026-04"
-                                        />
+                                {/* Step 1: Wage Rate Valuation (Only when employee needs piece-rate valuation) */}
+                                {needsValuation && approveStep === 1 && (
+                                    <div className="space-y-3">
+                                        {supportsValuation ? (
+                                            <SilValuationFields
+                                                key={`${employeeId}:${conversionDate}:${sourceRevision}`}
+                                                employeeId={employeeId}
+                                                previousReview={previousWageReview}
+                                                requestedDays={pendingCash?.days}
+                                                sourceNotice={sourceNotice}
+                                                onSourceReviewed={() => setSourceNotice('')}
+                                                value={valuation}
+                                                onChange={updateValuation}
+                                                asOf={conversionDate}
+                                                inputClass={inputClass}
+                                            />
+                                        ) : (
+                                            <p role="alert" className="text-xs text-amber-800 bg-amber-50 p-2.5 rounded-md border border-amber-200">
+                                                Database update required for linked SIL wage evidence.
+                                            </p>
+                                        )}
+                                        <div className="flex items-center justify-between pt-1 border-t border-line">
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    setAction('');
+                                                    setApproveStep(1);
+                                                    setBasisSelection('dole_standard');
+                                                    setCustomBasis('');
+                                                }}
+                                                className="h-8 px-3.5 border border-line bg-surface hover:bg-surface-muted text-ink-muted rounded-md text-xs font-semibold shadow-2xs transition-colors cursor-pointer"
+                                            >
+                                                Cancel
+                                            </button>
+                                            <button
+                                                type="button"
+                                                disabled={!isStep1Valid}
+                                                onClick={() => setApproveStep(2)}
+                                                className="h-8 px-4 bg-ink hover:bg-slate-800 text-white rounded-md text-xs font-semibold shadow-2xs transition-colors disabled:opacity-40 cursor-pointer"
+                                            >
+                                                Next: Tax Treatment →
+                                            </button>
+                                        </div>
                                     </div>
                                 )}
 
-                                {/* Clean Statutory Classification Box */}
-                                <div className="p-3 bg-white rounded-md border border-slate-200 space-y-1.5">
-                                    <span className="font-semibold text-slate-700 uppercase tracking-wider text-[10px] block">
-                                        Statutory Classification &amp; Treatment
-                                    </span>
-                                    <p className="text-[11px] text-slate-600 leading-relaxed">
-                                        {STATUTORY_BASIS_OPTIONS.find(opt => opt.id === basisSelection)?.description}
-                                    </p>
-                                    <div className="text-[10px] text-slate-400">
-                                        Citation: {STATUTORY_BASIS_OPTIONS.find(opt => opt.id === basisSelection)?.citation}
-                                    </div>
-                                    <div className="grid grid-cols-2 gap-2 pt-2 border-t border-slate-100 text-[11px]">
-                                        <div className="flex items-center justify-between bg-slate-50 px-2 py-1 rounded text-slate-600">
-                                            <span>SSS / PhilHealth / Pag-IBIG</span>
-                                            <span className="font-semibold text-slate-900">Excluded</span>
+                                {/* Step 2 (or Step 1 if !needsValuation): Tax & Statutory Compliance */}
+                                {((needsValuation && approveStep === 2) || (!needsValuation && approveStep === 1)) && (
+                                    <div className="space-y-3">
+                                        {/* Executive Disbursement Summary */}
+                                        <div className="rounded-lg border border-accent/25 bg-accent-subtle/50 p-3 flex items-center justify-between gap-3 shadow-2xs">
+                                            <div>
+                                                <div className="flex items-center gap-1.5">
+                                                    <span className="text-[10px] font-bold uppercase tracking-wider text-accent">Disbursement Total</span>
+                                                    <span className="text-[10px] font-medium px-1.5 py-0.2 rounded bg-surface border border-accent/20 text-ink-muted">Weekly Payroll</span>
+                                                </div>
+                                                <p className="text-[11px] text-ink-muted mt-0.5">
+                                                    {pendingCash?.days ? `${days(pendingCash.days)} day(s) requested` : 'Days requested'}
+                                                    {reviewedRate > 0 && ` × ₱${reviewedRate.toFixed(2)}/day`}
+                                                </p>
+                                            </div>
+                                            <div className="text-right">
+                                                <span className="text-[10px] uppercase font-semibold text-ink-subtle block">Gross Payout</span>
+                                                <span className="text-base font-bold font-mono text-ink tracking-tight tabular-nums">
+                                                    {estimate == null ? 'Pending Rate' : `₱${estimate.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+                                                </span>
+                                            </div>
                                         </div>
-                                        <div className="flex items-center justify-between bg-slate-50 px-2 py-1 rounded text-slate-600">
-                                            <span>13th Month Basic</span>
-                                            <span className="font-semibold text-slate-900">Excluded</span>
-                                        </div>
-                                    </div>
-                                </div>
 
-                                <div>
-                                    <label htmlFor="approve-reason-input" className="block font-medium text-slate-700 mb-1">
-                                        Approval Remarks <span className="text-slate-400 font-normal">(Optional)</span>
-                                    </label>
-                                    <input
-                                        id="approve-reason-input"
-                                        type="text"
-                                        maxLength={500}
-                                        className={inputClass}
-                                        value={form.reason || ''}
-                                        onChange={e => set('reason', e.target.value)}
-                                        placeholder="e.g. Approved for next cutoff payroll disbursement"
-                                    />
-                                </div>
+                                        {/* Tax Treatment Grid */}
+                                        <div className="space-y-1.5">
+                                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                                                <div>
+                                                    <label className="block text-[11px] font-medium text-ink-muted mb-1">
+                                                        Tax Classification <span className="text-rose-500">*</span>
+                                                    </label>
+                                                    <select
+                                                        aria-label="HR-reviewed tax treatment"
+                                                        required
+                                                        value={taxTreatment}
+                                                        onChange={event => {
+                                                            setTaxTreatment(event.target.value);
+                                                            set('confirmed', false);
+                                                        }}
+                                                        className={inputClass}
+                                                    >
+                                                        <option value="">Select tax classification</option>
+                                                        <option value="exempt">Exempt — reviewed by HR</option>
+                                                        <option value="taxable">Fully taxable — reviewed by HR</option>
+                                                        <option value="partial">Partly taxable — enter reviewed portion</option>
+                                                    </select>
+                                                </div>
+                                                <div>
+                                                    <label htmlFor="taxable-amount-input" className="block text-[11px] font-medium text-ink-muted mb-1">
+                                                        Amount Subject to Tax (PHP) <span className="text-rose-500">*</span>
+                                                    </label>
+                                                    <input
+                                                        id="taxable-amount-input"
+                                                        type="text"
+                                                        inputMode="decimal"
+                                                        maxLength={12}
+                                                        required
+                                                        min="0"
+                                                        step="0.01"
+                                                        className={inputClass}
+                                                        readOnly={taxTreatment !== 'partial'}
+                                                        value={taxableAmount}
+                                                        onChange={e => {
+                                                            if (isBoundedDecimalInput(e.target.value, 366000000, true)) set('taxable_amount', e.target.value);
+                                                        }}
+                                                        placeholder={
+                                                            taxTreatment === 'exempt'
+                                                                ? '₱0.00 (Exempt)'
+                                                                : taxTreatment === 'taxable'
+                                                                ? (estimate == null ? 'Full amount' : `₱${estimate.toFixed(2)}`)
+                                                                : 'Enter taxable portion'
+                                                        }
+                                                    />
+                                                </div>
+                                            </div>
+                                            <div className="flex items-center justify-between text-[10px] text-ink-subtle px-0.5">
+                                                <span>Portion subject to tax (withholding calculated at payroll run).</span>
+                                                <span>BIR RR 29-2025 cap: {VACATION_MONETIZATION_EXEMPT_DAY_CAP}d/yr</span>
+                                            </div>
+                                        </div>
+
+                                        {/* Statutory Compliance Basis */}
+                                        <div className="space-y-1.5">
+                                            <label htmlFor="approve-basis-select" className="block text-[11px] font-medium text-ink-muted mb-1">
+                                                Statutory Compliance Basis <span className="text-rose-500">*</span>
+                                            </label>
+                                            <select
+                                                id="approve-basis-select"
+                                                required
+                                                className={inputClass}
+                                                value={basisSelection}
+                                                onChange={e => {
+                                                    const val = e.target.value;
+                                                    setBasisSelection(val);
+                                                    if (val === 'custom') {
+                                                        set('basis', customBasis);
+                                                    } else {
+                                                        const match = STATUTORY_BASIS_OPTIONS.find(opt => opt.id === val);
+                                                        set('basis', match ? match.value : '');
+                                                    }
+                                                }}
+                                            >
+                                                {STATUTORY_BASIS_OPTIONS.map(opt => (
+                                                    <option key={opt.id} value={opt.id}>
+                                                        {opt.label}
+                                                    </option>
+                                                ))}
+                                            </select>
+                                        </div>
+
+                                        {basisSelection === 'custom' && (
+                                            <div>
+                                                <label htmlFor="custom-basis-input" className="block text-[11px] font-medium text-ink-muted mb-1">
+                                                    Custom Citation <span className="text-rose-500">*</span>
+                                                </label>
+                                                <input
+                                                    id="custom-basis-input"
+                                                    type="text"
+                                                    required
+                                                    maxLength={500}
+                                                    className={inputClass}
+                                                    value={customBasis}
+                                                    onChange={e => {
+                                                        setCustomBasis(e.target.value);
+                                                        set('basis', e.target.value);
+                                                    }}
+                                                    placeholder="e.g. Board Resolution No. 2026-04"
+                                                />
+                                            </div>
+                                        )}
+
+                                        {/* Compact Statutory Classification Card */}
+                                        <div className="p-2.5 bg-surface-muted rounded-md border border-line space-y-1.5">
+                                            <div className="flex items-center justify-between text-[10px] text-ink-subtle">
+                                                <span className="font-semibold uppercase tracking-wider text-ink-muted">Statutory Treatment</span>
+                                                <span className="truncate max-w-[220px]" title={STATUTORY_BASIS_OPTIONS.find(opt => opt.id === basisSelection)?.citation}>
+                                                    {STATUTORY_BASIS_OPTIONS.find(opt => opt.id === basisSelection)?.citation}
+                                                </span>
+                                            </div>
+                                            <div className="grid grid-cols-2 gap-2 text-[11px]">
+                                                <div className="flex items-center justify-between bg-surface px-2.5 py-1.5 rounded border border-line text-ink-muted">
+                                                    <span>SSS / PhilHealth / Pag-IBIG</span>
+                                                    <span className="font-semibold text-ink">Excluded</span>
+                                                </div>
+                                                <div className="flex items-center justify-between bg-surface px-2.5 py-1.5 rounded border border-line text-ink-muted">
+                                                    <span>13th Month Basic</span>
+                                                    <span className="font-semibold text-ink">Excluded</span>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <div className="flex items-center justify-between pt-1 border-t border-line">
+                                            {needsValuation ? (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setApproveStep(1)}
+                                                    className="h-8 px-3.5 border border-line bg-surface hover:bg-surface-muted text-ink-muted rounded-md text-xs font-semibold shadow-2xs transition-colors cursor-pointer"
+                                                >
+                                                    ← Back to Wage Rate
+                                                </button>
+                                            ) : (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        setAction('');
+                                                        setApproveStep(1);
+                                                        setBasisSelection('dole_standard');
+                                                        setCustomBasis('');
+                                                    }}
+                                                    className="h-8 px-3.5 border border-line bg-surface hover:bg-surface-muted text-ink-muted rounded-md text-xs font-semibold shadow-2xs transition-colors cursor-pointer"
+                                                >
+                                                    Cancel
+                                                </button>
+                                            )}
+                                            <button
+                                                type="button"
+                                                disabled={!isStep2Valid}
+                                                onClick={() => setApproveStep(needsValuation ? 3 : 2)}
+                                                className="h-8 px-4 bg-ink hover:bg-slate-800 text-white rounded-md text-xs font-semibold shadow-2xs transition-colors disabled:opacity-40 cursor-pointer"
+                                            >
+                                                Next: Final Review →
+                                            </button>
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* Step 3 (or Step 2 if !needsValuation): Final Review & Authorization */}
+                                {((needsValuation && approveStep === 3) || (!needsValuation && approveStep === 2)) && (
+                                    <div className="space-y-3">
+                                        {/* Verification Receipt Card */}
+                                        <div className="p-3 bg-surface-muted rounded-lg border border-line space-y-2">
+                                            <span className="text-[10px] font-bold uppercase tracking-wider text-ink-muted block">
+                                                Approval Summary Receipt
+                                            </span>
+                                            <div className="grid grid-cols-2 gap-2 text-xs">
+                                                <div>
+                                                    <span className="text-[10px] text-ink-subtle block">Requested Days</span>
+                                                    <span className="font-bold font-mono text-ink">{days(pendingCash?.days)} days</span>
+                                                </div>
+                                                <div>
+                                                    <span className="text-[10px] text-ink-subtle block">Daily Rate</span>
+                                                    <span className="font-bold font-mono text-ink">₱{reviewedRate.toFixed(2)}/day</span>
+                                                </div>
+                                                <div>
+                                                    <span className="text-[10px] text-ink-subtle block">Gross Payout</span>
+                                                    <span className="font-bold font-mono text-accent">
+                                                        ₱{estimate == null ? '0.00' : estimate.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                                    </span>
+                                                </div>
+                                                <div>
+                                                    <span className="text-[10px] text-ink-subtle block">Taxable Portion</span>
+                                                    <span className="font-bold font-mono text-ink">
+                                                        ₱{Number(taxableAmount || 0).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                                        <span className="text-[10px] font-normal text-ink-subtle ml-1">
+                                                            ({taxTreatment === 'exempt' ? 'Exempt' : taxTreatment === 'taxable' ? 'Taxable' : 'Partial'})
+                                                        </span>
+                                                    </span>
+                                                </div>
+                                            </div>
+                                            <div className="pt-2 border-t border-line text-[11px] text-ink-muted flex items-center justify-between">
+                                                <span>Disbursement Schedule</span>
+                                                <span className="font-semibold text-ink">Weekly Factory Payroll</span>
+                                            </div>
+                                        </div>
+
+                                        {/* Approval Remarks */}
+                                        <div>
+                                            <label htmlFor="approve-reason-input" className="block text-[11px] font-medium text-ink-muted mb-1">
+                                                Approval Remarks <span className="text-ink-subtle font-normal">(Optional)</span>
+                                            </label>
+                                            <input
+                                                id="approve-reason-input"
+                                                type="text"
+                                                maxLength={500}
+                                                className={inputClass}
+                                                value={form.reason || ''}
+                                                onChange={e => set('reason', e.target.value)}
+                                                placeholder="e.g. Approved for next weekly cutoff payroll disbursement"
+                                            />
+                                        </div>
+
+                                        {/* Confirmation Checkbox */}
+                                        <label className="flex items-start gap-2 text-[11px] text-ink-muted cursor-pointer pt-1">
+                                            <input
+                                                type="checkbox"
+                                                required
+                                                className="mt-0.5 h-3.5 w-3.5 rounded border-line text-accent focus:ring-accent"
+                                                checked={form.confirmed}
+                                                onChange={e => set('confirmed', e.target.checked)}
+                                            />
+                                            <span>I confirm this statutory cash-out authorization and reviewed entries.</span>
+                                        </label>
+
+                                        {/* Action Buttons */}
+                                        <div className="flex items-center gap-2 pt-1 border-t border-line">
+                                            <button
+                                                type="button"
+                                                onClick={() => setApproveStep(needsValuation ? 2 : 1)}
+                                                className="h-8 px-3.5 border border-line bg-surface hover:bg-surface-muted text-ink-muted rounded-md text-xs font-semibold shadow-2xs transition-colors cursor-pointer"
+                                            >
+                                                ← Back to Tax
+                                            </button>
+                                            <button
+                                                type="submit"
+                                                disabled={!form.confirmed || saving}
+                                                className="flex-1 h-8 bg-ink hover:bg-slate-800 text-white font-semibold rounded-md text-xs shadow-2xs transition-colors disabled:opacity-40 cursor-pointer"
+                                            >
+                                                {saving ? 'Processing…' : 'Authorize Cash-Out'}
+                                            </button>
+                                        </div>
+                                    </div>
+                                )}
                             </div>
                         )}
 
@@ -963,57 +1297,58 @@ export default function LeaveCreditsPanel({
                             </div>
                         )}
 
-                        <label className="flex items-start gap-2 text-[11px] text-slate-600 cursor-pointer pt-1">
-                            <input
-                                type="checkbox"
-                                required
-                                className="mt-0.5 h-3.5 w-3.5 rounded border-slate-300 text-slate-900 focus:ring-slate-900"
-                                checked={form.confirmed}
-                                onChange={e => set('confirmed', e.target.checked)}
-                            />
-                            <span>
-                                {action === 'cash-out-request'
-                                    ? 'Submit for HR review and payroll processing.'
-                                    : 'I confirm this cash-out change.'}
-                            </span>
-                        </label>
+                        {action !== 'cash-out-approve' && (
+                            <>
+                                <label className="flex items-start gap-2 text-[11px] text-ink-muted cursor-pointer pt-1">
+                                    <input
+                                        type="checkbox"
+                                        required
+                                        className="mt-0.5 h-3.5 w-3.5 rounded border-line text-accent focus:ring-accent"
+                                        checked={form.confirmed}
+                                        onChange={e => set('confirmed', e.target.checked)}
+                                    />
+                                    <span>
+                                        {action === 'cash-out-request'
+                                            ? 'Submit for HR review and payroll processing.'
+                                            : 'I confirm this cash-out change.'}
+                                    </span>
+                                </label>
 
-                        <div className="flex items-center gap-2 pt-1">
-                            <button
-                                type="submit"
-                                disabled={
-                                    !form.confirmed ||
-                                    saving ||
-                                    (['cash-out-reject', 'cash-out-correct', 'cash-out-cancel'].includes(action) &&
-                                        !form.reason?.trim()) ||
-                                    (action === 'cash-out-approve' && basisSelection === 'custom' && !customBasis.trim())
-                                }
-                                className={`flex-1 h-7 text-white font-semibold rounded text-xs shadow-2xs transition-colors disabled:opacity-40 cursor-pointer ${
-                                    action === 'cash-out-reject'
-                                        ? 'bg-rose-600 hover:bg-rose-700'
-                                        : 'bg-slate-900 hover:bg-slate-800'
-                                }`}
-                            >
-                                {saving
-                                    ? 'Processing...'
-                                    : action === 'cash-out-reject'
-                                    ? 'Confirm Rejection'
-                                    : action === 'cash-out-approve'
-                                    ? 'Confirm Approval'
-                                    : 'Confirm'}
-                            </button>
-                            <button
-                                type="button"
-                                className="h-7 px-3 border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 rounded text-xs font-semibold cursor-pointer"
-                                onClick={() => {
-                                    setAction('');
-                                    setBasisSelection('dole_standard');
-                                    setCustomBasis('');
-                                }}
-                            >
-                                Cancel
-                            </button>
-                        </div>
+                                <div className="flex items-center gap-2 pt-1">
+                                    <button
+                                        type="submit"
+                                        disabled={
+                                            !form.confirmed ||
+                                            saving ||
+                                            (['cash-out-reject', 'cash-out-correct', 'cash-out-cancel'].includes(action) &&
+                                                !form.reason?.trim())
+                                        }
+                                        className={`flex-1 h-8 text-white font-semibold rounded-md text-xs shadow-2xs transition-colors disabled:opacity-40 cursor-pointer ${
+                                            action === 'cash-out-reject'
+                                                ? 'bg-danger hover:bg-danger-ink'
+                                                : 'bg-ink hover:bg-slate-800'
+                                        }`}
+                                    >
+                                        {saving
+                                            ? 'Processing…'
+                                            : action === 'cash-out-reject'
+                                            ? 'Confirm Rejection'
+                                            : 'Confirm'}
+                                    </button>
+                                    <button
+                                        type="button"
+                                        className="h-8 px-3.5 border border-line bg-surface hover:bg-surface-muted text-ink-muted rounded-md text-xs font-semibold shadow-2xs transition-colors cursor-pointer"
+                                        onClick={() => {
+                                            setAction('');
+                                            setBasisSelection('dole_standard');
+                                            setCustomBasis('');
+                                        }}
+                                    >
+                                        Cancel
+                                    </button>
+                                </div>
+                            </>
+                        )}
                     </fieldset>
                 </form>
             )}

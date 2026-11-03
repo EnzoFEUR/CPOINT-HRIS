@@ -368,6 +368,7 @@ export default function DisciplinaryIndex() {
 
             if (personnelFilter === 'Active' && !standing.isClean) return false;
             if (personnelFilter === 'Warnings' && !standing.hasWarning) return false;
+            if (personnelFilter === '3+ Warnings' && standing.warningCount < 3) return false;
             if (personnelFilter === 'Suspended' && !standing.isSuspended) return false;
             if (personnelFilter === 'Terminated' && !standing.isTerminated) return false;
 
@@ -592,54 +593,34 @@ export default function DisciplinaryIndex() {
             {/* EXECUTIVE METRIC CARDS */}
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
                 {/* 1. Active Cases Requiring Action */}
-                <div className="bg-white p-4 sm:p-5 rounded-lg border border-slate-200 shadow-2xs flex items-center gap-3.5">
-                    <div className="w-10 h-10 rounded-md bg-danger-subtle text-danger-ink flex items-center justify-center text-lg shrink-0 border border-danger/20">
-                        <i className="ti ti-alert-triangle" />
-                    </div>
-                    <div>
-                        <p className="text-xs font-medium text-slate-500 uppercase tracking-wider">Action Required</p>
-                        <div className="flex items-baseline gap-2 mt-0.5">
-                            <span className="text-2xl font-bold font-mono text-ink tabular-nums">{activeCases}</span>
-                        </div>
+                <div className="bg-white p-4 sm:p-5 rounded-lg border border-slate-200 shadow-2xs">
+                    <p className="text-xs font-medium text-slate-500 uppercase tracking-wider">Action Required</p>
+                    <div className="flex items-baseline gap-2 mt-0.5">
+                        <span className="text-2xl font-bold font-mono text-ink tabular-nums">{activeCases}</span>
                     </div>
                 </div>
 
                 {/* 2. Suspensions Enforced */}
-                <div className="bg-white p-4 sm:p-5 rounded-lg border border-slate-200 shadow-2xs flex items-center gap-3.5">
-                    <div className="w-10 h-10 rounded-md bg-warning-subtle text-warning-ink flex items-center justify-center text-lg shrink-0 border border-warning/20">
-                        <i className="ti ti-lock" />
-                    </div>
-                    <div>
-                        <p className="text-xs font-medium text-slate-500 uppercase tracking-wider">Active Suspensions</p>
-                        <div className="flex items-baseline gap-2 mt-0.5">
-                            <span className="text-2xl font-bold font-mono text-ink tabular-nums">{suspensionsActive}</span>
-                        </div>
+                <div className="bg-white p-4 sm:p-5 rounded-lg border border-slate-200 shadow-2xs">
+                    <p className="text-xs font-medium text-slate-500 uppercase tracking-wider">Active Suspensions</p>
+                    <div className="flex items-baseline gap-2 mt-0.5">
+                        <span className="text-2xl font-bold font-mono text-ink tabular-nums">{suspensionsActive}</span>
                     </div>
                 </div>
 
                 {/* 3. Active Warnings */}
-                <div className="bg-white p-4 sm:p-5 rounded-lg border border-slate-200 shadow-2xs flex items-center gap-3.5">
-                    <div className="w-10 h-10 rounded-md bg-warning-subtle text-warning-ink flex items-center justify-center text-lg shrink-0 border border-warning/20">
-                        <i className="ti ti-alert-circle" />
-                    </div>
-                    <div>
-                        <p className="text-xs font-medium text-slate-500 uppercase tracking-wider">Active Warnings</p>
-                        <div className="flex items-baseline gap-2 mt-0.5">
-                            <span className="text-2xl font-bold font-mono text-ink tabular-nums">{warningsActive}</span>
-                        </div>
+                <div className="bg-white p-4 sm:p-5 rounded-lg border border-slate-200 shadow-2xs">
+                    <p className="text-xs font-medium text-slate-500 uppercase tracking-wider">Active Warnings</p>
+                    <div className="flex items-baseline gap-2 mt-0.5">
+                        <span className="text-2xl font-bold font-mono text-ink tabular-nums">{warningsActive}</span>
                     </div>
                 </div>
 
                 {/* 4. Cleared Records */}
-                <div className="bg-white p-4 sm:p-5 rounded-lg border border-slate-200 shadow-2xs flex items-center gap-3.5">
-                    <div className="w-10 h-10 rounded-md bg-success-subtle text-success-ink flex items-center justify-center text-lg shrink-0 border border-success/20">
-                        <i className="ti ti-shield-check" />
-                    </div>
-                    <div>
-                        <p className="text-xs font-medium text-slate-500 uppercase tracking-wider">Cleared Records</p>
-                        <div className="flex items-baseline gap-2 mt-0.5">
-                            <span className="text-2xl font-bold font-mono text-ink tabular-nums">{overturnedCases}</span>
-                        </div>
+                <div className="bg-white p-4 sm:p-5 rounded-lg border border-slate-200 shadow-2xs">
+                    <p className="text-xs font-medium text-slate-500 uppercase tracking-wider">Cleared Records</p>
+                    <div className="flex items-baseline gap-2 mt-0.5">
+                        <span className="text-2xl font-bold font-mono text-ink tabular-nums">{overturnedCases}</span>
                     </div>
                 </div>
             </div>
@@ -1286,7 +1267,7 @@ export default function DisciplinaryIndex() {
                                                 </div>
                                                 {/* Filter Pills */}
                                                 <div className="flex items-center gap-1 mt-1.5 overflow-x-auto touch-scroll no-scrollbar py-0.5">
-                                                    {['All', 'Active', 'Warnings', 'Suspended', 'Terminated'].map(pill => (
+                                                    {['All', 'Active', 'Warnings', '3+ Warnings', 'Suspended', 'Terminated'].map(pill => (
                                                         <button
                                                             key={pill}
                                                             type="button"
@@ -1476,29 +1457,83 @@ export default function DisciplinaryIndex() {
 
                             {/* DOLE PROGRESSIVE DISCIPLINE WARNING ALERT */}
                             {selectedStanding.hasWarning && (
-                                <div className="p-3.5 bg-warning-subtle/90 border border-warning/20 rounded-md text-xs space-y-1.5">
-                                    <div className="flex items-center justify-between">
-                                        <span className="font-semibold text-warning-ink flex items-center gap-1.5">
-                                            <i className="ti ti-alert-triangle text-warning-ink text-sm" />
-                                            DOLE Progressive Discipline Alert: {selectedStanding.warningCount} Active Warning{selectedStanding.warningCount > 1 ? 's' : ''} on Record
-                                        </span>
-                                        <span className="text-[9px] uppercase font-medium text-warning-ink bg-warning-subtle px-2 py-0.5 rounded border border-warning/20">
-                                            Prior Infractions
-                                        </span>
-                                    </div>
-                                    <p className="text-[11px] text-warning-ink leading-relaxed">
-                                        This employee has previously received <strong>{selectedStanding.warningCount} formal administrative warning(s)</strong>. Under DOLE progressive discipline guidelines, repeated misconduct warrants escalating the next action to <strong>Suspension</strong> (or Termination for severe offenses).
-                                    </p>
-                                    {selectedStanding.activeWarnings.length > 0 && (
-                                        <div className="pt-1 flex flex-wrap gap-1.5">
-                                            {selectedStanding.activeWarnings.slice(0, 3).map((w, idx) => (
-                                                <span key={w.id || idx} className="text-[10px] bg-white border border-warning/20 text-warning-ink px-2 py-0.5 rounded-md font-medium truncate max-w-[260px] shadow-2xs">
-                                                    <strong>{w.date || 'Notice'}:</strong> {w.reason?.slice(0, 35) || 'Infraction'}...
-                                                </span>
-                                            ))}
+                                selectedStanding.warningCount >= 3 ? (
+                                    <div className="p-3.5 bg-danger-subtle/80 border border-danger/25 rounded-md text-xs space-y-2">
+                                        <div className="flex items-center justify-between gap-2">
+                                            <span className="font-semibold text-danger-ink flex items-center gap-1.5">
+                                                DOLE Escalation Threshold: {selectedStanding.warningCount} Active Warnings on Record
+                                            </span>
+                                            <span className="text-[9px] uppercase font-bold text-danger-ink bg-white/80 px-2 py-0.5 rounded border border-danger/30">
+                                                Art. 297 Habitual Neglect
+                                            </span>
                                         </div>
-                                    )}
-                                </div>
+                                        <p className="text-[11px] text-danger-ink leading-relaxed">
+                                            This employee has accumulated <strong>{selectedStanding.warningCount} active warnings</strong>, meeting the threshold for habitual non-compliance under DOLE Rule XIV & Labor Code Art. 297. Issuing another routine warning may compromise the company's legal standing in due process proceedings. Escalate to <strong>Suspension</strong> or issue a formal <strong>Final Written Warning</strong>.
+                                        </p>
+                                        <div className="flex flex-wrap items-center gap-2 pt-0.5">
+                                            {type !== 'Suspension' && !isAlreadySuspended && (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        setType('Suspension');
+                                                        setSeverity('High');
+                                                        setDurationDays(3);
+                                                    }}
+                                                    className="px-2.5 py-1 text-[11px] font-semibold bg-danger-ink text-white rounded hover:bg-slate-900 transition-colors cursor-pointer shadow-2xs"
+                                                >
+                                                    Escalate to Suspension (DOLE Recommended)
+                                                </button>
+                                            )}
+                                            {type === 'Warning' && (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        setSeverity('High');
+                                                        const preamble = `FINAL WRITTEN WARNING (Habitual Misconduct): This serves as your final warning following ${selectedStanding.warningCount} prior sustained infractions. Immediate failure to maintain standard compliance will proceed directly to suspension or termination under DOLE Art. 297.\n\nIncident details: `;
+                                                        if (!reason.includes('FINAL WRITTEN WARNING')) {
+                                                            setReason(preamble + reason);
+                                                        }
+                                                    }}
+                                                    className="px-2.5 py-1 text-[11px] font-semibold bg-white border border-danger/30 text-danger-ink rounded hover:bg-danger-subtle transition-colors cursor-pointer"
+                                                >
+                                                    Draft Final Written Warning
+                                                </button>
+                                            )}
+                                        </div>
+                                        {selectedStanding.activeWarnings.length > 0 && (
+                                            <div className="pt-1 border-t border-danger/20 flex flex-wrap gap-1.5">
+                                                {selectedStanding.activeWarnings.slice(0, 3).map((w, idx) => (
+                                                    <span key={w.id || idx} className="text-[10px] bg-white border border-danger/20 text-danger-ink px-2 py-0.5 rounded-md font-medium truncate max-w-[260px] shadow-2xs">
+                                                        <strong>{w.date || 'Notice'}:</strong> {w.reason?.slice(0, 35) || 'Infraction'}...
+                                                    </span>
+                                                ))}
+                                            </div>
+                                        )}
+                                    </div>
+                                ) : (
+                                    <div className="p-3.5 bg-warning-subtle/90 border border-warning/20 rounded-md text-xs space-y-1.5">
+                                        <div className="flex items-center justify-between">
+                                            <span className="font-semibold text-warning-ink flex items-center gap-1.5">
+                                                DOLE Progressive Discipline Alert: {selectedStanding.warningCount} Active Warning{selectedStanding.warningCount > 1 ? 's' : ''} on Record
+                                            </span>
+                                            <span className="text-[9px] uppercase font-medium text-warning-ink bg-warning-subtle px-2 py-0.5 rounded border border-warning/20">
+                                                Prior Infractions
+                                            </span>
+                                        </div>
+                                        <p className="text-[11px] text-warning-ink leading-relaxed">
+                                            This employee has previously received <strong>{selectedStanding.warningCount} formal administrative warning(s)</strong>. Under DOLE progressive discipline guidelines, repeated misconduct warrants escalating the next action to <strong>Suspension</strong> (or Termination for severe offenses).
+                                        </p>
+                                        {selectedStanding.activeWarnings.length > 0 && (
+                                            <div className="pt-1 flex flex-wrap gap-1.5">
+                                                {selectedStanding.activeWarnings.slice(0, 3).map((w, idx) => (
+                                                    <span key={w.id || idx} className="text-[10px] bg-white border border-warning/20 text-warning-ink px-2 py-0.5 rounded-md font-medium truncate max-w-[260px] shadow-2xs">
+                                                        <strong>{w.date || 'Notice'}:</strong> {w.reason?.slice(0, 35) || 'Infraction'}...
+                                                    </span>
+                                                ))}
+                                            </div>
+                                        )}
+                                    </div>
+                                )
                             )}
 
                             {/* ACTIVE SUSPENSION ALERT (CANNOT SUSPEND AGAIN) */}
@@ -1688,15 +1723,10 @@ export default function DisciplinaryIndex() {
                 <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70">
                     <div className="relative bg-white rounded-lg w-full max-w-lg overflow-hidden shadow-xl border border-slate-200">
                         <div className="flex justify-between items-center px-6 py-4 border-b border-slate-100 bg-surface-muted">
-                            <div className="flex items-center gap-2.5">
-                                <div className="w-9 h-9 rounded-md bg-surface-muted text-ink flex items-center justify-center text-lg">
-                                    <i className="ti ti-shield-check" />
-                                </div>
-                                <div>
-                                    <h2 className="text-base font-semibold text-slate-900 leading-none">Clear Disciplinary Record</h2>
+                            <div>
+                                <h2 className="text-base font-semibold text-slate-900 leading-none">Clear Disciplinary Record</h2>
                                     <p className="text-[11px] text-ink font-medium mt-0.5">Remove False or Inaccurate Infraction</p>
                                 </div>
-                            </div>
                             <button 
                                 onClick={() => { setShowClearModal(false); setSelectedRecordForClear(null); }} 
                                 className="w-8 h-8 rounded-md bg-white border border-slate-200 flex items-center justify-center text-slate-500 hover:bg-slate-50 transition-colors duration-100 cursor-pointer"

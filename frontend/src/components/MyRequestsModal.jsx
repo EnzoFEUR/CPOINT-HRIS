@@ -174,16 +174,11 @@ export default function MyRequestsModal({
             >
                 {/* Header */}
                 <div className="flex items-center justify-between p-4 sm:p-5 border-b border-slate-100 bg-white">
-                    <div className="flex items-center gap-3">
-                        <div className="w-9 h-9 rounded-lg bg-slate-100 text-slate-700 flex items-center justify-center shrink-0">
-                            <i className="ti ti-clipboard-list text-lg" />
-                        </div>
-                        <div>
-                            <h2 id="my-requests-title" className="text-base sm:text-lg font-bold text-slate-900 tracking-tight">
+                    <div>
+                        <h2 id="my-requests-title" className="text-base sm:text-lg font-bold text-slate-900 tracking-tight">
                                 My Applications &amp; Requests
                             </h2>
                         </div>
-                    </div>
                 </div>
 
                 <div className="border-b border-slate-100 px-4 py-3 sm:px-5">

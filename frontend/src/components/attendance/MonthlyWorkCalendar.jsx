@@ -382,15 +382,10 @@ function EmployeeMonthlyWorkCalendar({ employeeId, className = '', isEmployeeVie
             {monthlyError && <p role="alert" className="mb-3 rounded-md bg-danger-subtle p-3 text-sm text-danger-ink">{monthlyError.message} Showing the last verified view where available.</p>}
             {/* Header Toolbar */}
             <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3.5 pb-4 border-b border-slate-100">
-                <div className="flex items-start sm:items-center gap-3">
-                    <div className="h-9 w-9 rounded-md flex items-center justify-center border bg-slate-50 text-slate-700 border-slate-200 shrink-0">
-                        <i className="ti ti-calendar-time text-lg" />
-                    </div>
-                    <div>
-                        <h3 className="text-sm sm:text-base font-bold text-slate-900 tracking-tight">
+                <div>
+                    <h3 className="text-sm sm:text-base font-bold text-slate-900 tracking-tight">
                             {isEmployeeView ? 'Work calendar' : 'Monthly Work Schedule & Attendance Audit'}
                         </h3>
-                    </div>
                 </div>
 
                 <div className="flex flex-wrap items-center gap-2 justify-between sm:justify-end">

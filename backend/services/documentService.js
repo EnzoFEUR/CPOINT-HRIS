@@ -398,6 +398,9 @@ export function documentRoute(handler) {
     return async (req, res, next) => {
         try { await handler(req, res, next); }
         catch (error) {
+            if (error.message?.includes('SIL_WAGE_SOURCE_LOCKED')) {
+                error = new DocumentError(409, 'This wage document supports a recorded SIL approval and must be retained.', 'SIL_WAGE_SOURCE_LOCKED');
+            }
             if (!(error instanceof DocumentError)) console.error('[DOCUMENT_API]', error.message);
             res.status(error.status || 500).json({ success: false, message: error.status ? error.message : 'Document request failed. Please try again.', error: error.status ? error.message : 'Document service unavailable.', ...(error instanceof DocumentError && error.code ? { code: error.code } : {}) });
         }

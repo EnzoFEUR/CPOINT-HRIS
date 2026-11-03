@@ -14,13 +14,8 @@ const CutoffPeriodSelector = ({
     return (
         <div className="bg-slate-50 p-4 sm:p-5 rounded-lg border border-slate-200 space-y-4 mb-6">
             <div className="flex items-center justify-between flex-wrap gap-2">
-                <div className="flex items-center gap-2.5 sm:gap-3">
-                    <div className="w-8 h-8 rounded-md bg-accent-subtle text-accent flex items-center justify-center text-sm font-bold border border-accent/20 shrink-0">
-                        <i className="ti ti-calendar-event"></i>
-                    </div>
-                    <div className="min-w-0">
-                        <h3 className="text-xs sm:text-sm font-bold text-slate-800 tracking-tight">Payroll Cutoff</h3>
-                    </div>
+                <div className="min-w-0">
+                    <h3 className="text-xs sm:text-sm font-bold text-slate-800 tracking-tight">Payroll Cutoff</h3>
                 </div>
 
                 {activePreset === 'custom' && (

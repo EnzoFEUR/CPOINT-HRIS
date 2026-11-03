@@ -46,19 +46,14 @@ export default function RejectDocumentModal({
             <div className="bg-surface rounded-lg p-5 sm:p-6 max-w-lg w-full shadow-xl border border-line space-y-4 my-auto max-h-[90vh] overflow-y-auto">
                 {/* Header */}
                 <div className="flex items-center justify-between pb-3 border-b border-line">
-                    <div className="flex items-center gap-2.5">
-                        <div className="h-8 w-8 bg-danger-subtle text-danger-ink rounded-md flex items-center justify-center shrink-0 border border-danger/30">
-                            <i className="ti ti-file-x text-base" />
-                        </div>
-                        <div>
-                            <h3 className="font-semibold text-ink text-sm sm:text-base">
+                    <div>
+                        <h3 className="font-semibold text-ink text-sm sm:text-base">
                                 Reject Document Submission
                             </h3>
                             <p className="text-[11px] text-ink-muted">
                                 Send formal rejection remarks to employee
                             </p>
                         </div>
-                    </div>
                     <button
                         type="button"
                         onClick={onClose}

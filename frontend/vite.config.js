@@ -10,13 +10,11 @@ import { DEV_NONCE_PLACEHOLDER, createBackendProxy, frontendHttpSecurity } from 
 const frontendRoot = fileURLToPath(new URL('.', import.meta.url));
 const allowedFsPaths = [frontendRoot, fileURLToPath(new URL('../shared', import.meta.url)), fileURLToPath(new URL('../node_modules', import.meta.url))];
 
-const securityHeadersFor = mode => {
+export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, frontendRoot, 'VITE_');
-  return frontendSecurityHeaders({ apiUrl: env.VITE_API_URL, supabaseUrl: env.VITE_SUPABASE_URL, modelUrl: env.VITE_MODEL_URL, development: mode === 'development', nonce: mode === 'development' ? DEV_NONCE_PLACEHOLDER : undefined });
-};
-
-export default defineConfig(({ mode }) => ({
-  plugins: [frontendHttpSecurity(securityHeadersFor(mode), { development: mode === 'development', allowedFsPaths }), react(), blinkAssets(), offlineAssetManifest({ enabled: loadEnv(mode, frontendRoot, 'VITE_').VITE_ENABLE_OFFLINE_ATTENDANCE === 'true' })],
+  const headers = frontendSecurityHeaders({ apiUrl: env.VITE_API_URL, supabaseUrl: env.VITE_SUPABASE_URL, modelUrl: env.VITE_MODEL_URL, development: mode === 'development', nonce: mode === 'development' ? DEV_NONCE_PLACEHOLDER : undefined });
+  return {
+  plugins: [frontendHttpSecurity(headers, { development: mode === 'development', allowedFsPaths }), react(), blinkAssets(), offlineAssetManifest({ enabled: env.VITE_ENABLE_OFFLINE_ATTENDANCE === 'true' })],
   html: { cspNonce: mode === 'development' ? DEV_NONCE_PLACEHOLDER : undefined },
   resolve: {
     dedupe: ['react', 'react-dom'],
@@ -26,10 +24,10 @@ export default defineConfig(({ mode }) => ({
   server: {
     fs: { allow: allowedFsPaths },
     proxy: {
-      '/api': createBackendProxy(loadEnv(mode, frontendRoot, 'VITE_').VITE_API_URL),
+      '/api': createBackendProxy(env.VITE_API_URL),
     },
   },
-  preview: { headers: securityHeadersFor(mode) },
+  preview: { headers },
   esbuild: {
     drop: mode === 'production' ? ['console', 'debugger'] : [],
   },
@@ -111,4 +109,5 @@ export default defineConfig(({ mode }) => ({
       'jszip',
     ],
   },
-}));
+  };
+});

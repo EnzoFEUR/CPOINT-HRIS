@@ -396,8 +396,7 @@ export default function Create({ errors = [], defaultValues = {} }) {
 
                     {/* ACCOUNT DETAILS */}
                     <div className="p-4 sm:p-5 bg-slate-50/50 rounded-lg border border-slate-200">
-                        <h3 className="text-sm font-bold text-slate-900 tracking-tight mb-4 flex items-center gap-2.5">
-                            <span className="w-7 h-7 bg-white text-slate-700 rounded-md flex items-center justify-center border border-slate-200 shadow-2xs"><i className="ti ti-mail text-base" /></span>
+                        <h3 className="text-sm font-bold text-slate-900 tracking-tight mb-4">
                             Account Security
                         </h3>
 
@@ -857,10 +856,7 @@ export default function Create({ errors = [], defaultValues = {} }) {
                     {/* DYNAMIC PAYROLL DETAILS - ONLY FOR STANDARD EMPLOYEES */}
                     {!isSecurityRole && (
                         <div className="p-4 sm:p-5 bg-slate-50/50 rounded-lg border border-slate-200">
-                            <h3 className="text-sm font-bold text-slate-900 tracking-tight mb-4 flex items-center gap-2.5">
-                                <span className="w-7 h-7 bg-white text-slate-700 rounded-md flex items-center justify-center border border-slate-200 shadow-2xs">
-                                    <i className="ti ti-cash-banknote text-base" />
-                                </span>
+                            <h3 className="text-sm font-bold text-slate-900 tracking-tight mb-4">
                                 Payroll Configuration
                             </h3>
 

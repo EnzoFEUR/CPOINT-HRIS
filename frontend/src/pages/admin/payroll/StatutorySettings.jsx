@@ -323,16 +323,11 @@ export default function StatutorySettings({ onBack }) {
                 {/* Attendance, Grace Period & Tardiness Policy Card */}
                 <div className="bg-white rounded-lg p-5 shadow-2xs border border-slate-200 space-y-5">
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-4">
-                        <div className="flex items-center space-x-3">
-                            <div className="w-8 h-8 rounded-md bg-slate-900 text-white flex items-center justify-center shrink-0 shadow-2xs">
-                                <i className="ti ti-clock-check text-base" />
-                            </div>
-                            <div>
-                                <h2 className="text-base font-bold text-slate-900">Attendance, Grace Period &amp; Tardiness Policy</h2>
+                        <div>
+                            <h2 className="text-base font-bold text-slate-900">Attendance, Grace Period &amp; Tardiness Policy</h2>
                                 <p className="text-xs text-slate-500 mt-0.5">
                                 </p>
                             </div>
-                        </div>
                     </div>
 
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">

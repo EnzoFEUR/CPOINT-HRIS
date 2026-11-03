@@ -518,18 +518,13 @@ function RetirementPayWorkspace({ exitRequestId, exitLink }) {
                     aria-labelledby="retirement-calculate-heading"
                 >
                     <div className="flex items-center justify-between border-b border-slate-100 pb-3 flex-wrap gap-2">
-                        <div className="flex items-center gap-2.5">
-                            <div className="w-8 h-8 rounded-md bg-accent-subtle text-accent flex items-center justify-center text-base font-bold shadow-2xs">
-                                <i className="ti ti-calculator" />
-                            </div>
-                            <div>
-                                <h2
+                        <div>
+                            <h2
                                     id="retirement-calculate-heading"
                                     className="font-bold text-sm sm:text-base text-slate-900"
                                 >
                                     Prepare Calculation
                                 </h2>
-                            </div>
                         </div>
                         {exitRequestId && <div role={exitLink.isError ? 'alert' : 'status'} className="rounded-md border border-blue-200 bg-blue-50 p-3 text-sm space-y-2 [overflow-wrap:anywhere]">
                             <p className="font-semibold">{fullName(employee)} · {workflow.statusLabel}</p>
@@ -751,9 +746,7 @@ function RetirementPayWorkspace({ exitRequestId, exitLink }) {
                             <div className="p-3.5 bg-gradient-to-r from-slate-50 via-blue-50/25 to-white rounded-lg border border-slate-200/90 shadow-2xs space-y-2.5">
                                 <div className="flex items-center justify-between gap-2 flex-wrap">
                                     <div className="flex items-center gap-2.5">
-                                        <div className="w-7 h-7 rounded-md bg-accent text-white flex items-center justify-center text-xs font-bold shadow-2xs">
-                                            <i className="ti ti-sparkles text-sm" />
-                                        </div>
+                                        
                                         <div>
                                             <div className="flex items-center gap-2">
                                                 <span className="text-[11px] font-bold text-slate-900 uppercase tracking-wider">
@@ -996,18 +989,13 @@ function RetirementPayWorkspace({ exitRequestId, exitLink }) {
                     aria-labelledby="retirement-ledger-heading"
                 >
                     <div className="flex items-center justify-between border-b border-slate-100 pb-3 flex-wrap gap-2">
-                        <div className="flex items-center gap-2">
-                            <div className="w-8 h-8 rounded-md bg-accent-subtle text-accent flex items-center justify-center text-base">
-                                <i className="ti ti-file-text" />
-                            </div>
-                            <div>
-                                <h2
+                        <div>
+                            <h2
                                     id="retirement-ledger-heading"
                                     className="font-bold text-sm sm:text-base text-slate-900"
                                 >
                                     Settlement Register
                                 </h2>
-                            </div>
                         </div>
 
                     </div>
@@ -1188,12 +1176,8 @@ function RetirementPayWorkspace({ exitRequestId, exitLink }) {
                     aria-labelledby="retirement-record-heading"
                 >
                     <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 pb-4">
-                        <div className="flex items-center gap-3">
-                            <div className="w-9 h-9 rounded-md bg-accent-subtle text-accent flex items-center justify-center text-lg">
-                                <i className="ti ti-file-certificate" />
-                            </div>
-                            <div>
-                                <h2
+                        <div>
+                            <h2
                                     id="retirement-record-heading"
                                     className="font-bold text-base sm:text-lg text-slate-900"
                                 >
@@ -1203,7 +1187,6 @@ function RetirementPayWorkspace({ exitRequestId, exitLink }) {
                                     ID: {selected.id}
                                 </p>
                             </div>
-                        </div>
 
                         <div className="flex items-center gap-2">
                             <span className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-semibold ${

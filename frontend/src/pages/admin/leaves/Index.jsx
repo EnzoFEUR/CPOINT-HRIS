@@ -921,14 +921,9 @@ export default function LeavesIndex() {
                     <div ref={reviewDialog} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby="leave-approval-title" className={`w-full max-h-[90dvh] overflow-y-auto rounded-lg border border-slate-200 bg-white shadow-xl ${maternityLeave ? 'max-w-3xl' : 'max-w-lg'}`}>
                         {/* Header */}
                         <div className="sticky top-0 z-10 flex items-center justify-between gap-3 border-b border-slate-100 bg-slate-50 p-4 sm:p-6">
-                            <div className="flex items-center gap-3">
-                                <div className="w-9 h-9 rounded-md bg-accent-subtle text-accent flex items-center justify-center border border-accent/20 shrink-0">
-                                    <i className="ti ti-calendar-check text-lg" />
+                            <div>
+                                <h3 id="leave-approval-title" className="text-base font-bold text-slate-800">{reviewAction === 'Approved' ? 'Approve Leave Request' : 'Reject Leave Request'}</h3>
                                 </div>
-                                <div>
-                                    <h3 id="leave-approval-title" className="text-base font-bold text-slate-800">{reviewAction === 'Approved' ? 'Approve Leave Request' : 'Reject Leave Request'}</h3>
-                                </div>
-                            </div>
                         </div>
 
                         {/* Body */}

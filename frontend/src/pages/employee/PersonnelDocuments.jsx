@@ -642,17 +642,11 @@ export default function PersonnelDocuments() {
                     )}
 
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-5 pb-4 border-b border-slate-100">
-                        <div className="flex items-center gap-3">
-                            <div className="h-9 w-9 rounded-md bg-accent-subtle text-accent flex items-center justify-center border border-accent/20">
-                                <i className="ti ti-folders text-lg" />
-                            </div>
-
-                            <div>
-                                <h3 className="font-bold text-slate-900 text-sm sm:text-base">
+                        <div>
+                            <h3 className="font-bold text-slate-900 text-sm sm:text-base">
                                     Personnel Documents
                                 </h3>
                             </div>
-                        </div>
 
                         <div className="flex flex-wrap items-center gap-2">
                             <select
@@ -889,13 +883,8 @@ export default function PersonnelDocuments() {
                 <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 overflow-y-auto">
                     <div className="bg-white rounded-lg p-5 sm:p-6 max-w-md w-full shadow-xl border border-slate-200 space-y-5 my-auto max-h-[90vh] overflow-y-auto">
                         <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-                            <div className="flex items-center gap-2.5">
-                                <div className="h-8 w-8 bg-accent-subtle text-accent rounded-md flex items-center justify-center shrink-0 border border-accent/20">
-                                    <i className="ti ti-file-upload text-base" />
-                                </div>
-
-                                <div>
-                                    <h3 className="font-bold text-slate-900 text-sm sm:text-base">
+                            <div>
+                                <h3 className="font-bold text-slate-900 text-sm sm:text-base">
                                         Upload Document
                                     </h3>
 
@@ -903,7 +892,6 @@ export default function PersonnelDocuments() {
                                         Attach file to your permanent HR record
                                     </p>
                                 </div>
-                            </div>
 
                             <button
                                 type="button"

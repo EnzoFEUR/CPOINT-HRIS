@@ -21,7 +21,7 @@ import {
     DocumentError
 } from '../services/documentService.js';
 import { createNotification } from './notifications.js';
-import { getStandard201Requirements, getDocumentType } from '../../shared/documentTypes.mjs';
+import { getStandard201Requirements, getDocumentType, SIL_WAGE_DOCUMENT_TYPE } from '../../shared/documentTypes.mjs';
 
 // Authentication is applied at the /api/documents mount in index.js.
 export function createDocumentRouter(client = supabase) {
@@ -468,10 +468,22 @@ export function createDocumentRouter(client = supabase) {
     router.delete('/:id', requireDocumentAdmin, documentRoute(async (req, res) => {
         const document = await findDocument(client, req.params.id);
         const path = normalizeDocumentPath(document.file_path, document.employee_id, client.supabaseUrl);
+        // Financial-source guards must run before a wage evidence file is removed.
+        if (document.document_type === SIL_WAGE_DOCUMENT_TYPE) {
+            const { error } = await client.from('employee_documents').delete().eq('id', document.id);
+            if (error) throw error;
+        }
         const { error: storageError } = await client.storage.from('documents').remove([path]);
+        if (storageError && document.document_type === SIL_WAGE_DOCUMENT_TYPE) {
+            console.warn('[DOCUMENT_STORAGE_CLEANUP] Deferred wage-file cleanup:', { document_id: document.id });
+            documentChanged(client, document.employee_id, document.id, 'deleted', req.user, {}, { storage_cleanup_required: true });
+            return res.json({ success: true, cleanup_pending: true });
+        }
         if (storageError) throw storageError;
-        const { error } = await client.from('employee_documents').delete().eq('id', document.id);
-        if (error) throw error;
+        if (document.document_type !== SIL_WAGE_DOCUMENT_TYPE) {
+            const { error } = await client.from('employee_documents').delete().eq('id', document.id);
+            if (error) throw error;
+        }
         documentChanged(client, document.employee_id, document.id, 'deleted', req.user);
         res.json({ success: true });
     }));

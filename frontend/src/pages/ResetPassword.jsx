@@ -147,9 +147,7 @@ export default function ResetPassword() {
         
         {/* Header */}
         <div className="text-center mb-5 sm:mb-6">
-          <div className="inline-flex items-center justify-center w-10 h-10 rounded-md bg-slate-900 text-white shadow-2xs mb-2.5">
-            <i className="ti ti-lock-check text-lg" />
-          </div>
+          
           <h1 className="text-lg font-bold text-slate-900 tracking-tight">Set New Password</h1>
           <p className="text-slate-500 text-xs mt-0.5">Create a secure password for your account</p>
         </div>

@@ -3,7 +3,8 @@ import { validateApiInput, validateRecordId } from '../middleware/requestValidat
 import multer from 'multer';
 import { supabase } from '../supabaseClient.js';
 import { assertDocumentOwner, assertUuid, DOCUMENT_MAX_BYTES, DOCUMENT_URL_TTL, DocumentError, documentRoute, ensureWritableEmployee, findDocument, listDocuments, normalizeDocumentPath, requireDocumentAdmin, uploadDocument } from '../services/documentService.js';
-import { documentClassifier } from '../services/documentClassifier.js';
+import { documentClassifier, classificationMime } from '../services/documentClassifier.js';
+import { SIL_WAGE_DOCUMENT_TYPE } from '../../shared/documentTypes.mjs';
 import { importEmployeeDocument, requireBulkAdmin } from '../services/bulkDocumentImport.js';
 
 export function createEmployeeDocumentsRouter(client = supabase, classifier = documentClassifier) {
@@ -20,6 +21,7 @@ const upload = multer({
     storage: multer.memoryStorage(),
     limits: { fileSize: DOCUMENT_MAX_BYTES, fields: 12, fieldSize: 4096, parts: 40 } // 10 MB per file
 });
+const WAGE_FILE_MIME = { pdf: 'application/pdf', png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg' };
 
 // Hot Folder document category keywords, checked in order - first match wins.
 // Add new synonyms here as real-world filenames reveal new patterns.
@@ -108,6 +110,14 @@ router.post('/classify', requireDocumentAdmin, classifier.admit, upload.single('
 }));
 
 router.post('/', upload.single('file'), validateApiInput, requireBulkAdmin, documentRoute(async (req, res) => {
+    if (req.body?.document_type === SIL_WAGE_DOCUMENT_TYPE) {
+        const mime = classificationMime(req.file);
+        const extension = req.file?.originalname.split('.').pop()?.toLowerCase();
+        if (!WAGE_FILE_MIME[extension] || WAGE_FILE_MIME[extension] !== mime) {
+            throw new DocumentError(400, 'Wage evidence must be a valid PDF, PNG or JPEG file, up to 10 MB.');
+        }
+        req.file.mimetype = mime;
+    }
     const document = await importEmployeeDocument(client, req.user, req.body, req.file);
     res.json({ success: true, message: 'Document uploaded successfully', document });
 }));

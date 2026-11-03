@@ -13,12 +13,17 @@ export default function LeaveDatePicker({
     min,
     max,
     disabled = false,
+    availableDates,
+    availabilityLabel = 'Available record',
+    showHolidays = true,
+    inline = false,
     align = 'left',
     placeholder = 'Select date'
 }) {
     const id = useId();
     const containerRef = useRef(null);
     const [isOpen, setIsOpen] = useState(false);
+    const available = useMemo(() => availableDates ? new Set(availableDates) : null, [availableDates]);
 
     // Initial month view defaults to current work date (today), clamped within [min, max]
     const initialMonth = () => {
@@ -45,12 +50,11 @@ export default function LeaveDatePicker({
             return body.data || [];
         },
         staleTime: 5 * 60 * 1000,
-        enabled: (!holidays || holidays.length === 0)
+        enabled: showHolidays && (!holidays || holidays.length === 0)
     });
 
-    const activeHolidays = (holidays && holidays.length > 0) ? holidays : fallbackHolidays;
-
     const holidayMap = useMemo(() => {
+        const activeHolidays = !showHolidays ? [] : (holidays && holidays.length > 0) ? holidays : fallbackHolidays;
         const map = new Map();
         if (Array.isArray(activeHolidays)) {
             for (const h of activeHolidays) {
@@ -58,7 +62,7 @@ export default function LeaveDatePicker({
             }
         }
         return map;
-    }, [activeHolidays]);
+    }, [showHolidays, holidays, fallbackHolidays]);
 
     // Close on outside click or Escape key
     useEffect(() => {
@@ -69,7 +73,10 @@ export default function LeaveDatePicker({
             }
         };
         const handleKeyDown = event => {
-            if (event.key === 'Escape') setIsOpen(false);
+            if (event.key === 'Escape') {
+                setIsOpen(false);
+                document.getElementById(`${id}-trigger`)?.focus();
+            }
         };
         document.addEventListener('mousedown', handleOutside);
         document.addEventListener('keydown', handleKeyDown);
@@ -77,7 +84,7 @@ export default function LeaveDatePicker({
             document.removeEventListener('mousedown', handleOutside);
             document.removeEventListener('keydown', handleKeyDown);
         };
-    }, [isOpen]);
+    }, [isOpen, id]);
 
     // Mutual exclusion: when any date picker opens, close other pickers
     useEffect(() => {
@@ -155,9 +162,7 @@ export default function LeaveDatePicker({
                 <div
                     role="dialog"
                     aria-label={`${label} calendar`}
-                    className={`absolute ${
-                        align === 'right' ? 'right-0 sm:right-0 sm:left-auto' : 'left-0'
-                    } mt-1.5 w-72 rounded-xl border border-slate-200 bg-white p-3 shadow-xl z-50 animate-in fade-in zoom-in-95 duration-100 select-none`}
+                    className={`${inline ? 'w-full' : `absolute ${align === 'right' ? 'right-0 sm:right-0 sm:left-auto' : 'left-0'} w-72 z-50`} mt-1.5 rounded-xl border border-slate-200 bg-white p-3 shadow-xl animate-in fade-in zoom-in-95 duration-100 select-none`}
                 >
                     {/* Month Navigator Header */}
                     <div className="mb-2 flex items-center justify-between">
@@ -174,7 +179,7 @@ export default function LeaveDatePicker({
                             <span className="text-xs font-bold text-slate-800">
                                 {first.toLocaleDateString('en-US', { month: 'short', year: 'numeric', timeZone: 'UTC' })}
                             </span>
-                            {month !== todayStr.slice(0, 7) && (
+                            {month !== todayStr.slice(0, 7) && (!min || todayStr >= min) && (!max || todayStr <= max) && (
                                 <button
                                     type="button"
                                     onClick={() => setMonth(todayStr.slice(0, 7))}
@@ -213,7 +218,7 @@ export default function LeaveDatePicker({
                     {/* Days Grid */}
                     <div className="grid grid-cols-7 gap-1 text-center">
                         {Array.from({ length: first.getUTCDay() }, (_, index) => (
-                            <span key={`pad-${index}`} className="h-7 w-7" />
+                            <span key={`pad-${index}`} className="h-7 w-full max-w-7" />
                         ))}
                         {Array.from({ length: count }, (_, index) => {
                             const date = `${month}-${String(index + 1).padStart(2, '0')}`;
@@ -221,10 +226,11 @@ export default function LeaveDatePicker({
                             const holiday = holidayMap.get(date);
                             const isHoliday = Boolean(holiday);
                             const isToday = date === todayStr;
-                            const unavailable = disabled || rest || Boolean(min && date < min) || Boolean(max && date > max);
+                            const hasRecord = available?.has(date);
+                            const unavailable = disabled || rest || Boolean(available && !hasRecord) || Boolean(min && date < min) || Boolean(max && date > max);
                             const isSelected = date === value;
 
-                            const tooltipText = isHoliday
+                            const tooltipText = available ? `${date}: ${hasRecord ? availabilityLabel : 'No available record'}` : isHoliday
                                 ? `${holiday.name} (${holiday.type === 'regular' ? 'Regular Holiday' : 'Special Non-Working Holiday'})${rest ? ' • Rest Day' : ''}`
                                 : rest
                                 ? 'Rest day — non-working'
@@ -236,7 +242,7 @@ export default function LeaveDatePicker({
                                 <button
                                     key={date}
                                     type="button"
-                                    aria-label={`${date}${isHoliday ? ` (${holiday.name} Holiday)` : ''}${rest ? ' (rest day)' : ''}${isToday ? ' (today)' : ''}`}
+                                    aria-label={`${date}${available ? ` (${hasRecord ? availabilityLabel : 'no available record'})` : ''}${isHoliday ? ` (${holiday.name} Holiday)` : ''}${rest ? ' (rest day)' : ''}${isToday ? ' (today)' : ''}`}
                                     aria-pressed={isSelected}
                                     disabled={unavailable}
                                     title={tooltipText}
@@ -244,14 +250,17 @@ export default function LeaveDatePicker({
                                         if (unavailable) return;
                                         onChange(date);
                                         setIsOpen(false);
+                                        document.getElementById(`${id}-trigger`)?.focus();
                                     }}
-                                    className={`relative h-7 w-7 mx-auto flex items-center justify-center rounded-md text-xs transition-colors ${
+                                    className={`relative h-7 w-full max-w-7 mx-auto flex items-center justify-center rounded-md text-xs transition-colors ${
                                         isSelected
                                             ? 'bg-accent text-white font-bold shadow-2xs'
                                             : unavailable
                                             ? isHoliday
                                                 ? 'cursor-not-allowed text-danger/60 font-semibold opacity-60 hover:bg-transparent'
                                                 : 'cursor-not-allowed text-slate-300 font-normal hover:bg-transparent'
+                                            : hasRecord
+                                            ? 'bg-emerald-50 text-emerald-800 font-semibold ring-1 ring-inset ring-emerald-200 hover:bg-emerald-100'
                                             : isHoliday
                                             ? 'text-danger-ink font-bold hover:bg-danger-subtle hover:text-danger-ink'
                                             : isToday
@@ -274,6 +283,7 @@ export default function LeaveDatePicker({
 
                     {/* Enterprise Mini-Legend Footer */}
                     <div className="mt-2.5 pt-2 border-t border-slate-100 flex items-center justify-between text-[10px] text-slate-500 font-medium">
+                        {available ? <span className="font-semibold text-emerald-800">Shaded dates: {availabilityLabel}</span> : <>
                         <div className="flex items-center gap-1.5" title="Statutory or Special Holidays">
                             <span className="w-1.5 h-1.5 rounded-full bg-danger inline-block" />
                             <span className="text-danger-ink font-semibold">Holiday</span>
@@ -286,6 +296,7 @@ export default function LeaveDatePicker({
                             <span className="text-slate-300 font-bold">--</span>
                             <span className="text-slate-400">Rest Day</span>
                         </div>
+                        </>}
                     </div>
                 </div>
             )}

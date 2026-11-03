@@ -9,6 +9,8 @@ import { randomUUID } from 'node:crypto';
 import { validateStatutoryReview } from '../../shared/statutoryLeave.mjs';
 import { calculateMaternityAssessment } from '../../shared/maternityAssessment.mjs';
 import { readMaternityContext, maternityDraft } from '../utils/maternityReview.js';
+import { readSilValuationEvidence, readSilValuationPeriods } from '../utils/silValuationEvidence.js';
+import { readSilWageSources } from '../utils/silWageSources.js';
 import { isDeepStrictEqual } from 'node:util';
 import {
     isCreditUuid,
@@ -55,8 +57,15 @@ const conflicts = {
     SIL_CASH_REQUEST_OPEN: 'You already have a cash-out request awaiting review or payroll.',
     SIL_CASH_COOLDOWN_ACTIVE: 'A 24-hour cooldown is active following a rejected cash-out request. Please wait before submitting another request.',
     SIL_CASH_DECISION_CHANGED: 'This cash-out request was already reviewed. Refresh before retrying.',
-    SIL_DAILY_RATE_REQUIRED: 'HR must save a valid daily rate before approving cash-out.',
+    SIL_DAILY_RATE_REQUIRED: 'Enter a valid SIL conversion rate before approving cash-out.',
     SIL_DAILY_RATE_CHANGED: 'The daily rate changed during review. Refresh the employee and review the amount again.',
+    SIL_VALUATION_REQUIRED: 'HR must verify the SIL conversion rate and supporting records before weekly payroll approval.',
+    SIL_VALUATION_INVALID: 'Review the SIL rate, conversion date, supporting record and wage-basis explanation.',
+    SIL_VALUATION_CHANGED: 'The wage basis changed. Refresh and review the SIL valuation again.',
+    SIL_VALUATION_LOCKED: 'Approved SIL valuation is preserved with its payment record.',
+    SIL_WAGE_BASIS_REVIEW_REQUIRED: 'A documented conversion-date wage review is required. A selected payroll average cannot authorize SIL cash-out.',
+    SIL_WAGE_SOURCE_REQUIRED: 'Select or upload an approved wage document before confirming this conversion rate.',
+    SIL_WAGE_SOURCE_CHANGED: 'The wage document changed or is unavailable. Refresh and verify the source again.',
     SIL_TAX_REVIEW_REQUIRED: 'Review the cash amount and amount subject to tax before approving.',
     LEAVE_SERVICE_DATE_MISMATCH: 'HR must review the hire date used by existing leave records. No recorded balances were changed.',
     EMPLOYEE_HIRE_DATE_REVIEW_REQUIRED: 'Leave records already use this start date. HR must review them before the date can change. No leave credits were changed.',
@@ -125,6 +134,30 @@ export function createLeaveCreditsRouter(client = supabase, notify = createNotif
             const { data, error } = await client.rpc('sync_employee_leave_credits', { p_employee_id: employeeId });
             if (error) throw error;
             res.json({ success: true, data: validateLeaveCreditSnapshot(data) });
+        } catch (error) { sendCreditError(res, error); }
+    });
+
+    router.get('/wage-sources', async (req, res) => {
+        if (!isVerifiedCreditManager(req.user)) return res.status(403).json({ error: 'HR or administrator access is required.' });
+        try {
+            const data = await readSilWageSources(client, req.query.employee_id, req.query.as_of);
+            res.json({ success: true, data });
+        } catch (error) { sendCreditError(res, error); }
+    });
+
+    router.get('/valuation-periods', async (req, res) => {
+        if (!isVerifiedCreditManager(req.user)) return res.status(403).json({ error: 'HR or administrator access is required.' });
+        try {
+            const data = await readSilValuationPeriods(client, req.query.employee_id, req.query.as_of);
+            res.json({ success: true, data });
+        } catch (error) { sendCreditError(res, error); }
+    });
+
+    router.get('/valuation-evidence', async (req, res) => {
+        if (!isVerifiedCreditManager(req.user)) return res.status(403).json({ error: 'HR or administrator access is required.' });
+        try {
+            const data = await readSilValuationEvidence(client, req.query.employee_id, req.query.from, req.query.to);
+            res.json({ success: true, data });
         } catch (error) { sendCreditError(res, error); }
     });
 

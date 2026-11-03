@@ -1589,15 +1589,10 @@ export default function Documents() {
 
                     <div className="relative bg-white rounded-lg p-5 sm:p-6 shadow-xl w-full max-w-lg border border-slate-200 z-10 max-h-[90vh] overflow-y-auto">
                         <div className="flex items-center justify-between pb-3.5 border-b border-slate-100 mb-4">
-                            <div className="flex items-center gap-2.5">
-                                <div className="h-8 w-8 bg-slate-100 text-slate-700 rounded-md flex items-center justify-center border border-slate-200">
-                                    <i className="ti ti-file-upload text-base" />
-                                </div>
-                                <div>
-                                    <h2 className="text-sm font-bold text-slate-900">Upload Personnel Document</h2>
+                            <div>
+                                <h2 className="text-sm font-bold text-slate-900">Upload Personnel Document</h2>
                                     <p className="text-xs text-slate-500 font-medium">Attach verified statutory record or clearance</p>
                                 </div>
-                            </div>
                             <button
                                 onClick={() => setIsUploadModalOpen(false)}
                                 className="w-8 h-8 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-md flex items-center justify-center transition-colors duration-100 cursor-pointer"

@@ -408,21 +408,15 @@ export default function Edit() {
             </div>
 
             <div className="bg-white p-5 sm:p-6 rounded-lg shadow-2xs border border-slate-200">
-                <div className="mb-6 flex items-center gap-3.5">
-                    <div className="h-10 w-10 bg-accent-subtle text-accent rounded-md flex items-center justify-center border border-accent/20 shrink-0">
-                        <i className="ti ti-pencil text-xl" />
-                    </div>
-                    <div>
-                        <h2 className="text-xl font-bold text-slate-900 tracking-tight">Edit Profile</h2>
+                <div className="mb-6">
+                    <h2 className="text-xl font-bold text-slate-900 tracking-tight">Edit Profile</h2>
                         <p className="text-slate-500 font-medium text-xs mt-0.5">Updating records for {employee.first_name} {employee.last_name}</p>
                     </div>
-                </div>
 
                 <form onSubmit={handleSubmit} className="space-y-6">
                     {/* ACCOUNT DETAILS */}
                     <div className="p-4 sm:p-5 bg-slate-50/50 rounded-lg border border-slate-200">
-                        <h3 className="text-sm font-bold text-slate-900 tracking-tight mb-4 flex items-center gap-2.5">
-                            <span className="w-7 h-7 bg-white text-slate-700 rounded-md flex items-center justify-center border border-slate-200 shadow-2xs"><i className="ti ti-mail text-base" /></span>
+                        <h3 className="text-sm font-bold text-slate-900 tracking-tight mb-4">
                             Account Info
                         </h3>
 
@@ -527,8 +521,7 @@ export default function Edit() {
 
                     {/* EMPLOYEE INFORMATION */}
                     <div className="p-4 sm:p-5 bg-slate-50/50 rounded-lg border border-slate-200">
-                        <h3 className="text-sm font-bold text-slate-900 tracking-tight mb-4 flex items-center gap-2.5">
-                            <span className="w-7 h-7 bg-white text-slate-700 rounded-md flex items-center justify-center border border-slate-200 shadow-2xs"><i className="ti ti-id text-base" /></span>
+                        <h3 className="text-sm font-bold text-slate-900 tracking-tight mb-4">
                             Personal Profile
                         </h3>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
