@@ -173,17 +173,12 @@ async function fetchArchivedEmployees() {
     <div className="p-6 space-y-6">
       {/* Title Bar */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-md bg-slate-900 text-white flex items-center justify-center text-base shadow-2xs">
-            <i className="ti ti-archive"></i>
-          </div>
-          <div>
-            <h1 className="text-xl font-bold text-slate-900">Employee Archive</h1>
+        <div>
+          <h1 className="text-xl font-bold text-slate-900">Employee Archive</h1>
             <p className="text-xs text-slate-500">
               Retired, resigned and other separated personnel.
             </p>
           </div>
-        </div>
 
         {/* Toolbar */}
         <div className="flex flex-wrap items-center gap-2.5 w-full sm:w-auto">

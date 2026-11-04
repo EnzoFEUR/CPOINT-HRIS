@@ -40,12 +40,14 @@ export function SilCashPayment({ employeeId, employee }) {
     const query = useEmployeeLeaveCredits(employeeId);
     const canManage = Boolean(user?.id) && isCreditManager(user);
     const verifiedAccount = query.data?.account && ['ready', 'employee_inactive'].includes(query.data.allocation_status);
-    const canRecordPayment = canManage && !query.isError && !query.isPending && !query.isLoading && verifiedAccount;
+    const savedRate = Number(employee?.daily_rate) || Number(employee?.daily_pay) || 0;
+    const hasSavedRate = Number.isFinite(savedRate) && savedRate > 0;
+    const canRecordPayment = canManage && !query.isError && !query.isPending && !query.isLoading && verifiedAccount && hasSavedRate;
     const [action, setAction] = useState('');
     const [saving, setSaving] = useState(false);
     const request = useRef(null);
     const busy = useRef(false);
-    const [form, setForm] = useState({ days: '', daily_rate: employee?.daily_rate || '', payment_reference: '', confirmed: false });
+    const [form, setForm] = useState({ days: '', daily_rate: savedRate || '', payment_reference: '', confirmed: false });
     const set = (name, value) => setForm(previous => ({ ...previous, [name]: value }));
     const submit = async event => {
         event.preventDefault();
@@ -80,6 +82,7 @@ export function SilCashPayment({ employeeId, employee }) {
             <button type="button" disabled={query.isFetching || saving} className="font-semibold text-accent disabled:opacity-50" onClick={() => query.refetch()}>Refresh</button>
         </div>
         {query.isError && <p role="alert" className="text-xs text-danger-ink">{query.error.message}</p>}
+        {verifiedAccount && !hasSavedRate && <p className="text-xs text-slate-600">Use the SIL cash-out request: HR verifies the conversion rate before weekly payroll payment.</p>}
         {canRecordPayment && <button type="button" disabled={saving} className="rounded-md border border-slate-300 px-2.5 py-1.5 text-[11px] font-semibold text-slate-700 transition-colors hover:border-slate-400 hover:bg-slate-50 disabled:opacity-50" onClick={() => { setAction('cash-conversion'); set('confirmed', false); }}>Record cash payment</button>}
         {canRecordPayment && action === 'cash-conversion' && <form onSubmit={submit} className="space-y-2.5 rounded-md border border-slate-200 bg-slate-50/40 p-3">
             <fieldset disabled={saving} className="space-y-2.5">

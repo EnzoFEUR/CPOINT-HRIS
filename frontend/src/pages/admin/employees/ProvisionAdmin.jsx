@@ -143,10 +143,7 @@ export default function ProvisionAdmin() {
             <form onSubmit={handleSubmit} className="space-y-6">
                 <div className="bg-white rounded-lg border border-slate-200 p-5 sm:p-6 shadow-2xs space-y-6">
                     <div>
-                        <h3 className="text-sm font-bold text-slate-900 tracking-tight flex items-center gap-2">
-                            <span className="w-6 h-6 bg-slate-100 text-slate-700 rounded flex items-center justify-center border border-slate-200 text-xs">
-                                <i className="ti ti-user-check" />
-                            </span>
+                        <h3 className="text-sm font-bold text-slate-900 tracking-tight">
                             Administrator Identity
                         </h3>
                     </div>
@@ -235,10 +232,7 @@ export default function ProvisionAdmin() {
 
                 <div className="bg-white rounded-lg border border-slate-200 p-5 sm:p-6 shadow-2xs space-y-6">
                     <div>
-                        <h3 className="text-sm font-bold text-slate-900 tracking-tight flex items-center gap-2">
-                            <span className="w-6 h-6 bg-slate-100 text-slate-700 rounded flex items-center justify-center border border-slate-200 text-xs">
-                                <i className="ti ti-briefcase" />
-                            </span>
+                        <h3 className="text-sm font-bold text-slate-900 tracking-tight">
                             Administrative Assignment & Governance
                         </h3>
                     </div>

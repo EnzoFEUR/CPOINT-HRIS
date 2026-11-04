@@ -409,9 +409,7 @@ function OtpVerificationContent({
                 {step === 'select' && (
                     <div className="space-y-5">
                         <div className="text-center space-y-1.5 pr-6 pl-6">
-                            <div className="h-11 w-11 bg-accent-subtle text-accent rounded-lg mx-auto flex items-center justify-center border border-accent/20 shadow-2xs">
-                                <i className="ti ti-shield-check text-xl" />
-                            </div>
+                            
                             <h2 className="text-lg font-bold text-slate-900 tracking-tight">
                                 {title}
                             </h2>
@@ -501,9 +499,7 @@ function OtpVerificationContent({
                                 className="w-full group p-3 bg-white hover:bg-slate-50 border border-slate-200 hover:border-slate-300 rounded-md transition-colors duration-100 flex items-center justify-between text-left cursor-pointer shadow-2xs disabled:opacity-50"
                             >
                                 <div className="flex items-center gap-3 min-w-0 pr-2">
-                                    <div className="h-9 w-9 bg-slate-100 group-hover:bg-accent-subtle text-slate-600 group-hover:text-accent rounded-md flex items-center justify-center shrink-0 transition-colors duration-100">
-                                        <i className="ti ti-mail text-lg" />
-                                    </div>
+                                    
                                     <div className="min-w-0 flex-1">
                                         <div className="flex items-center justify-between">
                                             <h4 className="text-xs font-bold text-slate-800">Send via Email</h4>
@@ -539,9 +535,7 @@ function OtpVerificationContent({
                         {method === 'email' && expiryTimer === 0 ? (
                             <div className="space-y-4">
                                 <div className="text-center space-y-1.5 pr-6 pl-6">
-                                    <div className="h-11 w-11 rounded-lg mx-auto flex items-center justify-center border shadow-2xs bg-accent-subtle text-accent border-accent/20">
-                                        <i className="ti ti-mail text-xl" />
-                                    </div>
+                                    
                                     <h2 className="text-lg font-bold text-slate-900 tracking-tight">
                                         Email Verification
                                     </h2>
@@ -618,13 +612,7 @@ function OtpVerificationContent({
                         ) : (
                             <div className="space-y-5">
                                 <div className="text-center space-y-1.5 pr-6 pl-6">
-                                    <div className={`h-11 w-11 rounded-lg mx-auto flex items-center justify-center border shadow-2xs ${
-                                        method === 'totp'
-                                            ? 'bg-accent-subtle text-accent border-accent/20'
-                                            : 'bg-surface-muted text-ink border-line'
-                                    }`}>
-                                        <i className={`text-xl ti ${method === 'totp' ? 'ti-shield-lock' : 'ti-dialpad'}`} />
-                                    </div>
+                                    
                                     <h2 className="text-lg font-bold text-slate-900 tracking-tight">
                                         {method === 'totp'
                                             ? (backupMode ? 'Emergency Recovery Code' : 'Authenticator Code')

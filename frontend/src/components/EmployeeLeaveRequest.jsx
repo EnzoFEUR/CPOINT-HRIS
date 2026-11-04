@@ -190,13 +190,8 @@ export default function EmployeeLeaveRequest({ open, employee, statusReady, bloc
             />
             <div ref={dialog} role="dialog" aria-modal="true" aria-labelledby="employee-leave-title" tabIndex={-1} className="relative z-10 w-full max-w-lg rounded-xl border border-slate-200 bg-white p-5 shadow-2xl sm:p-6 overflow-visible my-auto">
             <div className="flex items-center justify-between gap-3 pb-3 border-b border-slate-100">
-                <div className="flex items-center gap-2.5">
-                    <div className="w-8 h-8 rounded-md bg-accent-subtle text-accent flex items-center justify-center shrink-0">
-                        <i className="ti ti-calendar-plus text-base" />
-                    </div>
-                    <div>
-                        <h2 id="employee-leave-title" className="text-base font-bold text-slate-900">File Leave Request</h2>
-                    </div>
+                <div>
+                    <h2 id="employee-leave-title" className="text-base font-bold text-slate-900">File Leave Request</h2>
                 </div>
                 <button
                     type="button"

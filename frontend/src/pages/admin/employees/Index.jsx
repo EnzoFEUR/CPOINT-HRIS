@@ -701,9 +701,7 @@ export default function EmployeesIndex() {
                 {counts.pendingTermination > 0 && filterStatus !== 'Pending Termination' && (
                     <div className="bg-slate-50 border border-slate-200 rounded-lg p-3.5 sm:p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs shadow-2xs">
                         <div className="flex items-center gap-3">
-                            <div className="w-8 h-8 rounded-md bg-slate-200 flex items-center justify-center text-slate-700 shrink-0">
-                                <i className="ti ti-archive text-base" />
-                            </div>
+                            
                             <div>
                                 <p className="font-semibold text-slate-900 text-sm">
                                     {counts.pendingTermination} separated {counts.pendingTermination === 1 ? 'account is' : 'accounts are'} awaiting archive review

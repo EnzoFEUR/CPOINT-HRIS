@@ -16,12 +16,13 @@ import {
     isDocumentAdmin,
     listDocuments,
     normalizeDocumentPath,
+    resolveDocumentStoragePath,
     requireDocumentAdmin,
     validateDocumentInput,
     DocumentError
 } from '../services/documentService.js';
 import { createNotification } from './notifications.js';
-import { getStandard201Requirements, getDocumentType } from '../../shared/documentTypes.mjs';
+import { getStandard201Requirements, getDocumentType, SIL_WAGE_DOCUMENT_TYPE } from '../../shared/documentTypes.mjs';
 
 // Authentication is applied at the /api/documents mount in index.js.
 export function createDocumentRouter(client = supabase) {
@@ -75,13 +76,15 @@ export function createDocumentRouter(client = supabase) {
                 : Promise.resolve({ data: [] })
         ]);
 
-        const fulfilledDocs = docRes.data || [];
+        const empMap = new Map((empRes.data || []).map(e => [e.id, e]));
+        const fulfilledLinks = new Set((requests || []).map(r => `${r.employee_id}:${r.fulfilled_document_id}`));
+        const fulfilledDocs = (docRes.data || []).filter(d => fulfilledLinks.has(`${d.employee_id}:${d.id}`));
         if (fulfilledDocs.length > 0) {
             try {
                 const paths = fulfilledDocs
                     .filter(d => d.file_path)
                     .map(d => {
-                        try { return normalizeDocumentPath(d.file_path, d.employee_id, client.supabaseUrl); }
+                        try { return normalizeDocumentPath(d.file_path, d.employee_id, client.supabaseUrl, empMap.get(d.employee_id)?.company_id); }
                         catch { return null; }
                     })
                     .filter(Boolean);
@@ -91,7 +94,7 @@ export function createDocumentRouter(client = supabase) {
                         const signedMap = new Map(signedList.filter(s => s?.path && s?.signedUrl).map(s => [s.path, s.signedUrl]));
                         for (const doc of fulfilledDocs) {
                             try {
-                                const norm = normalizeDocumentPath(doc.file_path, doc.employee_id, client.supabaseUrl);
+                                const norm = normalizeDocumentPath(doc.file_path, doc.employee_id, client.supabaseUrl, empMap.get(doc.employee_id)?.company_id);
                                 doc.preview_url = signedMap.get(norm) || null;
                             } catch {
                                 doc.preview_url = null;
@@ -102,7 +105,6 @@ export function createDocumentRouter(client = supabase) {
             } catch (_) {}
         }
 
-        const empMap = new Map((empRes.data || []).map(e => [e.id, e]));
         const adminMap = new Map((adminRes.data || []).map(a => [a.id, a]));
         const docMap = new Map(fulfilledDocs.map(d => [d.id, d]));
 
@@ -110,7 +112,7 @@ export function createDocumentRouter(client = supabase) {
             ...r,
             employee: empMap.get(r.employee_id) || null,
             requested_by_user: adminMap.get(r.requested_by) || null,
-            fulfilled_document: docMap.get(r.fulfilled_document_id) || null
+            fulfilled_document: docMap.get(r.fulfilled_document_id)?.employee_id === r.employee_id ? docMap.get(r.fulfilled_document_id) : null
         }));
 
         res.json({ success: true, requests: enrichedRequests });
@@ -314,8 +316,8 @@ export function createDocumentRouter(client = supabase) {
         const body = req.body || {};
         const metadata = validateDocumentInput({ ...body, title: body.title || body.file_name });
         assertDocumentOwner(req.user, metadata.employee_id);
-        await ensureWritableEmployee(client, metadata.employee_id);
-        const filePath = normalizeDocumentPath(body.file_path, metadata.employee_id, client.supabaseUrl);
+        const owner = await ensureWritableEmployee(client, metadata.employee_id);
+        const filePath = normalizeDocumentPath(body.file_path, metadata.employee_id, client.supabaseUrl, owner.company_id);
         const cleanFileName = formatCleanDocumentFileName(metadata.title, body.file_name || metadata.title);
         const { data, error } = await client.from('employee_documents').insert({
             ...metadata,
@@ -467,11 +469,23 @@ export function createDocumentRouter(client = supabase) {
     // Delete Document (Admin only)
     router.delete('/:id', requireDocumentAdmin, documentRoute(async (req, res) => {
         const document = await findDocument(client, req.params.id);
-        const path = normalizeDocumentPath(document.file_path, document.employee_id, client.supabaseUrl);
+        const path = await resolveDocumentStoragePath(client, document);
+        // Financial-source guards must run before a wage evidence file is removed.
+        if (document.document_type === SIL_WAGE_DOCUMENT_TYPE) {
+            const { error } = await client.from('employee_documents').delete().eq('id', document.id);
+            if (error) throw error;
+        }
         const { error: storageError } = await client.storage.from('documents').remove([path]);
+        if (storageError && document.document_type === SIL_WAGE_DOCUMENT_TYPE) {
+            console.warn('[DOCUMENT_STORAGE_CLEANUP] Deferred wage-file cleanup:', { document_id: document.id });
+            documentChanged(client, document.employee_id, document.id, 'deleted', req.user, {}, { storage_cleanup_required: true });
+            return res.json({ success: true, cleanup_pending: true });
+        }
         if (storageError) throw storageError;
-        const { error } = await client.from('employee_documents').delete().eq('id', document.id);
-        if (error) throw error;
+        if (document.document_type !== SIL_WAGE_DOCUMENT_TYPE) {
+            const { error } = await client.from('employee_documents').delete().eq('id', document.id);
+            if (error) throw error;
+        }
         documentChanged(client, document.employee_id, document.id, 'deleted', req.user);
         res.json({ success: true });
     }));

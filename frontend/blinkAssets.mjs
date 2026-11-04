@@ -3,16 +3,16 @@ import { createHash } from 'node:crypto';
 import { createRequire } from 'node:module';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { buildSync } from 'esbuild';
+import { build } from 'esbuild';
 
 // Same-origin, versioned assets avoid third-party camera-time requests and stale worker/model combinations.
-export function blinkAssets() {
+export async function blinkAssets() {
   const require = createRequire(import.meta.url);
   const runtime = dirname(require.resolve('@mediapipe/tasks-vision'));
   const model = readFileSync(new URL('./src/assets/face-landmarker-v1.task', import.meta.url));
   if (createHash('sha256').update(model).digest('hex') !== '64184e229b263107bc2b804c6625db1341ff2bb731874b0bcc2fe6544e0bc9ff') throw new Error('Blink model integrity check failed.');
   const files = new Map([
-    ['blink.worker.js', buildSync({ entryPoints: [fileURLToPath(new URL('./src/utils/blink.worker.mjs', import.meta.url))], bundle: true, format: 'iife', platform: 'browser', write: false }).outputFiles[0].contents],
+    ['blink.worker.js', (await build({ entryPoints: [fileURLToPath(new URL('./src/utils/blink.worker.mjs', import.meta.url))], bundle: true, format: 'iife', platform: 'browser', write: false })).outputFiles[0].contents],
     ['vision_bundle.js', readFileSync(join(runtime, 'vision_bundle.cjs'))],
     ['face-landmarker.task', model],
     ['NOTICE.txt', readFileSync(new URL('./src/assets/face-landmarker-NOTICE.txt', import.meta.url))],

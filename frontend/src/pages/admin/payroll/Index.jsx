@@ -1629,14 +1629,9 @@ export default function PayrollIndex() {
             {/* Executive Financial KPI Metric Ribbon */}
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
                 <div className="bg-white p-4 rounded-lg border border-line shadow-2xs flex flex-col justify-between">
-                    <div className="flex items-center justify-between">
-                        <span className="text-[10px] sm:text-xs font-bold text-ink uppercase tracking-wider">
-                            Total Net Payout
-                        </span>
-                        <div className="w-8 h-8 rounded-md bg-accent-subtle text-ink flex items-center justify-center text-sm font-bold shadow-2xs">
-                            <i className="ti ti-cash" />
-                        </div>
-                    </div>
+                    <span className="text-[10px] sm:text-xs font-bold text-ink uppercase tracking-wider">
+                        Total Net Payout
+                    </span>
                     <div className="mt-2.5">
                         <div className="text-xl sm:text-2xl font-black font-mono tabular-nums text-ink tracking-tight">
                             ₱{metrics.totalNet.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
@@ -1645,14 +1640,9 @@ export default function PayrollIndex() {
                 </div>
 
                 <div className="bg-white p-4 rounded-lg border border-slate-200 shadow-2xs flex flex-col justify-between">
-                    <div className="flex items-center justify-between">
-                        <span className="text-[10px] sm:text-xs font-bold text-slate-400 uppercase tracking-wider">
-                            Gross Compensation
-                        </span>
-                        <div className="w-8 h-8 rounded-md bg-accent-subtle text-accent flex items-center justify-center text-sm font-bold shadow-2xs">
-                            <i className="ti ti-calculator" />
-                        </div>
-                    </div>
+                    <span className="text-[10px] sm:text-xs font-bold text-slate-400 uppercase tracking-wider">
+                        Gross Compensation
+                    </span>
                     <div className="mt-2.5">
                         <div className="text-xl sm:text-2xl font-black font-mono tabular-nums text-accent tracking-tight">
                             ₱{metrics.totalGross.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
@@ -1661,14 +1651,9 @@ export default function PayrollIndex() {
                 </div>
 
                 <div className="bg-white p-4 rounded-lg border border-slate-200 shadow-2xs flex flex-col justify-between">
-                    <div className="flex items-center justify-between">
-                        <span className="text-[10px] sm:text-xs font-bold text-slate-400 uppercase tracking-wider">
-                            Statutory Deductions
-                        </span>
-                        <div className="w-8 h-8 rounded-md bg-danger-subtle text-danger-ink flex items-center justify-center text-sm font-bold shadow-2xs">
-                            <i className="ti ti-scale" />
-                        </div>
-                    </div>
+                    <span className="text-[10px] sm:text-xs font-bold text-slate-400 uppercase tracking-wider">
+                        Statutory Deductions
+                    </span>
                     <div className="mt-2.5">
                         <div className="text-xl sm:text-2xl font-black font-mono tabular-nums text-danger-ink tracking-tight">
                             ₱{metrics.totalStatutory.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
@@ -1677,14 +1662,9 @@ export default function PayrollIndex() {
                 </div>
 
                 <div className="bg-white p-4 rounded-lg border border-slate-200 shadow-2xs flex flex-col justify-between">
-                    <div className="flex items-center justify-between">
-                        <span className="text-[10px] sm:text-xs font-bold text-slate-400 uppercase tracking-wider">
-                            Cutoff progress
-                        </span>
-                        <div className="w-8 h-8 rounded-md bg-slate-100 text-slate-600 flex items-center justify-center text-sm font-bold shadow-2xs">
-                            <i className="ti ti-shield-check" />
-                        </div>
-                    </div>
+                    <span className="text-[10px] sm:text-xs font-bold text-slate-400 uppercase tracking-wider">
+                        Cutoff progress
+                    </span>
                     <div className="mt-2.5">
                         <div className="flex items-baseline justify-between">
                             <div className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">
@@ -2048,9 +2028,7 @@ export default function PayrollIndex() {
                                                             className="w-4 h-4 rounded border-slate-300 text-danger-ink focus:ring-danger cursor-pointer shrink-0"
                                                         />
                                                     )}
-                                                    <div className="w-8 h-8 rounded-md bg-ink-subtle text-white flex items-center justify-center font-bold text-sm shadow-2xs">
-                                                        <i className="ti ti-building-factory-2" />
-                                                    </div>
+                                                    
                                                     <div>
                                                         <div className="flex items-center gap-1.5">
                                                             <h3 className="text-sm font-black text-slate-800">{item.groupName}</h3>
@@ -2370,12 +2348,7 @@ export default function PayrollIndex() {
                 <div className="fixed inset-0 z-50 bg-slate-950/70 flex items-center justify-center p-4">
                     <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-6 space-y-4">
                         <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-2.5 text-danger-ink">
-                                <div className="w-10 h-10 rounded-md bg-danger-subtle flex items-center justify-center text-xl">
-                                    <i className="ti ti-alert-triangle" />
-                                </div>
-                                <h3 className="text-lg font-bold text-slate-900">Confirm Bulk Delete</h3>
-                            </div>
+                            <h3 className="text-lg font-bold text-slate-900">Confirm Bulk Delete</h3>
                             <button
                                 type="button"
                                 onClick={() => { setIsBulkDeleteModalOpen(false); setBulkDeleteConfirmText(''); }}

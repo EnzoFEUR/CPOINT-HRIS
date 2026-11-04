@@ -1,8 +1,9 @@
-import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useEffect, useState } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { fetchWithAuth } from '../utils/api';
 import { formatCurrency } from '../utils/payslipUtils';
 import { printHtmlElement } from '../utils/printDocument';
+import { supabase } from '../supabaseClient';
 
 export function RetirementPayStatement({ record }) {
     const employee = record.employee_snapshot;
@@ -52,7 +53,16 @@ export function RetirementPayStatement({ record }) {
 }
 
 export default function EmployeeRetirementStatements({ employeeId }) {
+    const queryClient = useQueryClient();
     const [page, setPage] = useState(1);
+    useEffect(() => {
+        if (!employeeId) return;
+        const refresh = () => queryClient.invalidateQueries({ queryKey: ['employeeRetirementStatements', employeeId] });
+        const channel = supabase.channel('employment-exit-' + employeeId, { config: { private: true } })
+            .on('broadcast', { event: 'EXIT_CHANGED' }, refresh)
+            .subscribe(state => { if (state === 'SUBSCRIBED') refresh(); });
+        return () => { supabase.removeChannel(channel); };
+    }, [employeeId, queryClient]);
     const statements = useQuery({
         queryKey: ['employeeRetirementStatements', employeeId, page],
         enabled: Boolean(employeeId),

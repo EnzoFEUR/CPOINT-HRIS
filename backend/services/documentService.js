@@ -74,10 +74,22 @@ export function normalizeDocumentPath(value, employeeId, projectUrl, companyId) 
     const validPrefixes = [employeeId, companyId].filter(Boolean).map(id => `${id}/`);
     const matchesPrefix = validPrefixes.some(prefix => path.startsWith(prefix));
 
-    if (!matchesPrefix && !(path.startsWith('CP-') && /^[A-Za-z0-9_\-.]+(\/[A-Za-z0-9_\-.]+)+$/.test(path))) {
+    if (!matchesPrefix) {
         throw new DocumentError(400, 'Invalid document storage path.');
     }
     return path;
+}
+export async function resolveDocumentStoragePath(client, document) {
+    try {
+        return normalizeDocumentPath(document.file_path, document.employee_id, client.supabaseUrl);
+    } catch (error) {
+        if (!(error instanceof DocumentError) || error.status !== 400) throw error;
+    }
+    const { data: owner, error } = await client.from('employees').select('id,company_id')
+        .eq('id', document.employee_id).maybeSingle();
+    if (error) throw new DocumentError(503, 'Document ownership could not be verified. Please retry.');
+    if (!owner) throw new DocumentError(404, 'Document owner was not found.');
+    return normalizeDocumentPath(document.file_path, document.employee_id, client.supabaseUrl, owner.company_id);
 }
 export function formatCleanDocumentFileName(title = '', originalName = '') {
     const rawExt = String(originalName || '').split('.').pop() || '';
@@ -398,6 +410,9 @@ export function documentRoute(handler) {
     return async (req, res, next) => {
         try { await handler(req, res, next); }
         catch (error) {
+            if (error.message?.includes('SIL_WAGE_SOURCE_LOCKED')) {
+                error = new DocumentError(409, 'This wage document supports a recorded SIL approval and must be retained.', 'SIL_WAGE_SOURCE_LOCKED');
+            }
             if (!(error instanceof DocumentError)) console.error('[DOCUMENT_API]', error.message);
             res.status(error.status || 500).json({ success: false, message: error.status ? error.message : 'Document request failed. Please try again.', error: error.status ? error.message : 'Document service unavailable.', ...(error instanceof DocumentError && error.code ? { code: error.code } : {}) });
         }

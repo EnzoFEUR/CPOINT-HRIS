@@ -180,13 +180,8 @@ export default function SilSettings() {
                 <section className="bg-white rounded-lg border border-slate-200 p-5 shadow-2xs flex flex-col justify-between" aria-label="Statutory SIL policy">
                     <div>
                         <div className="flex items-center justify-between gap-3 mb-4">
-                            <div className="flex items-center gap-2.5">
-                                <div className="w-7 h-7 rounded-md bg-accent-subtle text-accent flex items-center justify-center shrink-0">
-                                    <i className="ti ti-calendar-plus text-sm" />
-                                </div>
-                                <div>
-                                    <h4 className="text-sm font-bold text-slate-800">Annual Leave Credits</h4>
-                                </div>
+                            <div>
+                                <h4 className="text-sm font-bold text-slate-800">Annual Leave Credits</h4>
                             </div>
                         </div>
 
@@ -257,13 +252,8 @@ export default function SilSettings() {
                 <section className="bg-white rounded-lg border border-slate-200 p-5 shadow-2xs flex flex-col justify-between" aria-label="SIL conversion policy">
                     <div>
                         <div className="flex items-center justify-between gap-3 mb-4">
-                            <div className="flex items-center gap-2.5">
-                                <div className="w-7 h-7 rounded-md bg-accent-subtle text-accent flex items-center justify-center shrink-0">
-                                    <i className="ti ti-coins text-sm" />
-                                </div>
-                                <div>
-                                    <h4 className="text-sm font-bold text-slate-800">Cash Conversion Rules</h4>
-                                </div>
+                            <div>
+                                <h4 className="text-sm font-bold text-slate-800">Cash Conversion Rules</h4>
                             </div>
                         </div>
 
@@ -339,14 +329,9 @@ export default function SilSettings() {
             {/* Searchable Annual & Final Pay SIL Obligations */}
             <section className="bg-white rounded-lg border border-slate-200 p-5 shadow-2xs space-y-4" aria-label="Annual and final-pay reviews">
                 <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-                    <div className="flex items-center gap-2.5">
-                        <div className="w-7 h-7 rounded-md bg-accent-subtle text-accent flex items-center justify-center shrink-0">
-                            <i className="ti ti-users-group text-sm" />
-                        </div>
-                        <div>
-                            <div className="flex items-center gap-2">
-                                <h4 className="text-sm font-bold text-slate-800">Annual & Final Pay SIL Obligations</h4>
-                            </div>
+                    <div>
+                        <div className="flex items-center gap-2">
+                            <h4 className="text-sm font-bold text-slate-800">Annual & Final Pay SIL Obligations</h4>
                         </div>
                     </div>
                 </div>

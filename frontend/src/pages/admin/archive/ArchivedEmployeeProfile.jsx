@@ -303,9 +303,7 @@ export default function ArchivedEmployeeProfile() {
       {/* Statutory Retention & Compliance Banner */}
       <div className="bg-slate-50 border border-slate-200 rounded-lg p-3.5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs shadow-2xs">
         <div className="flex items-center gap-3">
-          <div className="w-7 h-7 rounded-md bg-slate-200 text-slate-700 flex items-center justify-center shrink-0">
-            <i className="ti ti-shield-check text-sm"></i>
-          </div>
+          
           <div>
             <p className="font-bold text-slate-800 text-xs">Archived Employment Record</p>
             <p className="text-slate-500 font-medium text-[11px]">
@@ -625,9 +623,7 @@ export default function ArchivedEmployeeProfile() {
                   return (
                     <div key={p.id} className="py-2.5 flex items-center justify-between gap-4">
                       <div className="flex items-center gap-2.5">
-                        <div className="w-8 h-8 rounded-md bg-surface-muted text-ink flex items-center justify-center">
-                          <i className="ti ti-cash text-base"></i>
-                        </div>
+                        
                         <p className="text-xs font-bold text-slate-800">{period}</p>
                       </div>
                       <p className="text-xs font-bold text-slate-900">
@@ -651,9 +647,7 @@ export default function ArchivedEmployeeProfile() {
                 {leaves.map((l) => (
                   <div key={l.id} className="py-2.5 flex items-center justify-between">
                     <div className="flex items-center gap-2.5">
-                      <div className="w-8 h-8 rounded-md bg-warning-subtle text-warning-ink flex items-center justify-center">
-                        <i className="ti ti-beach text-base"></i>
-                      </div>
+                      
                       <div>
                         <p className="text-xs font-bold text-slate-800 capitalize">{pick(l, ['leave_type', 'type'], 'Leave')}</p>
                         <p className="text-[11px] text-slate-400">{formatDate(pick(l, ['start_date', 'date_from']))} – {formatDate(pick(l, ['end_date', 'date_to']))}</p>

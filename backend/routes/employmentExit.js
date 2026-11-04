@@ -3,7 +3,7 @@ import { supabase } from '../supabaseClient.js';
 import { hasVerifiedManagerRole } from '../middleware/authMiddleware.js';
 import { validateUuidParam } from '../middleware/requestValidation.js';
 import { exitPayload, exitRequestIds, requiresRetirementLetter, retirementLetterDocumentId, validRetirementLetterFile } from '../../shared/employmentExit.mjs';
-import { findDocument, normalizeDocumentPath } from '../services/documentService.js';
+import { findDocument, resolveDocumentStoragePath } from '../services/documentService.js';
 import { publishExitUpdate } from '../services/employmentExitEvents.js';
 const errors = {
     EXIT_FORBIDDEN: [
@@ -128,7 +128,7 @@ export function createEmploymentExitRouter({
                     !['pending', 'approved'].includes(letter.status) ||
                     !validRetirementLetterFile(letter.file_name, Number(letter.file_size)))
                     throw invalidLetter();
-                normalizeDocumentPath(letter.file_path, req.user.id, client.supabaseUrl);
+                await resolveDocumentStoragePath(client, letter);
             }
             const { data, error } = await client
                 .rpc(action === 'open' ? 'hris_employment_exit_open' : 'hris_employment_exit_command', action === 'open' ? {
@@ -174,7 +174,7 @@ export function createEmploymentExitRouter({
                 const letter = await findDocument(client, id);
                 if (letter.employee_id !== data.record.employee_id)
                     return res.status(404).json({ error: 'The retirement letter is unavailable.' });
-                normalizeDocumentPath(letter.file_path, data.record.employee_id, client.supabaseUrl);
+                await resolveDocumentStoragePath(client, letter);
                 return res.json({ document: {
                     id: letter.id, title: letter.title || 'Retirement Letter', file_name: letter.file_name,
                     file_size: letter.file_size, category: letter.category, status: letter.status,

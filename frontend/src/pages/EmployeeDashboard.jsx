@@ -819,9 +819,7 @@ const EmployeeDashboard = () => {
             ) : infractions.length > 0 ? (
                 <div className="bg-slate-900 border border-slate-700 rounded-lg p-4 sm:p-5 text-white shadow-2xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 print:hidden">
                     <div className="flex items-center gap-3.5">
-                        <div className="w-10 h-10 rounded-md bg-slate-800 border border-slate-700 flex items-center justify-center shrink-0 text-slate-300">
-                            <i className="ti ti-shield-alert text-xl" />
-                        </div>
+                        
                         <div>
                             <div className="flex items-center gap-2">
                                 <span className="px-2 py-0.5 rounded-sm text-[10px] font-bold uppercase tracking-wider bg-danger text-white">Action Required</span>
@@ -846,9 +844,7 @@ const EmployeeDashboard = () => {
             {!hasFaceBiometrics && !isTerminated && !isSuspended && (
                 <div className="bg-warning-subtle border border-warning/90 rounded-lg p-4 sm:p-5 shadow-2xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 print:hidden">
                     <div className="flex items-center gap-3.5">
-                        <div className="w-10 h-10 rounded-md bg-warning/10 border border-warning/20 flex items-center justify-center shrink-0 text-warning-ink">
-                            <i className="ti ti-scan-eye text-xl animate-pulse" />
-                        </div>
+                        
                         <div>
                             <div className="flex items-center gap-2">
                                 <span className="px-2 py-0.5 rounded-sm text-[10px] font-bold uppercase tracking-wider bg-warning text-slate-950">Action required</span>
@@ -873,9 +869,7 @@ const EmployeeDashboard = () => {
             {pendingDocRequests.length > 0 && !isTerminated && (
                 <div className="bg-surface border border-accent/30 rounded-lg p-4 sm:p-5 shadow-2xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 print:hidden ring-1 ring-accent/10">
                     <div className="flex items-start sm:items-center gap-3.5 min-w-0">
-                        <div className="w-10 h-10 rounded-md bg-accent-subtle border border-accent/20 flex items-center justify-center shrink-0 text-accent">
-                            <i className="ti ti-file-alert text-xl" />
-                        </div>
+                        
                         <div className="min-w-0">
                             <div className="flex items-center gap-2">
                                 <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-accent text-white">Action Required</span>
@@ -980,18 +974,12 @@ const EmployeeDashboard = () => {
                     {/* Payroll - Always Available */}
                     <div
                         onClick={() => {
-                            if (allPayrolls.length > 0 || latestPayroll) {
-                                setPayslipView('history');
-                                setSelectedPayslipId(null);
-                                setFilterYear('all');
-                                setFilterMonth('all');
-                                setPaySearchQuery('');
-                                setShowPayslipModal(true);
-                            } else if (isFactoryWorker) {
-                                toast('Factory piece-rate pool payouts are distributed per completed production batch.', { id: 'factory-pay-notice' });
-                            } else {
-                                toast.error('No payslips on record.', { id: 'no-payslips-notice' });
-                            }
+                            setPayslipView('history');
+                            setSelectedPayslipId(null);
+                            setFilterYear('all');
+                            setFilterMonth('all');
+                            setPaySearchQuery('');
+                            setShowPayslipModal(true);
                         }}
                         className="relative overflow-hidden bg-accent rounded-lg p-5 sm:p-6 md:p-8 cursor-pointer shadow-2xs select-none"
                     >
@@ -1060,10 +1048,10 @@ const EmployeeDashboard = () => {
                                                 : (isPayHistoryLoading ? 'Checking ledger...' : 'No statements yet')}
                                         </span>
                                     </span>
-                                    <span className="inline-flex items-center gap-1 text-[11px] bg-white/20 px-2 py-0.5 rounded shrink-0">
+                                    <button type="button" aria-label="Open payslips and final pay" className="inline-flex items-center gap-1 text-[11px] bg-white/20 px-2 py-0.5 rounded shrink-0 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white">
                                         <span>Payslips &amp; Final Pay</span>
                                         <i className="ti ti-chevron-right text-[10px]" />
-                                    </span>
+                                    </button>
                                 </div>
                             </div>
                         </div>
@@ -1168,9 +1156,7 @@ const EmployeeDashboard = () => {
                         aria-label="Open my applications and requests"
                     >
                         <div className="flex items-center gap-4 sm:gap-5">
-                            <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-md bg-slate-900 group-hover:bg-slate-800 text-white border border-slate-800 flex items-center justify-center text-2xl sm:text-3xl shrink-0 transition-colors shadow-2xs">
-                                <i className="ti ti-clipboard-check" />
-                            </div>
+                            
                             <div>
                                 <div className="flex items-center gap-2">
                                     <h3 className="text-base sm:text-lg font-black text-slate-900 group-hover:text-slate-800 transition-colors">
@@ -1199,9 +1185,7 @@ const EmployeeDashboard = () => {
                     <div className="bg-white rounded-lg p-5 sm:p-6 shadow-2xs border border-warning/20">
                         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 sm:pb-5 border-b border-warning/20">
                             <div className="flex items-start sm:items-center gap-3.5">
-                                <div className="w-10 h-10 rounded-md bg-warning-subtle border border-warning/20 text-warning-ink flex items-center justify-center shrink-0 text-xl shadow-2xs">
-                                    <i className="ti ti-bandage" />
-                                </div>
+                                
                                 <div>
                                     <div className="flex flex-wrap items-center gap-2">
                                         <h3 className="text-base sm:text-lg font-black text-slate-900 tracking-tight">
@@ -1258,27 +1242,21 @@ const EmployeeDashboard = () => {
                         {/* Quick highlights bar */}
                         <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 pt-2 text-xs">
                             <div className="flex items-center gap-2.5 px-3.5 py-2.5 rounded-md bg-slate-50 border border-slate-200">
-                                <div className="w-7 h-7 rounded-sm bg-surface-muted text-ink flex items-center justify-center shrink-0">
-                                    <i className="ti ti-qrcode text-sm font-bold" />
-                                </div>
+                                
                                 <div className="min-w-0">
                                     <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Gate QR Pass</p>
                                     <p className="font-bold text-ink truncate">Authorized (QR Only)</p>
                                 </div>
                             </div>
                             <div className="flex items-center gap-2.5 px-3.5 py-2.5 rounded-md bg-slate-50 border border-slate-200">
-                                <div className="w-7 h-7 rounded-sm bg-warning-subtle text-warning-ink flex items-center justify-center shrink-0">
-                                    <i className="ti ti-camera text-sm" />
-                                </div>
+                                
                                 <div className="min-w-0">
                                     <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Turnstile Camera</p>
                                     <p className="font-bold text-slate-800 truncate">Evidentiary Audit Snapshot</p>
                                 </div>
                             </div>
                             <div className="col-span-2 sm:col-span-1 flex items-center gap-2.5 px-3.5 py-2.5 rounded-md bg-slate-50 border border-slate-200">
-                                <div className="w-7 h-7 rounded-sm bg-accent-subtle text-accent flex items-center justify-center shrink-0">
-                                    <i className="ti ti-calendar-time text-sm" />
-                                </div>
+                                
                                 <div className="min-w-0">
                                     <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Remaining Grace</p>
                                     <p className="font-bold text-slate-800 truncate">{daysRemaining} Day{daysRemaining === 1 ? '' : 's'} Remaining</p>
@@ -1294,9 +1272,7 @@ const EmployeeDashboard = () => {
                         {/* Header */}
                         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 sm:pb-5 border-b border-danger/20">
                             <div className="flex items-start sm:items-center gap-3.5">
-                                <div className="w-10 h-10 rounded-md bg-danger-subtle border border-danger/20 text-danger-ink flex items-center justify-center shrink-0 text-xl shadow-2xs">
-                                    <i className="ti ti-user-x" />
-                                </div>
+                                
                                 <div>
                                     <div className="flex flex-wrap items-center gap-2">
                                         <h3 className="text-base sm:text-lg font-black text-slate-900 tracking-tight">
@@ -1358,18 +1334,14 @@ const EmployeeDashboard = () => {
                                 </div>
                             </div>
                             <div className="flex items-center gap-2.5 px-3.5 py-2.5 rounded-md bg-slate-50 border border-slate-200">
-                                <div className="w-7 h-7 rounded-sm bg-slate-200 text-slate-700 flex items-center justify-center shrink-0">
-                                    <i className="ti ti-history text-sm" />
-                                </div>
+                                
                                 <div className="min-w-0">
                                     <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Disciplinary Audit</p>
                                     <p className="font-bold text-slate-800 truncate">{employeeDisciplinary.length} Recorded Action(s)</p>
                                 </div>
                             </div>
                             <div className="col-span-2 sm:col-span-1 flex items-center gap-2.5 px-3.5 py-2.5 rounded-md bg-slate-50 border border-slate-200">
-                                <div className="w-7 h-7 rounded-sm bg-accent-subtle text-accent flex items-center justify-center shrink-0">
-                                    <i className="ti ti-receipt-2 text-sm" />
-                                </div>
+                                
                                 <div className="min-w-0">
                                     <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Clearance &amp; Pay</p>
                                     <p className="font-bold text-slate-800 truncate">Contact HR for COE</p>
@@ -1382,9 +1354,7 @@ const EmployeeDashboard = () => {
                         {/* Header */}
                         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 sm:pb-5 border-b border-warning/20">
                             <div className="flex items-start sm:items-center gap-3.5">
-                                <div className="w-10 h-10 rounded-md bg-warning-subtle border border-warning/20 text-warning-ink flex items-center justify-center shrink-0 text-xl shadow-2xs">
-                                    <i className="ti ti-clock-pause" />
-                                </div>
+                                
                                 <div>
                                     <div className="flex flex-wrap items-center gap-2">
                                         <h3 className="text-base sm:text-lg font-black text-slate-900 tracking-tight">
@@ -1444,18 +1414,14 @@ const EmployeeDashboard = () => {
                                 </div>
                             </div>
                             <div className="flex items-center gap-2.5 px-3.5 py-2.5 rounded-md bg-slate-50 border border-slate-200">
-                                <div className="w-7 h-7 rounded-sm bg-slate-200 text-slate-700 flex items-center justify-center shrink-0">
-                                    <i className="ti ti-calendar-pause text-sm" />
-                                </div>
+                                
                                 <div className="min-w-0">
                                     <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Work Schedule</p>
                                     <p className="font-bold text-slate-800 truncate">No Active Shifts</p>
                                 </div>
                             </div>
                             <div className="col-span-2 sm:col-span-1 flex items-center gap-2.5 px-3.5 py-2.5 rounded-md bg-slate-50 border border-slate-200">
-                                <div className="w-7 h-7 rounded-sm bg-accent-subtle text-accent flex items-center justify-center shrink-0">
-                                    <i className="ti ti-calendar-due text-sm" />
-                                </div>
+                                
                                 <div className="min-w-0">
                                     <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Reinstatement</p>
                                     <p className="font-bold text-slate-800 truncate">{suspensionEndDate ? `Auto-lift ${suspensionEndDate}` : 'Pending HR Review'}</p>
@@ -1468,9 +1434,7 @@ const EmployeeDashboard = () => {
                         {/* Header */}
                         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 sm:pb-5 border-b border-danger/20">
                             <div className="flex items-start sm:items-center gap-3.5">
-                                <div className="w-10 h-10 rounded-md bg-danger-subtle border border-danger/20 text-danger-ink flex items-center justify-center shrink-0 text-xl shadow-2xs">
-                                    <i className="ti ti-bell-ringing" />
-                                </div>
+                                
                                 <div>
                                     <div className="flex flex-wrap items-center gap-2">
                                         <h3 className="text-base sm:text-lg font-black text-slate-900 tracking-tight">
@@ -1559,24 +1523,19 @@ const EmployeeDashboard = () => {
                 ) : employeeDisciplinary.length > 0 ? (
                     <div className="bg-white rounded-lg p-5 sm:p-6 shadow-2xs border border-slate-200">
                         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                            <div className="flex items-start sm:items-center gap-3.5 sm:gap-4">
-                                <div className="w-10 h-10 rounded-md bg-slate-100 border border-slate-200 text-slate-700 flex items-center justify-center shrink-0 text-xl shadow-2xs">
-                                    <i className="ti ti-history" />
+                            <div>
+                                <div className="flex flex-wrap items-center gap-2">
+                                    <h3 className="text-base sm:text-lg font-black text-slate-900 tracking-tight">
+                                        HR Standing &amp; Notice History
+                                    </h3>
+                                    <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md text-xs font-semibold ${standing.badgeClass}`}>
+                                        <i className={`ti ${standing.icon} text-xs`} />
+                                        <span>{standing.badgeLabel}</span>
+                                    </span>
                                 </div>
-                                <div>
-                                    <div className="flex flex-wrap items-center gap-2">
-                                        <h3 className="text-base sm:text-lg font-black text-slate-900 tracking-tight">
-                                            HR Standing &amp; Notice History
-                                        </h3>
-                                        <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md text-xs font-semibold ${standing.badgeClass}`}>
-                                            <i className={`ti ${standing.icon} text-xs`} />
-                                            <span>{standing.badgeLabel}</span>
-                                        </span>
-                                    </div>
-                                    <p className="text-slate-500 text-xs sm:text-sm font-medium mt-0.5">
-                                        {standing.employeeDescription}
-                                    </p>
-                                </div>
+                                <p className="text-slate-500 text-xs sm:text-sm font-medium mt-0.5">
+                                    {standing.employeeDescription}
+                                </p>
                             </div>
 
                             <div className="flex items-center gap-2 self-stretch sm:self-auto shrink-0 pt-2 sm:pt-0 border-t sm:border-t-0 border-slate-100">
@@ -1593,18 +1552,14 @@ const EmployeeDashboard = () => {
                         {/* Quick highlights bar */}
                         <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 mt-4 pt-4 border-t border-slate-100 text-xs">
                             <div className="flex items-center gap-2.5 px-3.5 py-2.5 rounded-md bg-slate-50 border border-slate-200">
-                                <div className="w-7 h-7 rounded-sm bg-surface-muted text-ink flex items-center justify-center shrink-0">
-                                    <i className="ti ti-check text-sm font-bold" />
-                                </div>
+                                
                                 <div className="min-w-0">
                                     <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Active Holds</p>
                                     <p className="font-bold text-slate-800 truncate">0 Pending Holds</p>
                                 </div>
                             </div>
                             <div className="flex items-center gap-2.5 px-3.5 py-2.5 rounded-md bg-slate-50 border border-slate-200">
-                                <div className="w-7 h-7 rounded-sm bg-accent-subtle/60 text-accent flex items-center justify-center shrink-0">
-                                    <i className="ti ti-user-check text-sm" />
-                                </div>
+                                
                                 <div className="min-w-0">
                                     <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Account Standing</p>
                                     <p className={`font-bold truncate ${standing.tier >= 3 ? 'text-danger-ink' : standing.tier >= 2 ? 'text-warning-ink' : 'text-slate-800'}`}>
@@ -1613,9 +1568,7 @@ const EmployeeDashboard = () => {
                                 </div>
                             </div>
                             <div className="col-span-2 sm:col-span-1 flex items-center gap-2.5 px-3.5 py-2.5 rounded-md bg-slate-50 border border-slate-200">
-                                <div className="w-7 h-7 rounded-sm bg-slate-200 text-slate-700 flex items-center justify-center shrink-0">
-                                    <i className="ti ti-folders text-sm" />
-                                </div>
+                                
                                 <div className="min-w-0">
                                     <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Record Audit Trail</p>
                                     <p className="font-bold text-slate-800 truncate">{employeeDisciplinary.length} Recorded Action(s)</p>
@@ -1626,24 +1579,19 @@ const EmployeeDashboard = () => {
                 ) : (
                     <div className="bg-white rounded-lg p-5 sm:p-6 shadow-2xs border border-slate-200">
                         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                            <div className="flex items-start sm:items-center gap-3.5 sm:gap-4">
-                                <div className="w-10 h-10 rounded-md bg-surface-muted border border-line text-ink flex items-center justify-center shrink-0 text-xl shadow-2xs">
-                                    <i className="ti ti-shield-check" />
+                            <div>
+                                <div className="flex flex-wrap items-center gap-2">
+                                    <h3 className="text-base sm:text-lg font-black text-slate-900 tracking-tight">
+                                        HR Standing &amp; Compliance
+                                    </h3>
+                                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md text-xs font-semibold bg-surface-muted text-ink border border-line">
+                                        <i className="ti ti-circle-check text-xs" />
+                                        <span>Good Standing · Clean File</span>
+                                    </span>
                                 </div>
-                                <div>
-                                    <div className="flex flex-wrap items-center gap-2">
-                                        <h3 className="text-base sm:text-lg font-black text-slate-900 tracking-tight">
-                                            HR Standing &amp; Compliance
-                                        </h3>
-                                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md text-xs font-semibold bg-surface-muted text-ink border border-line">
-                                            <i className="ti ti-circle-check text-xs" />
-                                            <span>Good Standing · Clean File</span>
-                                        </span>
-                                    </div>
-                                    <p className="text-slate-500 text-xs sm:text-sm font-medium mt-0.5">
-                                        Your employment file is completely clear with zero policy infractions or active memos.
-                                    </p>
-                                </div>
+                                <p className="text-slate-500 text-xs sm:text-sm font-medium mt-0.5">
+                                    Your employment file is completely clear with zero policy infractions or active memos.
+                                </p>
                             </div>
 
                             <div className="flex items-center gap-2 self-stretch sm:self-auto shrink-0 pt-2 sm:pt-0 border-t sm:border-t-0 border-slate-100">
@@ -1660,27 +1608,21 @@ const EmployeeDashboard = () => {
                         {/* Quick highlights bar */}
                         <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 mt-4 pt-4 border-t border-slate-100 text-xs">
                             <div className="flex items-center gap-2.5 px-3.5 py-2.5 rounded-md bg-slate-50 border border-slate-200">
-                                <div className="w-7 h-7 rounded-sm bg-surface-muted text-ink flex items-center justify-center shrink-0">
-                                    <i className="ti ti-check text-sm font-bold" />
-                                </div>
+                                
                                 <div className="min-w-0">
                                     <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Active Notices</p>
                                     <p className="font-bold text-slate-800 truncate">0 Pending</p>
                                 </div>
                             </div>
                             <div className="flex items-center gap-2.5 px-3.5 py-2.5 rounded-md bg-slate-50 border border-slate-200">
-                                <div className="w-7 h-7 rounded-sm bg-accent-subtle/60 text-accent flex items-center justify-center shrink-0">
-                                    <i className="ti ti-scale text-sm" />
-                                </div>
+                                
                                 <div className="min-w-0">
                                     <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Labor Code / DOLE</p>
                                     <p className="font-bold text-slate-800 truncate">Fully Compliant</p>
                                 </div>
                             </div>
                             <div className="col-span-2 sm:col-span-1 flex items-center gap-2.5 px-3.5 py-2.5 rounded-md bg-slate-50 border border-slate-200">
-                                <div className="w-7 h-7 rounded-sm bg-accent-subtle/60 text-accent flex items-center justify-center shrink-0">
-                                    <i className="ti ti-user-check text-sm" />
-                                </div>
+                                
                                 <div className="min-w-0">
                                     <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Personnel File</p>
                                     <p className="font-bold text-slate-800 truncate">Clean Record</p>
@@ -1696,10 +1638,7 @@ const EmployeeDashboard = () => {
 
                     {/* Recent attendance */}
                     <div className="bg-white rounded-lg p-5 sm:p-6 shadow-2xs border border-slate-200">
-                        <div className="flex items-center gap-3 mb-5 sm:mb-8">
-                            <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-md bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-600">
-                                <i className="ti ti-clock-hour-4 text-lg sm:text-xl" />
-                            </div>
+                        <div className="mb-5 sm:mb-8">
                             <h3 className="text-lg sm:text-xl font-black text-slate-800 tracking-tight">Recent Clock-ins</h3>
                         </div>
 
@@ -1747,14 +1686,9 @@ const EmployeeDashboard = () => {
                     {/* Leave requests */}
                     <div className="bg-white rounded-lg p-5 sm:p-6 shadow-2xs border border-slate-200">
                         <div className="flex items-center justify-between gap-3 mb-5 sm:mb-6">
-                            <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
-                                <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-md bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-600 shrink-0">
-                                    <i className="ti ti-plane-departure text-lg sm:text-xl" />
-                                </div>
-                                <div className="min-w-0">
-                                    <h3 className="text-base sm:text-lg font-black text-slate-800 tracking-tight truncate">Recent Leave Requests</h3>
-                                    <p className="text-[11px] sm:text-xs text-slate-400 font-medium hidden xs:block">Applications & review status</p>
-                                </div>
+                            <div className="min-w-0">
+                                <h3 className="text-base sm:text-lg font-black text-slate-800 tracking-tight truncate">Recent Leave Requests</h3>
+                                <p className="text-[11px] sm:text-xs text-slate-400 font-medium hidden xs:block">Applications & review status</p>
                             </div>
                             <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
                                 <button
@@ -1960,16 +1894,11 @@ const EmployeeDashboard = () => {
                     <div className="relative z-10 bg-white rounded-t-2xl sm:rounded-lg w-full max-w-2xl overflow-hidden shadow-2xl h-[92dvh] sm:h-auto sm:max-h-[92vh] flex flex-col border border-slate-200 text-left my-0 sm:my-auto">
                         {/* Modal Header */}
                         <div className="p-4 sm:p-5 border-b border-slate-200 flex items-center justify-between gap-3 bg-white">
-                            <div className="flex items-center gap-3">
-                                <div className="w-10 h-10 rounded-md bg-accent text-white flex items-center justify-center shrink-0 shadow-2xs">
-                                    <i className="ti ti-wallet text-xl" />
-                                </div>
-                                <div className="min-w-0">
-                                    <div className="flex items-center gap-2">
-                                        <h2 className="text-base sm:text-lg font-black text-slate-900 tracking-tight leading-none">
-                                            Payslips &amp; Final Pay
-                                        </h2>
-                                    </div>
+                            <div className="min-w-0">
+                                <div className="flex items-center gap-2">
+                                    <h2 className="text-base sm:text-lg font-black text-slate-900 tracking-tight leading-none">
+                                        Payslips &amp; Final Pay
+                                    </h2>
                                 </div>
                             </div>
                             <div className="flex items-center gap-2">

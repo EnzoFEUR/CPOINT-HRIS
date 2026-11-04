@@ -625,9 +625,7 @@ export default function Dashboard() {
             {/* KPI Cards */}
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-5">
                 <div className="bg-white p-5 sm:p-6 rounded-lg border border-slate-200 shadow-2xs relative overflow-hidden group">
-                    <div className="absolute right-0 top-0 p-5 opacity-10 group-hover:opacity-20 transition-opacity hidden sm:block">
-                        <i className="ti ti-users text-5xl text-accent" />
-                    </div>
+                    
                     <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Total Workforce</p>
                     <h3 className="text-3xl sm:text-4xl font-bold text-slate-900 mt-1 tracking-tight font-mono tabular-nums">
                         {totalStaff}
@@ -642,9 +640,7 @@ export default function Dashboard() {
                     onClick={() => setActiveModal('present')}
                     className="bg-white p-5 sm:p-6 rounded-lg border border-slate-200 shadow-2xs relative overflow-hidden group text-left cursor-pointer hover:border-success/20 hover:bg-slate-50/50 transition-colors duration-100"
                 >
-                    <div className="absolute right-0 top-0 p-5 opacity-10 group-hover:opacity-20 transition-opacity hidden sm:block">
-                        <i className="ti ti-user-check text-5xl text-ink" />
-                    </div>
+                    
                     <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
                         {dashboardData.isRestDay && presentTodayCount === 0 ? 'Rest Day Status' : 'Present Rate'}
                     </p>
@@ -664,9 +660,7 @@ export default function Dashboard() {
                     onClick={() => setActiveModal('late')}
                     className="bg-white p-5 sm:p-6 rounded-lg border border-slate-200 shadow-2xs relative overflow-hidden group text-left cursor-pointer hover:border-warning/20 hover:bg-slate-50/50 transition-colors duration-100"
                 >
-                    <div className="absolute right-0 top-0 p-5 opacity-10 group-hover:opacity-20 transition-opacity hidden sm:block">
-                        <i className="ti ti-clock-exclamation text-5xl text-warning-ink" />
-                    </div>
+                    
                     <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Late Arrivals</p>
                     <h3 className="text-3xl sm:text-4xl font-bold text-slate-900 mt-1 tracking-tight font-mono tabular-nums">
                         {lateTodayCount}
@@ -677,9 +671,7 @@ export default function Dashboard() {
                 </button>
 
                 <Link to="/admin/leaves" className="bg-slate-900 hover:bg-slate-800 transition-colors duration-100 p-5 sm:p-6 rounded-lg border border-slate-800 shadow-2xs text-white block cursor-pointer relative overflow-hidden group">
-                    <div className="absolute right-0 top-0 p-5 opacity-10 group-hover:opacity-20 transition-opacity hidden sm:block">
-                        <i className="ti ti-plane-departure text-5xl text-white" />
-                    </div>
+                    
                     <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Pending Leaves</p>
                     <h3 className="text-3xl sm:text-4xl font-bold text-white mt-1 tracking-tight font-mono tabular-nums">
                         {pendingLeavesCount}

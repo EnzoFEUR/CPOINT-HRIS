@@ -304,9 +304,7 @@ const Calendar = () => {
                     <div className="bg-white p-4 sm:p-6 lg:p-8 rounded-lg shadow-2xs border border-slate-200 min-h-[400px] sm:min-h-[500px]">
                         <div className="flex items-center justify-between mb-5 sm:mb-6 pb-4 border-b border-slate-100">
                             <h3 className="font-bold text-slate-800 text-base sm:text-xl flex flex-wrap items-center gap-2 sm:gap-3">
-                                <div className="h-8 w-8 sm:h-9 sm:w-9 rounded-md bg-accent-subtle text-accent flex items-center justify-center border border-accent/20 shrink-0">
-                                    <i className="ti ti-clock-play text-base sm:text-lg"></i>
-                                </div>
+                                
                                 <span className="text-accent text-sm sm:text-lg font-semibold">
                                     {selectedDate.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}
                                 </span>

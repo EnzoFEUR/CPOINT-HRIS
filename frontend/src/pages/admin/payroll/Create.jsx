@@ -2043,13 +2043,8 @@ const PayrollCreate = () => {
 
                 {/* Header & Mode Switcher */}
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
-                    <div className="flex items-center gap-3">
-                        <div className="h-9 w-9 shrink-0 bg-accent text-white rounded-md flex items-center justify-center text-lg shadow-2xs">
-                            <i className="ti ti-calculator"></i>
-                        </div>
-                        <div className="min-w-0">
-                            <h2 className="text-lg sm:text-xl font-bold text-slate-800 tracking-tight truncate">Compute Payroll</h2>
-                        </div>
+                    <div className="min-w-0">
+                        <h2 className="text-lg sm:text-xl font-bold text-slate-800 tracking-tight truncate">Compute Payroll</h2>
                     </div>
 
                     <div className="bg-slate-100 p-0.5 rounded-md flex items-center self-start sm:self-auto gap-0.5 border border-slate-200">

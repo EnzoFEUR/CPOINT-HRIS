@@ -9,6 +9,7 @@ export const isCreditManager = user => ['admin', 'hr'].includes(String(user?.rol
 export const isCreditLeaveType = type => ['sick leave', 'vacation / pto', 'vacation leave', 'emergency leave', 'service incentive leave'].includes(String(type || '').toLowerCase().trim());
 export const isStatutoryLeaveType = type => ['Maternity Leave', 'Paternity Leave'].includes(type);
 export const isCreditUuid = value => typeof value === 'string' && UUID.test(value);
+export const isSilWageDocumentId = value => typeof value === 'string' && (isCreditUuid(value) || /^[1-9]\d{0,19}$/.test(value));
 export const isLeaveDate = value => typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(Date.parse(value)) && new Date(value).toISOString().slice(0, 10) === value;
 export const MATERNITY_CALENDAR_DAYS = Object.freeze({ live_birth: 105, solo_parent_live_birth: 120, miscarriage_etp: 60 });
 
@@ -43,6 +44,24 @@ export function sumCashAmounts(values) {
     return Number(values.reduce((total, value) => total + scaledDecimal(value, 2), 0n)) / 100;
 }
 
+export function calculateSilDailyEquivalent(input = {}) {
+    if (!input || typeof input !== 'object' || Array.isArray(input)) invalid('Provide verified earnings and worked days.', 400);
+    number(input.earnings, 'eligible earnings', 0.01, 366000000, 2);
+    number(input.worked_days, 'verified worked days', 0.001, 366, 3);
+    const cents = scaledDecimal(input.earnings, 2);
+    const units = scaledDecimal(input.worked_days, 3);
+    const rate = Number((cents * 1000n + units / 2n) / units) / 100;
+    if (rate <= 0 || rate > 1000000) invalid('The calculated daily equivalent needs HR wage-basis review.', 400);
+    return rate;
+}
+
+export function describeSilCalculation(calculation, start, end) {
+    const rate = calculateSilDailyEquivalent(calculation);
+    return `Arithmetic preview: recorded production earnings PHP ${calculation.earnings.toFixed(2)} / ${calculation.worked_days} completed attendance date(s) = PHP ${rate.toFixed(2)}/day.`
+        + (start && end ? ` Evidence period: ${start} to ${end}.` : '')
+        + ' A documented conversion-date wage review is required before SIL approval. Weekly is the payout schedule.';
+}
+
 export function validateSilClassification(value) {
     if (!value || value.sss !== 'excluded' || value.philhealth !== 'excluded' || value.pagibig !== 'excluded' || value.thirteenth_month !== 'excluded'
         || typeof value.basis !== 'string' || !value.basis.trim() || value.basis.trim().length > 500) {
@@ -63,6 +82,11 @@ export const CASH_OUT_LABELS = Object.freeze({
     payment_failed: 'Payment needs attention'
 });
 
+// Display only; keep the original reference for source checks and audit records.
+export const formatSilEvidenceReference = reference => typeof reference === 'string'
+    ? reference.replace(/^(Saved factory payroll \d{4}-\d{2}-\d{2} to \d{4}-\d{2}-\d{2}); SHA256 [a-f\d]{64}$/i, '$1')
+    : '';
+
 export function validateCashOutRequest(input = {}) {
     if (!isCreditUuid(input.request_id) || !isCreditUuid(input.employee_id)) invalid('Valid employee and request IDs are required.', 400);
     const days = input.days;
@@ -75,17 +99,35 @@ export function validateCashOutDecision(input = {}) {
     const amount = input.taxable_amount;
     if (input.status === 'approved' && (typeof amount !== 'number' || !Number.isFinite(amount) || amount < 0 || amount > 366000000 || Math.abs(amount * 100 - Math.round(amount * 100)) > 1e-7)) invalid('Review the amount subject to tax before approving.', 400);
     const rate = input.expected_daily_rate;
-    if (input.status === 'approved' && (typeof rate !== 'number' || !Number.isFinite(rate) || rate <= 0 || rate > 1000000 || Math.abs(rate * 100 - Math.round(rate * 100)) > 1e-7)) invalid('HR must save a valid daily rate before approving cash-out.', 400);
+    if (input.status === 'approved' && (typeof rate !== 'number' || !Number.isFinite(rate) || rate <= 0 || rate > 1000000 || Math.abs(rate * 100 - Math.round(rate * 100)) > 1e-7)) invalid('Enter a verified SIL conversion rate before approving cash-out.', 400);
     return { decision_id: input.decision_id, status: input.status, taxable_amount: input.status === 'approved' ? amount : null, expected_daily_rate: input.status === 'approved' ? rate : null };
+}
+
+export function validateSilValuation(value) {
+    if (!value || typeof value !== 'object' || Array.isArray(value) || value.method !== 'documented_conversion_rate' || value.verified !== true) invalid('HR must document and verify the conversion-date SIL wage basis.', 400);
+    if (value.source != null || value.calculation != null) invalid('A selected payroll average is an arithmetic preview. Enter the documented conversion-date rate and its supporting review before approval.', 400);
+    if (!isLeaveDate(value.as_of) || value.as_of !== getManilaWorkDate()) invalid('Refresh and verify the SIL rate for today’s conversion date.', 400);
+    const start = value.reference_start || null;
+    const end = value.reference_end || null;
+    if ((start || end) && (!isLeaveDate(start) || !isLeaveDate(end) || start > end || end > value.as_of)) invalid('Enter both valid evidence-period dates, ending no later than the conversion date.', 400);
+    if (!isSilWageDocumentId(value.source_document_id)) invalid('Select an approved wage document for this employee before confirming the rate.', 400);
+    return {
+        method: 'documented_conversion_rate', as_of: value.as_of,
+        ...(start ? { reference_start: start, reference_end: end } : {}),
+        source_document_id: value.source_document_id,
+        verified: true,
+    };
 }
 
 export function validateCashOutTransition(input = {}) {
     if (!isCreditUuid(input.operation_id) || !['approved', 'rejected', 'needs_correction', 'cancelled', 'resubmit'].includes(input.action)) invalid('Invalid cash-out action.', 400);
     if (typeof input.reason !== 'string' || !input.reason.trim() || input.reason.trim().length > 500) invalid('Enter a reason (up to 500 characters).', 400);
     const result = { operation_id: input.operation_id, action: input.action, reason: input.reason.trim() };
+    if (input.action !== 'approved' && input.valuation_basis != null) invalid('SIL valuation is only recorded during HR approval.', 400);
     if (input.action === 'approved') {
         const reviewed = validateCashOutDecision({ ...input, status: 'approved', decision_id: input.operation_id });
-        return { ...result, taxable_amount: reviewed.taxable_amount, expected_daily_rate: reviewed.expected_daily_rate, classification: validateSilClassification(input.classification) };
+        return { ...result, taxable_amount: reviewed.taxable_amount, expected_daily_rate: reviewed.expected_daily_rate, classification: validateSilClassification(input.classification),
+            ...(input.valuation_basis != null ? { valuation_basis: validateSilValuation(input.valuation_basis) } : {}) };
     }
     if (input.action === 'resubmit') return { ...result, days: validateCashOutRequest({ employee_id: input.employee_id, request_id: input.operation_id, days: input.days }).days };
     return result;

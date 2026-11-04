@@ -781,9 +781,7 @@ export default function Show() {
                     <div className="bg-warning/10 border border-warning/20 rounded-lg p-4 sm:p-5 shadow-2xs space-y-4">
                         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-warning/80">
                             <div className="flex items-center gap-3">
-                                <div className="w-8 h-8 rounded-md bg-warning text-white flex items-center justify-center shrink-0 shadow-2xs">
-                                    <i className="ti ti-key text-lg" />
-                                </div>
+                                
                                 <div>
                                     <div className="flex items-center gap-2">
                                         <h3 className="font-semibold text-warning-ink text-base sm:text-lg">
@@ -889,9 +887,7 @@ export default function Show() {
                 {isTerminated && (
                     <div className="bg-danger-subtle border border-danger/20 rounded-lg p-4 sm:p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
                         <div className="flex items-start gap-3.5">
-                            <div className="w-8 h-8 rounded-md bg-danger-subtle text-danger-ink flex items-center justify-center shrink-0 border border-danger/20">
-                                <i className="ti ti-ban text-lg" />
-                            </div>
+                            
                             <div>
                                 <div className="flex items-center gap-2">
                                     <h4 className="font-semibold text-danger-ink text-sm sm:text-base">{getSeparationLabel(employee)} Employment Record</h4>
@@ -945,9 +941,7 @@ export default function Show() {
                 {isSuspended && (
                     <div className="bg-warning-subtle border border-warning/20 rounded-lg p-4 sm:p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
                         <div className="flex items-start gap-3.5">
-                            <div className="w-8 h-8 rounded-md bg-warning-subtle text-warning-ink flex items-center justify-center shrink-0 border border-warning/20">
-                                <i className="ti ti-alert-triangle text-lg" />
-                            </div>
+                            
                             <div>
                                 <div className="flex items-center gap-2">
                                     <h4 className="font-semibold text-warning-ink text-sm sm:text-base">Active Disciplinary Suspension</h4>
@@ -1000,13 +994,8 @@ export default function Show() {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-5">
 
                     <div className="min-w-0 [overflow-wrap:anywhere] bg-white rounded-lg border border-slate-200 p-5 shadow-2xs space-y-4">
-                        <div className="flex items-center gap-3 pb-3 border-b border-slate-100">
-                            <div className="h-8 w-8 bg-accent-subtle text-accent rounded-md flex items-center justify-center border border-accent/20">
-                                <i className="ti ti-user text-lg" />
-                            </div>
-                            <div>
-                                <h3 className="text-sm sm:text-base font-semibold text-slate-900">Personal Details</h3>
-                            </div>
+                        <div className="pb-3 border-b border-slate-100">
+                            <h3 className="text-sm sm:text-base font-semibold text-slate-900">Personal Details</h3>
                         </div>
 
                         <div className="grid grid-cols-2 gap-4 text-xs">
@@ -1312,9 +1301,7 @@ export default function Show() {
                     ) : hasRegisteredFace(employee) ? (
                         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-3.5 bg-slate-50 border border-slate-200 rounded-md text-xs">
                             <div className="flex items-start gap-3">
-                                <div className="w-8 h-8 rounded-md bg-surface-muted text-ink flex items-center justify-center shrink-0 border border-line">
-                                    <i className="ti ti-check text-base" />
-                                </div>
+                                
                                 <div>
                                     <h4 className="font-semibold text-slate-800 text-sm">Face scan registered</h4>
                                 </div>
@@ -1342,9 +1329,7 @@ export default function Show() {
                     ) : (
                         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-3.5 bg-slate-50 border border-slate-200 rounded-md text-xs">
                             <div className="flex items-start gap-3">
-                                <div className="w-8 h-8 rounded-md bg-slate-200 text-slate-600 flex items-center justify-center shrink-0">
-                                    <i className="ti ti-user-scan text-base" />
-                                </div>
+                                
                                 <div>
                                     <h4 className="font-semibold text-slate-800 text-sm">Face scan not registered</h4>
                                     <p className="text-slate-500 mt-0.5 leading-relaxed">
@@ -1368,15 +1353,10 @@ export default function Show() {
                 {/* Disciplinary & Compliance Records */}
                 <div className="min-w-0 [overflow-wrap:anywhere] bg-white rounded-lg shadow-2xs border border-slate-200 p-5 sm:p-6 relative overflow-hidden">
                     <div className="flex flex-wrap items-center justify-between gap-3 mb-5">
-                        <div className="flex min-w-0 w-full sm:w-auto sm:flex-1 items-center gap-3">
-                            <div className="h-8 w-8 shrink-0 bg-warning-subtle text-warning-ink rounded-md flex items-center justify-center border border-warning/70">
-                                <i className="ti ti-scale text-lg" />
-                            </div>
-                            <div className="min-w-0">
-                                <h3 className="text-sm sm:text-base font-semibold text-slate-900 tracking-tight">
+                        <div className="min-w-0 w-full sm:w-auto sm:flex-1">
+                            <h3 className="text-sm sm:text-base font-semibold text-slate-900 tracking-tight">
                                     Disciplinary & Compliance Records
                                 </h3>
-                            </div>
                         </div>
 
                         <div className="flex flex-wrap items-center gap-2">
@@ -1924,19 +1904,14 @@ export default function Show() {
                     />
                     <div className="relative bg-white rounded-lg p-6 shadow-xl w-full max-w-lg border border-slate-200 z-10 space-y-4">
                         <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-                            <div className="flex items-center gap-3">
-                                <div className="w-9 h-9 bg-warning-subtle text-warning-ink rounded-md flex items-center justify-center border border-warning/20">
-                                    <i className="ti ti-first-aid-kit text-xl" />
-                                </div>
-                                <div>
-                                    <h3 className="text-base font-semibold text-slate-900">
+                            <div>
+                                <h3 className="text-base font-semibold text-slate-900">
                                         Biometric Medical Grace Exemption
                                     </h3>
                                     <p className="text-xs text-slate-500 font-medium">
                                         Temporary physical trauma & facial dressing protocol
                                     </p>
                                 </div>
-                            </div>
                             <button
                                 type="button"
                                 onClick={() => setIsExemptionModalOpen(false)}

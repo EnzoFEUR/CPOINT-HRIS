@@ -1,4 +1,5 @@
 // A single vocabulary for the classifier, reviewer, upload audit, and employee self-service.
+export const SIL_WAGE_DOCUMENT_TYPE = 'SIL Wage Determination';
 export const DOCUMENT_CATEGORIES = Object.freeze([
     'Contract',
     'Government ID',
@@ -22,6 +23,7 @@ export const DOCUMENT_TYPES = Object.freeze([
     // Employment & Contractual
     { id: 'employment_contract', label: 'Signed Employment Contract', category: 'Contract', is201Required: true, requiresExpiry: false, description: 'Executed company employment contract or appointment agreement.' },
     { id: 'offer_letter', label: 'Offer / Appointment Letter', category: 'Contract', is201Required: false, requiresExpiry: false, description: 'Formal job offer sheet and appointment notice.' },
+    { id: 'sil_wage_determination', label: SIL_WAGE_DOCUMENT_TYPE, category: 'Contract', is201Required: false, requiresExpiry: false, description: 'Reviewed wage determination supporting the conversion-date SIL daily equivalent and applicable calculation method.' },
 
     // Pre-employment Clearances
     { id: 'nbi_clearance', label: 'NBI Clearance', category: 'Clearance', is201Required: true, requiresExpiry: true, description: 'Official National Bureau of Investigation criminal record clearance.' },

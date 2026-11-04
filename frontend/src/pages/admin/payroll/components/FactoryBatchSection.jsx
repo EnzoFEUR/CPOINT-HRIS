@@ -33,11 +33,7 @@ const FactoryBatchSection = ({
         <form onSubmit={handleSubmitBatch} className="space-y-6">
             {/* Access Button for Factory Piece Modal */}
             <div className="bg-slate-50 p-4 rounded-lg border border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-4 shadow-2xs">
-                <div className="flex items-center gap-3.5 min-w-0">
-                    <div className="w-9 h-9 rounded-md bg-accent text-white flex items-center justify-center text-lg shrink-0">
-                        <i className="ti ti-table" />
-                    </div>
-                    <div className="min-w-0">
+                <div className="min-w-0">
                         <div className="flex items-center gap-2 flex-wrap">
                             <h3 className="text-sm sm:text-base font-bold text-slate-800 truncate">Factory Production &amp; Piece-Rate Manager</h3>
                             <span className={`inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-0.5 rounded-md border shrink-0 ${selectedGroup ? 'bg-accent-subtle text-accent border-accent/20' : 'bg-slate-100 text-slate-600 border-slate-200'}`}>
@@ -54,7 +50,6 @@ const FactoryBatchSection = ({
                                 'Click to select a production group and configure batch quantities & operation rates.'
                             )}
                         </p>
-                    </div>
                 </div>
                 <button
                     type="button"

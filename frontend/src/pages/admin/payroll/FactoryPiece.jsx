@@ -268,13 +268,8 @@ export default function FactoryPiece({
             <div className="relative w-full max-w-5xl bg-white rounded-lg shadow-xl overflow-hidden flex flex-col max-h-[90vh] z-10 border border-slate-200">
                 {/* Modal Header */}
                 <div className="p-4 sm:p-5 border-b border-slate-200 flex items-center justify-between bg-slate-50/80">
-                    <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 rounded-md bg-accent text-white flex items-center justify-center text-base shrink-0">
-                            <i className="ti ti-building-factory" />
-                        </div>
-                        <div>
-                            <h2 className="text-base font-bold text-slate-800">Factory Production &amp; Piece-Rate Manager</h2>
-                        </div>
+                    <div>
+                        <h2 className="text-base font-bold text-slate-800">Factory Production &amp; Piece-Rate Manager</h2>
                     </div>
                     <button
                         type="button"
@@ -291,13 +286,8 @@ export default function FactoryPiece({
                     {/* 1. Factory Production Groups Cards */}
                     <div className="bg-slate-50/50 p-4 rounded-lg border border-slate-200 space-y-3 shadow-2xs">
                         <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-2">
-                                <div className="w-7 h-7 rounded-md bg-accent-subtle text-accent flex items-center justify-center text-xs font-bold shrink-0">
-                                    <i className="ti ti-users-group"></i>
-                                </div>
-                                <div className="min-w-0">
-                                    <h3 className="text-xs sm:text-sm font-bold text-slate-800 tracking-tight">Factory Production Groups</h3>
-                                </div>
+                            <div className="min-w-0">
+                                <h3 className="text-xs sm:text-sm font-bold text-slate-800 tracking-tight">Factory Production Groups</h3>
                             </div>
                             <span className={`inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-0.5 rounded-md border shrink-0 ${selectedGroup ? 'text-accent bg-accent-subtle border-accent/20' : 'text-slate-600 bg-slate-100 border-slate-200'}`}>
                                 {selectedGroup ? `${activeGroupEmployees.length} Workers Active` : 'No Group Selected'}

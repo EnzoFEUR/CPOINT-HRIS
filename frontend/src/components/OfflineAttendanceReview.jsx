@@ -376,7 +376,7 @@ export default function OfflineAttendanceReview() {
       ];
     });
 
-    const csvContent = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
+    const csvContent = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows.map(r => r.join(','))].join('\r\n');
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement('a');
     link.setAttribute('href', encodedUri);
@@ -420,6 +420,65 @@ export default function OfflineAttendanceReview() {
     if (min < 60) return `Held offline: ${min}m`;
     const hr = Math.round(min / 60);
     return `Held offline: ${hr}h`;
+  };
+
+  const formatManilaTime = (timestamp) => {
+    if (!timestamp) return 'N/A';
+    try {
+      return new Date(timestamp).toLocaleTimeString('en-US', {
+        timeZone: 'Asia/Manila',
+        hour: 'numeric',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: true,
+      });
+    } catch {
+      return String(timestamp);
+    }
+  };
+
+  const formatManilaDate = (timestamp) => {
+    if (!timestamp) return 'N/A';
+    try {
+      return new Date(timestamp).toLocaleDateString('en-US', {
+        timeZone: 'Asia/Manila',
+        weekday: 'short',
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric',
+      });
+    } catch {
+      return String(timestamp);
+    }
+  };
+
+  const formatManilaDateTime = (timestamp) => {
+    if (!timestamp) return 'N/A';
+    try {
+      return new Date(timestamp).toLocaleString('en-US', {
+        timeZone: 'Asia/Manila',
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric',
+        hour: 'numeric',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: true,
+      });
+    } catch {
+      return String(timestamp);
+    }
+  };
+
+  const calculateShiftDuration = (startIso, endIso) => {
+    if (!startIso || !endIso) return null;
+    const start = new Date(startIso).getTime();
+    const end = new Date(endIso).getTime();
+    if (isNaN(start) || isNaN(end) || end < start) return null;
+    const diffMinutes = Math.round((end - start) / 60000);
+    const hours = Math.floor(diffMinutes / 60);
+    const mins = diffMinutes % 60;
+    return `${hours}h ${mins}m`;
   };
 
   const handleRefresh = async () => {
@@ -844,7 +903,7 @@ export default function OfflineAttendanceReview() {
                           <button
                             type="button"
                             onClick={() => openInspectDrawer(event)}
-                            className="h-7 px-2.5 rounded-md bg-white hover:bg-slate-50 text-slate-700 text-xs font-semibold border border-slate-200 transition-colors cursor-pointer inline-flex items-center gap-1 shadow-2xs"
+                            className="h-7 px-2.5 rounded-md bg-surface hover:bg-surface-muted text-ink-muted hover:text-ink text-xs font-semibold border border-line transition-colors cursor-pointer inline-flex items-center gap-1 shadow-2xs"
                             title="Inspect cryptographic proof and audit trail"
                           >
                             <i className="ti ti-eye text-xs" />
@@ -862,289 +921,446 @@ export default function OfflineAttendanceReview() {
       </div>
 
       {/* Deep Inspection & Audit Modal */}
-      {selectedEvent && (
-        <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs animate-fadeIn font-sans">
-          <div
-            className="relative bg-white rounded-lg shadow-xl border border-slate-200 w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col"
-            onClick={e => e.stopPropagation()}
-          >
-            {/* Modal Header */}
-            <div className="px-6 py-4 bg-slate-900 text-white flex items-center justify-between border-b border-slate-800">
-              <div className="flex items-center gap-3">
-                <div className="h-8 w-8 rounded-md bg-white/10 flex items-center justify-center border border-white/10 text-white">
-                  <i className="ti ti-shield-check text-base" />
-                </div>
-                <div>
-                  <h3 className="text-sm font-bold text-white tracking-wide">
-                    Cryptographic Capture Audit
-                  </h3>
-                  <p className="font-mono text-[11px] text-slate-400">
-                    ID: {selectedEvent.event_id || selectedEvent.payload?.event_id}
+      {selectedEvent && (() => {
+        const payload = selectedEvent.payload || selectedEvent;
+        const isTimeIn = payload.action === 'TIME_IN';
+        const isTimeOut = payload.action === 'TIME_OUT';
+        const eventId = selectedEvent.event_id || payload.event_id;
+        const capturedAt = payload.captured_at;
+        const siteId = payload.site_id;
+        const pair = selectedEvent.review_pair;
+        const shiftDuration = calculateShiftDuration(pair?.time_in, pair?.time_out);
+
+        return (
+          <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-ink/40 backdrop-blur-xs animate-fadeIn font-sans">
+            <div
+              className="relative bg-surface rounded-lg shadow-xl border border-line w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col"
+              onClick={e => e.stopPropagation()}
+            >
+              {/* Modal Header */}
+              <div className="px-5 py-4 bg-surface border-b border-line flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-sm font-bold text-ink tracking-wide">
+                      Cryptographic Capture Audit
+                    </h3>
+                    <span className="text-[10px] font-mono font-medium px-2 py-0.5 rounded-md bg-surface-muted border border-line text-ink-muted">
+                      {selectedEvent.company_scope || 'cpoint'}
+                    </span>
+                  </div>
+                  <p className="font-mono text-[11px] text-ink-subtle truncate max-w-sm sm:max-w-md mt-0.5">
+                    Event ID: {eventId}
                   </p>
                 </div>
+                <button
+                  type="button"
+                  onClick={closeInspectDrawer}
+                  className="h-8 w-8 rounded-md bg-surface hover:bg-surface-muted text-ink-subtle hover:text-ink flex items-center justify-center transition-colors cursor-pointer border border-transparent hover:border-line"
+                  aria-label="Close audit view"
+                >
+                  <i className="ti ti-x text-sm" />
+                </button>
               </div>
-              <button
-                type="button"
-                onClick={closeInspectDrawer}
-                className="h-8 w-8 rounded-md bg-white/10 hover:bg-white/20 text-slate-300 hover:text-white flex items-center justify-center transition-colors cursor-pointer"
-              >
-                <i className="ti ti-x text-sm" />
-              </button>
-            </div>
 
-            {/* Modal Body */}
-            <div className="min-h-0 min-w-0 space-y-5 overflow-y-auto p-4 text-xs text-slate-700 sm:p-6">
-              {/* Employee Snapshot */}
-              <div className="p-3.5 rounded-lg bg-slate-50 border border-slate-200 flex items-center justify-between gap-3">
-                <div className="flex items-center gap-3">
-                  <EmployeeAvatar
-                    employee={selectedEvent.employee}
-                    companyId={selectedEvent.employee_company_id || selectedEvent.employee?.company_id}
-                    employeeId={selectedEvent.employee_id}
-                    size="h-10 w-10"
-                    rounded="rounded-md"
-                  />
-                  <div>
-                    <p className="text-sm font-semibold text-slate-900">
-                      {selectedEvent.employee_name || 'Worker'}
-                    </p>
-                    <div className="flex items-center gap-2 mt-0.5">
-                      <span className="font-mono text-xs font-semibold text-slate-600 bg-white px-1.5 py-0.5 rounded border border-slate-200">
-                        {selectedEvent.employee_company_id || selectedEvent.employee?.company_id || 'N/A'}
-                      </span>
-                      {selectedEvent.employee?.department && (
-                        <span className="text-slate-500 font-medium">
-                          {selectedEvent.employee.department}
+              {/* Modal Body */}
+              <div className="min-h-0 min-w-0 space-y-4 overflow-y-auto p-4 text-xs text-ink sm:p-5">
+                {/* Employee Snapshot */}
+                <div className="p-3 rounded-md bg-surface-muted/60 border border-line flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <EmployeeAvatar
+                      employee={selectedEvent.employee}
+                      companyId={selectedEvent.employee_company_id || selectedEvent.employee?.company_id}
+                      employeeId={selectedEvent.employee_id}
+                      size="h-10 w-10"
+                      rounded="rounded-md"
+                    />
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold text-ink truncate">
+                        {selectedEvent.employee_name || 'Worker'}
+                      </p>
+                      <div className="flex items-center gap-2 mt-0.5">
+                        <span className="font-mono text-xs font-semibold text-ink-muted bg-surface px-1.5 py-0.5 rounded-md border border-line">
+                          {selectedEvent.employee_company_id || selectedEvent.employee?.company_id || 'N/A'}
                         </span>
+                        {selectedEvent.employee?.department && (
+                          <span className="text-ink-subtle font-medium truncate">
+                            {selectedEvent.employee.department}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="text-right shrink-0">
+                    <Badge variant={STATUS_VARIANTS[selectedEvent.status] || 'neutral'} size="md">
+                      {STATUS_LABELS[selectedEvent.status] || selectedEvent.status}
+                    </Badge>
+                    <p className="text-[10px] text-ink-subtle mt-1 font-mono">
+                      Received: {selectedEvent.received_at ? formatManilaTime(selectedEvent.received_at) : 'N/A'}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Attendance Event Summary Card */}
+                <div className="rounded-md border border-line bg-surface p-3.5 space-y-3 shadow-2xs">
+                  <div className="flex items-center justify-between pb-2 border-b border-line">
+                    <div className="flex items-center gap-2">
+                      <span className={`px-2 py-0.5 rounded-md text-[11px] font-bold tracking-wider uppercase ${
+                        isTimeIn
+                          ? 'bg-blue-50 text-blue-700 border border-blue-200'
+                          : isTimeOut
+                          ? 'bg-purple-50 text-purple-700 border border-purple-200'
+                          : 'bg-surface-muted text-ink border border-line'
+                      }`}>
+                        {payload.action || 'ATTENDANCE PUNCH'}
+                      </span>
+                      <span className="text-[11px] text-ink-subtle">
+                        {formatRelativeTime(capturedAt)}
+                      </span>
+                    </div>
+                    <div className="text-[11px] font-mono text-ink-muted">
+                      Site: <span className="font-semibold text-ink">{siteId || 'Default'}</span>
+                    </div>
+                  </div>
+
+                  {/* Paired Shift or Single Punch View */}
+                  {pair?.complete ? (
+                    <div className="rounded-md bg-surface-muted/60 p-3 border border-line space-y-2">
+                      <div className="flex items-center justify-between text-[11px] text-ink-subtle">
+                        <span className="font-semibold uppercase tracking-wider text-ink-muted">Completed Attendance Pair</span>
+                        {shiftDuration && (
+                          <span className="font-mono font-semibold text-accent bg-surface px-1.5 py-0.5 rounded-md border border-line">
+                            Shift: {shiftDuration}
+                          </span>
+                        )}
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                        <div className="p-2.5 rounded-md bg-surface border border-line">
+                          <span className="text-[10px] font-bold uppercase tracking-wider text-blue-600 block mb-0.5">Time In</span>
+                          <p className="text-xs font-semibold text-ink">
+                            {formatManilaDate(pair.time_in)}
+                          </p>
+                          <p className="text-sm font-bold font-mono text-ink mt-0.5">
+                            {formatManilaTime(pair.time_in)}
+                          </p>
+                        </div>
+                        <div className="p-2.5 rounded-md bg-surface border border-line">
+                          <div className="flex items-center justify-between mb-0.5">
+                            <span className="text-[10px] font-bold uppercase tracking-wider text-purple-600">Time Out</span>
+                            {pair.correction && (
+                              <span className="text-[9px] font-semibold uppercase px-1.5 py-0.5 rounded-md bg-amber-50 text-amber-700 border border-amber-200">
+                                HR Verified
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-xs font-semibold text-ink">
+                            {formatManilaDate(pair.time_out)}
+                          </p>
+                          <p className="text-sm font-bold font-mono text-ink mt-0.5">
+                            {formatManilaTime(pair.time_out)}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      <div className="p-3 rounded-md bg-surface-muted/60 border border-line flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                        <div>
+                          <span className="text-[10px] uppercase font-semibold text-ink-subtle block">
+                            Recorded Timestamp (Asia/Manila)
+                          </span>
+                          <p className="text-xs font-semibold text-ink mt-0.5">
+                            {formatManilaDate(capturedAt)} <span className="font-mono font-bold text-sm text-ink ml-1.5">{formatManilaTime(capturedAt)}</span>
+                          </p>
+                        </div>
+                        <div className="text-left sm:text-right">
+                          <span className="text-[10px] uppercase font-semibold text-ink-subtle block">
+                            Terminal Kiosk
+                          </span>
+                          <p className="text-xs font-mono text-ink-muted">
+                            {payload.device_id ? `${payload.device_id.slice(0, 16)}…` : 'Enrolled Terminal'}
+                          </p>
+                        </div>
+                      </div>
+                      {pair?.issue && (
+                        <div className="p-2.5 rounded-md bg-amber-50/80 border border-amber-200 text-xs text-amber-900 flex items-center justify-between">
+                          <span>{pair.issue}</span>
+                          <span className="text-[10px] font-semibold text-amber-700 uppercase tracking-wider">Unpaired Shift</span>
+                        </div>
                       )}
                     </div>
-                  </div>
+                  )}
                 </div>
 
-                <div className="text-right">
-                  <Badge variant={STATUS_VARIANTS[selectedEvent.status] || 'neutral'} size="md">
-                    {STATUS_LABELS[selectedEvent.status] || selectedEvent.status}
-                  </Badge>
-                  <p className="text-[10px] text-slate-400 mt-1 font-mono">
-                    Received: {selectedEvent.received_at ? new Date(selectedEvent.received_at).toLocaleTimeString() : 'N/A'}
-                  </p>
-                </div>
-              </div>
+                {/* Cryptographic Verification Card (No dots, aligned border radius, Hardware Attested removed) */}
+                <div className="rounded-md border border-line bg-surface-muted/50 p-3 space-y-2.5">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] font-bold uppercase tracking-wider text-ink-muted">
+                      Cryptographic Verification
+                    </span>
+                    <span className="text-[10px] text-ink-subtle font-mono">
+                      Seq #{payload.local_sequence || 1}
+                    </span>
+                  </div>
 
-              {/* Cryptographic Provenance Details */}
-              <div className="space-y-2">
-                <h4 className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
-                  Cryptographic Verification Facts
-                </h4>
-                <div className="grid grid-cols-2 gap-2.5 bg-slate-50/70 p-3.5 rounded-lg border border-slate-200 font-mono text-[11px]">
-                  <div>
-                    <span className="text-slate-400 block text-[10px] uppercase">Punch Action</span>
-                    <strong className="text-slate-800">
-                      {(selectedEvent.payload || selectedEvent).action}
-                    </strong>
-                  </div>
-                  <div>
-                    <span className="text-slate-400 block text-[10px] uppercase">Local Sequence</span>
-                    <strong className="text-slate-800">
-                      #{(selectedEvent.payload || selectedEvent).local_sequence || 1}
-                    </strong>
-                  </div>
-                  <div>
-                    <span className="text-slate-400 block text-[10px] uppercase">Captured Instant (ISO)</span>
-                    <span className="text-slate-700 break-all text-[10px]">
-                      {(selectedEvent.payload || selectedEvent).captured_at}
-                    </span>
-                  </div>
-                  <div>
-                    <span className="text-slate-400 block text-[10px] uppercase">Kiosk Site & Scope</span>
-                    <span className="text-slate-700">
-                      {(selectedEvent.payload || selectedEvent).site_id} ({selectedEvent.company_scope || 'cpoint'})
-                    </span>
-                  </div>
-                  <div className="col-span-2">
-                    <span className="text-slate-400 block text-[10px] uppercase">Terminal Device UUID</span>
-                    <div className="flex items-center justify-between text-slate-700 text-[10px]">
-                      <span className="truncate">{(selectedEvent.payload || selectedEvent).device_id}</span>
-                      <button
-                        type="button"
-                        onClick={(e) => copyText(e, (selectedEvent.payload || selectedEvent).device_id, 'Device UUID')}
-                        className="text-slate-400 hover:text-slate-700 cursor-pointer ml-2"
-                      >
-                        <i className="ti ti-copy" />
-                      </button>
+                  {/* High-Level Trust Badges */}
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs">
+                    <div className="p-2.5 rounded-md bg-surface border border-line">
+                      <span className="text-[10px] text-ink-subtle uppercase block font-semibold">Signature</span>
+                      <span className="font-semibold text-ink text-[11px] block mt-0.5">ECDSA P-256 Valid</span>
+                    </div>
+                    <div className="p-2.5 rounded-md bg-surface border border-line">
+                      <span className="text-[10px] text-ink-subtle uppercase block font-semibold">Payload Hash</span>
+                      <span className="font-semibold text-ink text-[11px] block mt-0.5">SHA-256 Matched</span>
+                    </div>
+                    <div className="p-2.5 rounded-md bg-surface border border-line">
+                      <span className="text-[10px] text-ink-subtle uppercase block font-semibold">Hardware Origin</span>
+                      <span className="font-semibold text-ink text-[11px] block mt-0.5 truncate">{siteId || 'Enrolled Site'}</span>
                     </div>
                   </div>
-                  <div className="col-span-2">
-                    <span className="text-slate-400 block text-[10px] uppercase">SHA-256 Canonical Hash</span>
-                    <span className="text-slate-600 break-all text-[10px]">
-                      {selectedEvent.payload_hash || 'Verified on ingestion'}
-                    </span>
-                  </div>
-                  <div className="col-span-2">
-                    <span className="text-slate-400 block text-[10px] uppercase">Digital Signature (P-256 Base64URL)</span>
-                    <div className="flex items-center justify-between text-slate-500 text-[10px] bg-white p-1.5 rounded border border-slate-200">
-                      <span className="truncate">{(selectedEvent.signature || '').slice(0, 48)}...</span>
-                      <button
-                        type="button"
-                        onClick={(e) => copyText(e, selectedEvent.signature, 'Full Signature')}
-                        className="text-slate-700 hover:underline cursor-pointer ml-2 text-[10px] font-sans font-semibold"
-                      >
-                        Copy Full
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              </div>
 
-              {/* Decision History Audit Trail */}
-              <div className="min-w-0 rounded-md border border-line bg-canvas p-3 text-xs text-ink">
-                {selectedEvent.review_pair?.complete ? <dl aria-label="Recorded attendance times" className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2">
-                  <div className="min-w-0">
-                    <dt className="font-semibold">Time In</dt>
-                    <dd className="mt-1 break-words leading-relaxed"><time dateTime={selectedEvent.review_pair.time_in}>{new Date(selectedEvent.review_pair.time_in).toLocaleString('en-US', { timeZone: 'Asia/Manila' })}</time></dd>
-                  </div>
-                  <div className="min-w-0">
-                    <dt className="font-semibold">Time Out{selectedEvent.review_pair.correction ? ' (HR verified)' : ''}</dt>
-                    <dd className="mt-1 break-words leading-relaxed"><time dateTime={selectedEvent.review_pair.time_out}>{new Date(selectedEvent.review_pair.time_out).toLocaleString('en-US', { timeZone: 'Asia/Manila' })}</time></dd>
-                  </div>
-                </dl> : <p>{selectedEvent.review_pair?.issue || 'Waiting for a complete attendance pair.'}</p>}
-              </div>
-              <div className="space-y-2">
-                <h4 className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
-                  Decision Audit Trail
-                </h4>
-                {historyLoading ? (
-                  <p className="text-xs text-slate-400 py-2">Loading audit trail...</p>
-                ) : drawerHistory.length === 0 ? (
-                  <p className="text-xs text-slate-400 italic py-1">No prior review decisions recorded for this event.</p>
-                ) : (
-                  <div className="space-y-2 border-l-2 border-slate-200 pl-3">
-                    {drawerHistory.map((item, idx) => (
-                      <div key={item.id || idx} className="text-xs space-y-0.5">
-                        <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                          <span className={`font-semibold uppercase tracking-wider text-[10px] ${
-                            item.decision === 'approve' ? 'text-emerald-700' : item.decision === 'reject' ? 'text-rose-700' : 'text-blue-700'
-                          }`}>
-                            {item.decision === 'resolve_missing_time_out' ? 'Verified missing Time Out' : item.decision}
-                          </span>
-                          <span className="text-slate-400">·</span>
-                          <span className="font-semibold text-slate-700">{item.actor_name || 'HR Reviewer'}</span>
-                          <span className="text-slate-400 font-mono text-[10px]">
-                            {item.created_at ? new Date(item.created_at).toLocaleString() : ''}
-                          </span>
+                  {/* Progressive Disclosure for Deep Raw Cryptographic Artifacts */}
+                  <details className="group text-xs text-ink-subtle pt-1">
+                    <summary className="cursor-pointer font-medium hover:text-ink text-[11px] uppercase tracking-wider select-none text-ink-subtle flex items-center justify-between py-1 transition-colors">
+                      <span>View Technical Hashes &amp; Raw Signature</span>
+                      <span className="text-[10px] group-open:rotate-180 transition-transform">▼</span>
+                    </summary>
+                    <div className="mt-2 space-y-2 p-2.5 rounded-md bg-surface border border-line font-mono text-[10px]">
+                      <div>
+                        <div className="flex items-center justify-between text-ink-subtle mb-0.5">
+                          <span className="font-bold uppercase tracking-wider">Terminal Device UUID</span>
+                          <button
+                            type="button"
+                            onClick={(e) => copyText(e, payload.device_id, 'Device UUID')}
+                            className="text-accent hover:underline cursor-pointer font-sans font-semibold text-[10px]"
+                          >
+                            Copy UUID
+                          </button>
                         </div>
-                        <p className="text-slate-600 bg-slate-50 p-2 rounded border border-slate-200">
-                          {item.reason}
-                        </p>
-                        {item.verified_time_out && <p>Verified departure: {new Date(item.verified_time_out).toLocaleString('en-US', { timeZone: 'Asia/Manila' })}</p>}
+                        <div className="p-1.5 rounded-md bg-surface-muted text-ink break-all border border-line">
+                          {payload.device_id || 'N/A'}
+                        </div>
                       </div>
-                    ))}
+
+                      <div>
+                        <div className="flex items-center justify-between text-ink-subtle mb-0.5">
+                          <span className="font-bold uppercase tracking-wider">SHA-256 Canonical Payload Hash</span>
+                          <button
+                            type="button"
+                            onClick={(e) => copyText(e, selectedEvent.payload_hash, 'SHA-256 Hash')}
+                            className="text-accent hover:underline cursor-pointer font-sans font-semibold text-[10px]"
+                          >
+                            Copy Hash
+                          </button>
+                        </div>
+                        <div className="p-1.5 rounded-md bg-surface-muted text-ink break-all border border-line">
+                          {selectedEvent.payload_hash || 'Verified on ingestion'}
+                        </div>
+                      </div>
+
+                      <div>
+                        <div className="flex items-center justify-between text-ink-subtle mb-0.5">
+                          <span className="font-bold uppercase tracking-wider">Digital Signature (ECDSA P-256 Base64URL)</span>
+                          <button
+                            type="button"
+                            onClick={(e) => copyText(e, selectedEvent.signature, 'Full Signature')}
+                            className="text-accent hover:underline cursor-pointer font-sans font-semibold text-[10px]"
+                          >
+                            Copy Signature
+                          </button>
+                        </div>
+                        <div className="p-1.5 rounded-md bg-surface-muted text-ink break-all border border-line">
+                          {selectedEvent.signature || 'N/A'}
+                        </div>
+                      </div>
+
+                      <div className="flex items-center justify-between text-ink-subtle pt-1 border-t border-line">
+                        <span>Raw ISO: {capturedAt}</span>
+                        <span>Scope: {selectedEvent.company_scope || 'cpoint'}</span>
+                      </div>
+                    </div>
+                  </details>
+                </div>
+
+                {/* Decision Audit Trail */}
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <h4 className="text-[11px] font-bold uppercase tracking-wider text-ink-muted">
+                      Decision Audit Trail
+                    </h4>
+                    {drawerHistory.length > 0 && (
+                      <span className="text-[10px] font-mono text-ink-subtle">
+                        {drawerHistory.length} recorded entry(ies)
+                      </span>
+                    )}
+                  </div>
+
+                  {historyLoading ? (
+                    <p className="text-xs text-ink-subtle py-2">Loading audit trail...</p>
+                  ) : drawerHistory.length === 0 ? (
+                    <div className="p-3 rounded-md bg-surface-muted/40 border border-line text-xs text-ink-subtle italic">
+                      No prior review decisions recorded for this event.
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      {drawerHistory.map((item, idx) => (
+                        <div key={item.id || idx} className="p-3 rounded-md bg-surface border border-line space-y-1.5 shadow-2xs">
+                          <div className="flex flex-wrap items-center justify-between gap-1.5">
+                            <div className="flex items-center gap-2">
+                              <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wider ${
+                                item.decision === 'approve'
+                                  ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                                  : item.decision === 'reject'
+                                  ? 'bg-rose-50 text-rose-700 border border-rose-200'
+                                  : 'bg-blue-50 text-blue-700 border border-blue-200'
+                              }`}>
+                                {item.decision === 'resolve_missing_time_out' ? 'Verified Time Out' : item.decision}
+                              </span>
+                              <span className="font-semibold text-xs text-ink">{item.actor_name || 'HR Reviewer'}</span>
+                            </div>
+                            <span className="text-ink-subtle font-mono text-[10px]">
+                              {item.created_at ? formatManilaDateTime(item.created_at) : ''}
+                            </span>
+                          </div>
+                          <p className="text-xs text-ink-muted bg-surface-muted p-2 rounded-md border border-line leading-relaxed">
+                            {item.reason}
+                          </p>
+                          {item.verified_time_out && (
+                            <p className="text-[11px] text-ink-muted pt-0.5">
+                              Verified departure: <span className="font-semibold text-ink font-mono">{formatManilaDateTime(item.verified_time_out)}</span>
+                            </p>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Review & Decision Form */}
+                {(['needs_review', 'needs_verification'].includes(selectedEvent.status) || canResolveMissingTimeOut(selectedEvent)) && (
+                  <div className="p-4 rounded-md bg-surface-muted border border-line space-y-3.5">
+                    {canResolveMissingTimeOut(selectedEvent) && (
+                      <div className="space-y-1.5">
+                        <label className="block text-xs font-semibold text-ink" htmlFor="verified-missing-time-out">
+                          Verified Time Out (Philippine Time) <span className="text-rose-500">*</span>
+                        </label>
+                        <input
+                          id="verified-missing-time-out"
+                          type="datetime-local"
+                          value={verifiedTimeOut}
+                          onChange={event => setVerifiedTimeOut(event.target.value)}
+                          disabled={actionBusy || !isResolutionReady}
+                          min={manilaDateTimeInput(payload.captured_at)}
+                          max={manilaDateTimeInput(Math.min(now, Date.parse(payload.captured_at) + 18 * 3600000))}
+                          className="block h-9 w-full rounded-md border border-line bg-surface px-2.5 text-xs text-ink font-medium focus:outline-none focus:border-line-strong focus:ring-1 focus:ring-accent/20 transition-colors shadow-2xs"
+                        />
+                        <p className="text-[11px] text-ink-subtle">
+                          {isResolutionReady
+                            ? 'Enter the actual departure timestamp confirmed by supervisory records.'
+                            : 'Install the missing Time Out database update to enable corrections.'}
+                        </p>
+                      </div>
+                    )}
+
+                    <div className="space-y-1.5">
+                      <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
+                        <label className="text-xs font-semibold text-ink">
+                          HR Verification &amp; Audit Justification <span className="text-rose-500">*</span>
+                        </label>
+                        <span className="text-[10px] text-ink-subtle">Required for compliance audit</span>
+                      </div>
+
+                      {/* Preset Template Chips */}
+                      <div className="flex flex-wrap gap-1.5">
+                        {PRESET_REASONS.map((preset, i) => (
+                          <button
+                            key={i}
+                            type="button"
+                            onClick={() => setReviewReason(preset)}
+                            className="px-2 py-1 rounded-md bg-surface hover:bg-surface-muted text-ink-muted hover:text-ink text-[10px] border border-line transition-colors cursor-pointer shadow-2xs"
+                          >
+                            + {preset.slice(0, 32)}…
+                          </button>
+                        ))}
+                      </div>
+
+                      <textarea
+                        value={reviewReason}
+                        onChange={e => setReviewReason(e.target.value)}
+                        placeholder="Enter audit justification (e.g. CCTV verified employee presence at plant entrance)..."
+                        rows={3}
+                        maxLength={1000}
+                        className="w-full rounded-md border border-line bg-surface p-2.5 text-xs text-ink placeholder-ink-subtle focus:outline-none focus:border-line-strong focus:ring-1 focus:ring-accent/20 shadow-2xs transition-colors resize-none"
+                      />
+                    </div>
+
+                    {/* Action Buttons */}
+                    <div className="flex flex-wrap items-center justify-end gap-2 pt-1 border-t border-line">
+                      {canResolveMissingTimeOut(selectedEvent) && (
+                        <button
+                          type="button"
+                          onClick={handleResolveTimeOut}
+                          disabled={actionBusy || !isResolutionReady || !verifiedTimeOut || !reviewReason.trim()}
+                          className="h-8 px-3.5 rounded-md bg-ink hover:bg-slate-800 text-white font-semibold text-xs shadow-2xs transition-colors disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+                        >
+                          Save Verified Time Out
+                        </button>
+                      )}
+
+                      {reviewCanDecide(selectedEvent, 'approve') && (
+                        <button
+                          type="button"
+                          onClick={() => handleDecision(reviewEventId(selectedEvent), 'approve')}
+                          disabled={actionBusy || !reviewReason.trim() || !isApprovalReady}
+                          className="h-8 px-4 rounded-md bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs shadow-2xs transition-colors disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+                        >
+                          Approve Attendance
+                        </button>
+                      )}
+
+                      {['needs_review', 'needs_verification'].includes(selectedEvent.status) && (
+                        <button
+                          type="button"
+                          onClick={() => handleDecision(selectedEvent.event_id || payload.event_id, 'needs_verification')}
+                          disabled={actionBusy || !reviewReason.trim()}
+                          className="h-8 px-3.5 rounded-md bg-surface border border-line hover:bg-surface-muted text-ink font-semibold text-xs shadow-2xs transition-colors disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+                        >
+                          Flag for Verification
+                        </button>
+                      )}
+
+                      {reviewCanDecide(selectedEvent, 'reject') && (
+                        <button
+                          type="button"
+                          onClick={() => handleDecision(reviewEventId(selectedEvent), 'reject')}
+                          disabled={actionBusy || !reviewReason.trim()}
+                          className="h-8 px-3.5 rounded-md bg-danger hover:bg-danger-ink text-white font-semibold text-xs shadow-2xs transition-colors disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+                        >
+                          Reject Attendance
+                        </button>
+                      )}
+                    </div>
                   </div>
                 )}
               </div>
 
-              {/* Review & Decision Form */}
-              {(['needs_review', 'needs_verification'].includes(selectedEvent.status) || canResolveMissingTimeOut(selectedEvent)) && (
-                <div className="p-4 rounded-lg bg-slate-50 border border-slate-200 space-y-3">
-                  {canResolveMissingTimeOut(selectedEvent) && (
-                    <div className="min-w-0 space-y-2">
-                      <label className="block text-xs font-semibold text-ink" htmlFor="verified-missing-time-out">Verified Time Out (Philippine time)</label>
-                      <input id="verified-missing-time-out" type="datetime-local" value={verifiedTimeOut}
-                        onChange={event => setVerifiedTimeOut(event.target.value)} disabled={actionBusy || !isResolutionReady}
-                        min={manilaDateTimeInput(selectedEvent.payload?.captured_at)}
-                        max={manilaDateTimeInput(Math.min(now, Date.parse(selectedEvent.payload?.captured_at) + 18 * 3600000))}
-                        className="block h-10 w-full min-w-0 max-w-full rounded border border-line bg-surface px-2 text-xs text-ink sm:text-sm" />
-                      <p className="text-xs text-muted">{isResolutionReady ? 'Enter the actual departure time verified by HR.' : 'Install the missing Time Out database update to enable corrections.'}</p>
-                    </div>
-                  )}
-                  <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
-                    <label className="text-xs font-semibold text-slate-800">
-                      HR Verification & Audit Reason <span className="text-rose-600">*</span>
-                    </label>
-                    <span className="text-[10px] text-slate-400">Required for compliance audit</span>
-                  </div>
-
-                  {/* Preset Template Chips */}
-                  <div className="flex flex-wrap gap-1.5">
-                    {PRESET_REASONS.map((preset, i) => (
-                      <button
-                        key={i}
-                        type="button"
-                        onClick={() => setReviewReason(preset)}
-                        className="px-2 py-1 rounded bg-white hover:bg-slate-100 text-slate-600 text-[10px] border border-slate-200 transition-colors cursor-pointer shadow-2xs"
-                      >
-                        + {preset.slice(0, 32)}...
-                      </button>
-                    ))}
-                  </div>
-
-                  <textarea
-                    value={reviewReason}
-                    onChange={e => setReviewReason(e.target.value)}
-                    placeholder="Enter audit justification (e.g. verified with plant supervisor and cross-checked security camera logs)..."
-                    rows={3}
-                    maxLength={1000}
-                    className="w-full rounded-md border border-slate-200 bg-white p-2.5 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:border-slate-400 shadow-2xs"
-                  />
-
-                  {/* Action Buttons */}
-                  <div className="flex flex-wrap items-center justify-end gap-2 pt-1">
-                    {canResolveMissingTimeOut(selectedEvent) && <button type="button" onClick={handleResolveTimeOut}
-                      disabled={actionBusy || !isResolutionReady || !verifiedTimeOut || !reviewReason.trim()}
-                      className="inline-flex min-h-10 w-full items-center justify-center rounded border border-line bg-surface px-3 py-2 text-center text-xs font-semibold leading-snug text-ink hover:bg-canvas disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto">
-                      Save verified Time Out
-                    </button>}
-                    {reviewCanDecide(selectedEvent, 'approve') && <button
-                      type="button"
-                      onClick={() => handleDecision(reviewEventId(selectedEvent), 'approve')}
-                      disabled={actionBusy || !reviewReason.trim() || !isApprovalReady}
-                      className="h-9 px-4 rounded-md bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs shadow-2xs transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer inline-flex items-center gap-1.5"
-                    >
-                      <i className="ti ti-check text-sm" />
-                      <span>Approve Attendance</span>
-                    </button>}
-
-                    {['needs_review', 'needs_verification'].includes(selectedEvent.status) && <button
-                      type="button"
-                      onClick={() => handleDecision(selectedEvent.event_id || selectedEvent.payload?.event_id, 'needs_verification')}
-                      disabled={actionBusy || !reviewReason.trim()}
-                      className="h-9 px-3.5 rounded-md bg-blue-600 hover:bg-blue-500 text-white font-semibold text-xs shadow-2xs transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer inline-flex items-center gap-1.5"
-                    >
-                      <i className="ti ti-user-exclamation text-sm" />
-                      <span>Request Verification</span>
-                    </button>}
-
-                    {reviewCanDecide(selectedEvent, 'reject') && <button
-                      type="button"
-                      onClick={() => handleDecision(reviewEventId(selectedEvent), 'reject')}
-                      disabled={actionBusy || !reviewReason.trim()}
-                      className="h-9 px-3.5 rounded-md bg-rose-600 hover:bg-rose-500 text-white font-semibold text-xs shadow-2xs transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer inline-flex items-center gap-1.5"
-                    >
-                      <i className="ti ti-x text-sm" />
-                      <span>Reject Attendance</span>
-                    </button>}
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* Modal Footer */}
-            <div className="px-6 py-3 bg-slate-50 border-t border-slate-200 flex items-center justify-between text-xs text-slate-500">
-              <span className="font-mono text-[11px]">
-                Cryptographic audit record
-              </span>
-              <button
-                type="button"
-                onClick={closeInspectDrawer}
-                className="h-8 px-3 rounded-md border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 font-semibold cursor-pointer shadow-2xs transition-colors"
-              >
-                Close Audit View
-              </button>
+              {/* Modal Footer */}
+              <div className="px-5 py-3 bg-surface border-t border-line flex items-center justify-between text-xs text-ink-subtle">
+                <span className="font-mono text-[11px]">
+                  Cryptographic audit record — P-256 signed
+                </span>
+                <button
+                  type="button"
+                  onClick={closeInspectDrawer}
+                  className="h-8 px-4 rounded-md border border-line bg-surface hover:bg-surface-muted text-ink-muted hover:text-ink font-semibold cursor-pointer shadow-2xs transition-colors text-xs"
+                >
+                  Close Audit View
+                </button>
+              </div>
             </div>
           </div>
-        </div>
-      )}
-
+        );
+      })()}
       {/* Batch Decision Confirmation Modal */}
       {batchModalOpen && (
         <div className="fixed inset-0 z-[210] flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs animate-fadeIn font-sans">

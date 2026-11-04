@@ -976,13 +976,8 @@ const normalizeJobTitle = (title, isAdmin) => {
                         {/* Personal Information */}
                         <div className="min-w-0 [overflow-wrap:anywhere] bg-white rounded-lg p-5 sm:p-6 shadow-2xs border border-slate-200 space-y-4">
                             <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-                                <div className="flex items-center gap-2.5">
-                                    <div className="h-9 w-9 rounded-md bg-accent-subtle text-accent flex items-center justify-center border border-accent/20">
-                                        <i className="ti ti-user-shield text-lg" />
-                                    </div>
-                                    <div>
-                                        <h3 className="font-bold text-slate-900 text-sm">Administrative Identity</h3>
-                                    </div>
+                                <div>
+                                    <h3 className="font-bold text-slate-900 text-sm">Administrative Identity</h3>
                                 </div>
                                 <button
                                     type="button"
@@ -1026,13 +1021,8 @@ const normalizeJobTitle = (title, isAdmin) => {
 
                         {/* Administrative Governance & System Assignment */}
                         <div className="bg-white rounded-lg p-5 sm:p-6 shadow-2xs border border-slate-200 space-y-4">
-                            <div className="flex items-center gap-2.5 pb-3 border-b border-slate-100">
-                                <div className="h-9 w-9 rounded-md bg-slate-100 text-slate-700 flex items-center justify-center border border-slate-200">
-                                    <i className="ti ti-shield-check text-lg" />
-                                </div>
-                                <div>
-                                    <h3 className="font-bold text-slate-900 text-sm">System Governance</h3>
-                                </div>
+                            <div className="pb-3 border-b border-slate-100">
+                                <h3 className="font-bold text-slate-900 text-sm">System Governance</h3>
                             </div>
 
                             <div className="grid grid-cols-2 gap-3.5 text-xs">
@@ -1071,16 +1061,9 @@ const normalizeJobTitle = (title, isAdmin) => {
                     {/* Admin Section 2: Security Credentials & Two-Factor Authentication */}
                     <div className="bg-white rounded-lg p-5 sm:p-6 shadow-2xs border border-slate-200 space-y-4">
                         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">
-                            <div className="flex items-center gap-2.5">
-                                <div className={`h-9 w-9 rounded-md flex items-center justify-center border ${
-                                    totpStatus.enabled ? 'bg-surface-muted text-ink border-line' : 'bg-slate-100 text-slate-700 border-slate-200'
-                                }`}>
-                                <i className="ti ti-shield-lock text-lg" />
-                                </div>
-                                <div>
+                            <div>
                                     <h3 className="font-bold text-slate-900 text-sm sm:text-base">Administrative Authentication &amp; 2FA</h3>
                                 </div>
-                            </div>
 
                             <div className="flex items-center gap-2">
                                 <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-bold uppercase tracking-wider border ${
@@ -1168,14 +1151,9 @@ const normalizeJobTitle = (title, isAdmin) => {
                     {/* Admin Section 4: Recent Administrative Activity Audit */}
                     <div className="bg-white rounded-lg p-5 sm:p-6 shadow-2xs border border-slate-200 space-y-4">
                         <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-                            <div className="flex items-center gap-2.5">
-                                <div className="h-9 w-9 rounded-md bg-accent-subtle text-accent flex items-center justify-center border border-accent/20">
-                                    <i className="ti ti-activity text-lg" />
-                                </div>
-                                <div>
+                            <div>
                                     <h3 className="font-bold text-slate-900 text-sm sm:text-base">Recent Administrative Activity</h3>
                                 </div>
-                            </div>
                             <Link
                                 to="/admin/audit-logs"
                                 className="text-xs font-semibold text-accent hover:underline flex items-center gap-1"
@@ -1224,14 +1202,9 @@ const normalizeJobTitle = (title, isAdmin) => {
                 {/* Personal Information */}
                 <div className="min-w-0 [overflow-wrap:anywhere] bg-white rounded-lg p-5 sm:p-6 shadow-2xs border border-slate-200 space-y-4">
                     <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-                        <div className="flex items-center gap-2.5">
-                            <div className="h-9 w-9 rounded-md bg-accent-subtle text-accent flex items-center justify-center border border-accent/20">
-                                <i className="ti ti-user text-lg" />
-                            </div>
-                            <div>
-                                <h3 className="font-bold text-slate-900 text-sm">Personal Details</h3>
-                            </div>
-                        </div>
+                        <div>
+                                    <h3 className="font-bold text-slate-900 text-sm">Personal Details</h3>
+                                </div>
                         {!isTerminated && (
                             <button
                                 type="button"
@@ -1299,13 +1272,8 @@ const normalizeJobTitle = (title, isAdmin) => {
 
                 {/* Employment & Payroll Details */}
                 <div className="min-w-0 [overflow-wrap:anywhere] bg-white rounded-lg p-5 sm:p-6 shadow-2xs border border-slate-200 space-y-4">
-                    <div className="flex items-center gap-2.5 pb-3 border-b border-slate-100">
-                        <div className="h-9 w-9 rounded-md bg-surface-muted text-ink flex items-center justify-center border border-line">
-                            <i className="ti ti-briefcase text-lg" />
-                        </div>
-                        <div>
-                            <h3 className="font-bold text-slate-900 text-sm">Employment & Payroll</h3>
-                        </div>
+                    <div className="pb-3 border-b border-slate-100">
+                        <h3 className="font-bold text-slate-900 text-sm">Employment & Payroll</h3>
                     </div>
 
                     <div className="grid grid-cols-2 gap-3.5 text-xs">
@@ -1567,15 +1535,10 @@ const normalizeJobTitle = (title, isAdmin) => {
                 <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 overflow-y-auto">
                     <div className="bg-white rounded-lg p-5 sm:p-6 max-w-lg w-full shadow-xl border border-slate-200 space-y-4 my-auto max-h-[90vh] overflow-y-auto">
                         <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-                            <div className="flex items-center gap-2.5">
-                                <div className="h-8 w-8 rounded-md bg-accent-subtle text-accent flex items-center justify-center border border-accent/20">
-                                    <i className="ti ti-edit text-base" />
-                                </div>
-                                <div>
-                                    <h3 className="font-bold text-slate-900 text-sm sm:text-base">Edit Personal Details</h3>
+                            <div>
+                                <h3 className="font-bold text-slate-900 text-sm sm:text-base">Edit Personal Details</h3>
                                     <p className="text-[11px] text-slate-500">Update verified personal and residential details.</p>
                                 </div>
-                            </div>
                             <button
                                 type="button"
                                 onClick={() => !isSavingPersonal && setShowEditPersonalModal(false)}
@@ -1695,19 +1658,14 @@ const normalizeJobTitle = (title, isAdmin) => {
                 <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
                     <div className="w-full max-w-md bg-white rounded-xl shadow-2xl border border-slate-200 overflow-hidden animate-in fade-in zoom-in-95 duration-150">
                         <div className="p-5 sm:p-6 border-b border-slate-100 flex items-center justify-between">
-                            <div className="flex items-center gap-2.5">
-                                <div className="h-9 w-9 rounded-md bg-slate-900 text-white flex items-center justify-center shadow-2xs">
-                                    <i className="ti ti-shield-lock text-lg" />
-                                </div>
-                                <div>
-                                    <h3 className="font-bold text-slate-900 text-sm">
+                            <div>
+                                <h3 className="font-bold text-slate-900 text-sm">
                                         {totpStep === 1 ? 'Configure Google Authenticator' : 'Emergency Backup Codes'}
                                     </h3>
                                     <p className="text-[11px] text-slate-500">
                                         {totpStep === 1 ? 'Scan QR code with your authenticator app' : 'Store these codes in a secure location'}
                                     </p>
                                 </div>
-                            </div>
                             <button
                                 type="button"
                                 onClick={closeTotpSetup}
@@ -1860,14 +1818,9 @@ const normalizeJobTitle = (title, isAdmin) => {
                 <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
                     <div className="w-full max-w-sm bg-white rounded-xl shadow-2xl border border-slate-200 overflow-hidden animate-in fade-in zoom-in-95 duration-150">
                         <div className="p-5 border-b border-slate-100 flex items-center justify-between">
-                            <div className="flex items-center gap-2.5">
-                                <div className="h-8 w-8 rounded-md bg-slate-100 text-slate-800 flex items-center justify-center">
-                                    <i className="ti ti-refresh text-base" />
+                            <div>
+                                <h3 className="font-bold text-slate-900 text-sm">{totpStatus.enabled ? 'Reconfigure 2FA' : 'Set Up Authenticator'}</h3>
                                 </div>
-                                <div>
-                                    <h3 className="font-bold text-slate-900 text-sm">{totpStatus.enabled ? 'Reconfigure 2FA' : 'Set Up Authenticator'}</h3>
-                                </div>
-                            </div>
                             <button
                                 type="button"
                                 onClick={() => setShowReconfigureModal(false)}
@@ -1944,14 +1897,9 @@ const normalizeJobTitle = (title, isAdmin) => {
                 <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
                     <div className="w-full max-w-sm bg-white rounded-xl shadow-2xl border border-slate-200 overflow-hidden animate-in fade-in zoom-in-95 duration-150">
                         <div className="p-5 border-b border-slate-100 flex items-center justify-between">
-                            <div className="flex items-center gap-2.5">
-                                <div className="h-8 w-8 rounded-md bg-danger-subtle text-danger-ink flex items-center justify-center">
-                                    <i className="ti ti-alert-triangle text-base" />
+                            <div>
+                                <h3 className="font-bold text-slate-900 text-sm">Disable Authenticator 2FA</h3>
                                 </div>
-                                <div>
-                                    <h3 className="font-bold text-slate-900 text-sm">Disable Authenticator 2FA</h3>
-                                </div>
-                            </div>
                             <button
                                 type="button"
                                 onClick={() => setShowDisableModal(false)}
@@ -2029,13 +1977,8 @@ const normalizeJobTitle = (title, isAdmin) => {
                 <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 overflow-y-auto">
                     <div className="bg-white rounded-lg p-5 sm:p-6 max-w-md w-full shadow-xl border border-slate-200 space-y-4 my-auto max-h-[90vh] overflow-y-auto">
                         <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-                            <div className="flex items-center gap-2.5">
-                                <div className="h-8 w-8 rounded-md bg-accent-subtle text-accent flex items-center justify-center border border-accent/20">
-                                    <i className="ti ti-key text-base" />
-                                </div>
-                                <div>
-                                    <h3 className="font-bold text-slate-900 text-sm sm:text-base">Change Password</h3>
-                                </div>
+                            <div>
+                                <h3 className="font-bold text-slate-900 text-sm sm:text-base">Change Password</h3>
                             </div>
                             <button
                                 type="button"
