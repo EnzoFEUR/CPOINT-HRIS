@@ -459,7 +459,6 @@ const FactoryLineBannerRow = React.memo(({ group, isExpanded, onToggle, selectio
                             <span className="text-sm font-extrabold text-slate-900 group-hover/line:text-accent-hover transition-colors truncate">
                                 {group.groupName}
                             </span>
-                            <span className="text-xs text-slate-600">{dayjs(group.periodStart).format('MMM DD')} – {dayjs(group.periodEnd).format('MMM DD, YYYY')}</span>
                             <span className="px-2 py-0.5 bg-surface-muted text-ink border border-line text-[10px] font-black uppercase tracking-wider rounded-md shrink-0">
                                 Group
                             </span>
@@ -1188,7 +1187,7 @@ export default function PayrollIndex() {
     const sortedPayrolls = useMemo(() => {
         const getTierScores = (p) => {
             const isGroup = isFactoryDept(p._dept) || Boolean(p._line);
-            const isPaid = isPaidRecord(p);
+            const isPaid = !p.isPending && (p.status === 'Completed' || p.status === 'Paid');
             const groupScore = isGroup ? 0 : 1;
             const statusScore = isPaid ? 0 : 1;
             return { isGroup, isPaid, tier: groupScore * 2 + statusScore };
@@ -1254,7 +1253,7 @@ export default function PayrollIndex() {
 
         for (let i = 0; i < statusAgnosticPayrolls.length; i++) {
             const p = statusAgnosticPayrolls[i];
-            if (!isPaidRecord(p)) {
+            if (p.isPending) {
                 pendingCount++;
             } else {
                 completedCount++;
@@ -1322,7 +1321,7 @@ export default function PayrollIndex() {
                 }
                 const grp = factoryGroupsMap[groupId];
                 grp.items.push(payroll);
-                if (!isPaidRecord(payroll)) {
+                if (payroll.isPending) {
                     grp.pendingCount++;
                 } else {
                     grp.completedCount++;
@@ -1366,7 +1365,7 @@ export default function PayrollIndex() {
 
         regularItems.forEach(item => {
             const p = item.data;
-            const isPaid = isPaidRecord(p);
+            const isPaid = !p.isPending && (p.status === 'Completed' || p.status === 'Paid');
             if (isPaid) {
                 regularPaidItems.push(item);
             } else {
