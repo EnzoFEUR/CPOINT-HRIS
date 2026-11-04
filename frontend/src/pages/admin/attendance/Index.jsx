@@ -7,10 +7,7 @@ import { fetchWithAuth } from '../../../utils/api';
 import EmployeeAvatar from '../../../components/EmployeeAvatar';
 import PageHeader from '../../../components/ui/PageHeader';
 import Badge from '../../../components/ui/Badge';
-
-
-
-const getTodayDateString = () => new Date().toISOString().split('T')[0];
+import { getManilaWorkDate as getTodayDateString } from '../../../../../shared/workPolicy.mjs';
 
 const Index = () => {
     const queryClient = useQueryClient();

@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { getActiveMedicalGrace, hasRegisteredFace } from '../../shared/medicalGrace.mjs';
 import { postgrestLikeValue } from '../middleware/requestValidation.js';
 import { supabase } from '../supabaseClient.js';
+import { createAttendanceActivityPublisher } from '../services/attendanceActivity.js';
 import { Brain } from '../services/geminiBrain.js';
 import { checkRole, checkVerifiedManagerOrOwnership, hasVerifiedManagerRole, invalidateAuthUser } from '../middleware/authMiddleware.js';
 import { cacheResponse, invalidateCache } from '../middleware/cacheMiddleware.js';
@@ -15,6 +16,7 @@ import { getWorkPolicy, getEmployeeRestDays, getGraceDeadline, getChargeableLate
 import { getActiveWorkPolicy } from './payroll.js';
 
 const router = express.Router();
+const publishAttendanceActivity = createAttendanceActivityPublisher(supabase);
 const WORK_POLICY = getWorkPolicy(process.env);
 const attendanceCache = cacheResponse(15);
 const monthlyAttendanceCache = cacheResponse(15);
@@ -997,6 +999,7 @@ router.post(
       invalidateCache(['/api/attendance', '/api/dashboard', '/api/attendance/employee-monthly']);
       Brain.Analytics.invalidateBriefing();
 
+      publishAttendanceActivity(employee, 'TIME_IN', now.toISOString());
       return res.status(201).json({
         status: 'success',
         code: 'TIME_IN',
@@ -1035,6 +1038,7 @@ router.post(
       invalidateCache(['/api/attendance', '/api/dashboard', '/api/attendance/employee-monthly']);
       Brain.Analytics.invalidateBriefing();
 
+      publishAttendanceActivity(employee, 'TIME_OUT', now.toISOString());
       return res.json({
         status: 'success',
         code: 'TIME_OUT',
