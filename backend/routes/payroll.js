@@ -1,6 +1,8 @@
 import express from 'express';
 import { validateRecordId, validateUuidParam } from '../middleware/requestValidation.js';
-import { calculateBIRWithholdingTax, pickWithholdingTable, DEFAULT_WITHHOLDING_TABLES } from '../../shared/payrollTax.mjs';
+import { calculateBIRWithholdingTax, pickWithholdingTable } from '../../shared/payrollTax.mjs';
+import {loadWithholdingTaxVersions,assertWithholdingTable} from '../services/withholdingTaxService.js';
+import {createWithholdingTaxRouter} from './withholdingTax.js';
 import { getSssMsc } from '../../shared/sssContribution.mjs';
 import { isFirstCutoffOfMonth, previousMonthRange, averageMonthlyBase, computeEmployeeStatutory } from '../../shared/statutoryTiming.mjs';
 import { computeFactoryHolidayPayAdow, FACTORY_ADOW_LOOKBACK_DAYS } from '../../shared/factoryHolidayPay.mjs';
@@ -46,6 +48,15 @@ const requirePayrollManager = (req, res, next) => {
     }
     next();
 };
+
+router.use('/withholding-tax-tables', requirePayrollManager, createWithholdingTaxRouter({
+    onChange(req,event,properties) {
+        broadcastPayrollUpdate('WITHHOLDING_TAX_TABLES_UPDATED', {});
+        createAuditLog({log_name:'payroll',subject_type:'WithholdingTaxTable',subject_id:properties.after?.id||properties.before.id,
+            causer_id:req.user.id,event,description:`Withholding tax version ${event}`,properties})
+            .catch(error=>console.warn('[PAYROLL_AUDIT_WARN]',error.code||'audit unavailable'));
+    },
+}));
 
 router.post('/:id/confirm-sil-payment', requirePayrollManager, async (req, res) => {
     const { operation_id, reference } = req.body || {};
@@ -1441,18 +1452,19 @@ router.post('/preview', async (req, res) => {
 const payrollListCache = cacheResponse(20);
 router.get('/', (req, res, next) => {
     // Separately cached pages can combine old and new totals during a complete-list read.
-    return req.query.view === 'list' ? next() : payrollListCache(req, res, next);
+    return ['list', 'coverage'].includes(req.query.view) ? next() : payrollListCache(req, res, next);
 }, async (req, res) => {
     try {
-        if (req.query.view !== undefined && req.query.view !== 'list') return res.status(400).json({ error: 'Invalid payroll list view.' });
-        const compact = req.query.view === 'list';
+        if (req.query.view !== undefined && !['list', 'coverage'].includes(req.query.view)) return res.status(400).json({ error: 'Invalid payroll list view.' });
+        const coverage = req.query.view === 'coverage';
+        const compact = req.query.view === 'list' || coverage;
         const paging = compact ? parseListQuery(req.query) : null;
         if (compact && !hasVerifiedManagerRole(req.user)) return res.status(403).json({ error: 'Administrative access is required.' });
         if (compact && ((req.query.year !== undefined && (typeof req.query.year !== 'string' || !/^\d{4}$/.test(req.query.year) || Number(req.query.year) < 1900 || Number(req.query.year) > 9998)) ||
             (req.query.month !== undefined && (typeof req.query.month !== 'string' || !/^(0?[1-9]|1[0-2])$/.test(req.query.month))))) {
             return res.status(400).json({ error: 'Invalid payroll month or year.' });
         }
-        let query = supabase.from('payrolls').select('*, employees:employee_id(*)', compact ? { count: 'exact' } : undefined).order('created_at', { ascending: false });
+        let query = supabase.from('payrolls').select(coverage ? 'id,employee_id,period_start,period_end' : '*, employees:employee_id(*)', compact ? { count: 'exact' } : undefined).order('created_at', { ascending: false });
 
         const employeeId = hasVerifiedManagerRole(req.user) ? req.query.employee_id : req.user.id;
         if (employeeId) {
@@ -1466,7 +1478,8 @@ router.get('/', (req, res, next) => {
             const nextYear = req.query.month && month < 12 ? year : year + 1;
             const start = `${year}-${String(month).padStart(2, '0')}-01`;
             const end = `${nextYear}-${String(nextMonth > 12 ? 1 : nextMonth).padStart(2, '0')}-01`;
-            query = query.gte('period_start', start).lt('period_start', end);
+            if (!coverage) query = query.gte('period_start', start);
+            query = query.lt('period_start', end);
         } else if (req.query.month) {
             const year = req.query.year || new Date().getFullYear();
             const monthStr = req.query.month.padStart(2, '0');
@@ -1484,7 +1497,7 @@ router.get('/', (req, res, next) => {
         if (error) throw error;
         if (compact) {
             if (!Number.isSafeInteger(count) || count < 0) throw new Error('The payroll list could not be counted completely.');
-            return res.json({ success: true, data: (data || []).map(payrollListRecord),
+            return res.json({ success: true, data: coverage ? (data || []) : (data || []).map(payrollListRecord),
                 meta: { page: paging.page, limit: paging.limit, total: count, totalPages: Math.max(1, Math.ceil(count / paging.limit)) } });
         }
         res.json(data);
@@ -1885,7 +1898,9 @@ router.post('/', requirePayrollManager, async (req, res) => {
         // 13th month pay is tax-exempt up to the ceiling; only the excess is taxable.
         const taxableGross = Math.max(0, grossPay - safeMatDiff - statutory.maternity_sss_pay - cash.cash_pay + cash.taxable_cash - Math.min(thirteenthMonthPay, THIRTEENTH_MONTH_TAX_EXEMPT_CEILING));
         const taxableIncome = Math.max(0, round2(taxableGross - totalStatutoryContributions - lateDed));
-        const tax = calculateBIRWithholdingTax(taxableIncome, pickWithholdingTable(await loadWithholdingTaxVersions(), pay_frequency, pEnd));
+        const withholdingTable = pickWithholdingTable(await loadWithholdingTaxVersions(), pay_frequency, pEnd);
+        assertWithholdingTable(req.body.expected_withholding_table, withholdingTable);
+        const tax = calculateBIRWithholdingTax(taxableIncome, withholdingTable);
 
         // DEDUCTION CAP GUARDRAIL: Deductions can never exceed Gross Pay
         const rawDeductions = round2(totalStatutoryContributions + tax + lateDed);
@@ -2066,6 +2081,7 @@ router.post('/batch', requirePayrollManager, async (req, res) => {
         const tardinessByEmployee = new Map((empList || []).map(emp => [String(emp.id), calculateTardiness(attendanceByEmployee.get(String(emp.id)) || [], activeWorkPolicy, getEmployeeRestDays(emp))]));
         const batchStatRates = await getStatutorySettings();
         const batchTaxVersions = await loadWithholdingTaxVersions();
+        for (const entry of entries) assertWithholdingTable(entry.expected_withholding_table, pickWithholdingTable(batchTaxVersions, entry.pay_frequency || pay_frequency || 'weekly', pEnd));
         const batchPrevBases = await fetchPreviousMonthBases(supabase, empList || [], pEnd);
         const batchFactoryCtx = await fetchFactoryHolidayContext(empIds, pStart, pEnd);
         const batchYearPayslips = isLastCutoffOfDecember(pEnd) ? await fetchYearPayslips(empIds, pStart, pEnd) : new Map();
@@ -2276,7 +2292,7 @@ router.post('/batch', requirePayrollManager, async (req, res) => {
             skipped
         });
     } catch (err) {
-        res.status(500).json({ error: err.message });
+        res.status(err.status || 500).json({ error: err.message });
     }
 });
 

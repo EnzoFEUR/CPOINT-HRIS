@@ -1,5 +1,6 @@
+import {getWithholdingTableError,getWithholdingTableVersionError} from './statutorySettings.mjs';
+import {isLeaveDate} from './leaveCredits.mjs';
 const toSafeNumber = value => Number.isFinite(Number(value)) ? Number(value) : 0;
-const round2 = value => Math.round(value * 100) / 100;
 
 const makeTable = rows => Object.freeze(rows.map(([over, base, rate]) => Object.freeze({ over, base, rate })));
 
@@ -19,22 +20,26 @@ export const DEFAULT_WITHHOLDING_TABLES = Object.freeze({
         [0, 0, 0],
         [10417, 0, 15],
         [16667, 937.50, 20],
-        [33333, 4270.83, 25],
-        [83333, 16770.83, 30],
-        [333333, 91770.83, 35],
+        [33333, 4270.70, 25],
+        [83333, 16770.70, 30],
+        [333333, 91770.70, 35],
     ]),
     monthly: makeTable([
         [0, 0, 0],
         [20833, 0, 15],
         [33333, 1875.00, 20],
-        [66667, 8541.67, 25],
-        [166667, 33541.67, 30],
-        [666667, 183541.67, 35],
+        [66667, 8541.80, 25],
+        [166667, 33541.80, 30],
+        [666667, 183541.80, 35],
     ]),
 });
 
 const resolveTable = table => {
-    if (Array.isArray(table)) return table.length ? table : DEFAULT_WITHHOLDING_TABLES.weekly;
+    if (Array.isArray(table)) {
+        const error = getWithholdingTableError(table);
+        if (error) throw new Error(error);
+        return table;
+    }
     return DEFAULT_WITHHOLDING_TABLES[table] ?? DEFAULT_WITHHOLDING_TABLES.monthly;
 };
 
@@ -42,8 +47,11 @@ const resolveTable = table => {
 // Falls back to the built-in BIR table when HR has not saved a version that has taken effect.
 export const pickWithholdingTable = (versions, frequency, asOfDate) => {
     const asOf = String(asOfDate || '').slice(0, 10);
+    if (!isLeaveDate(asOf)) throw new Error('Choose a valid tax calculation date.');
     let best = null;
     for (const version of versions || []) {
+        const error = getWithholdingTableVersionError(version);
+        if (error) throw new Error('Invalid saved withholding table: ' + error);
         const effectiveFrom = String(version?.effective_from || '').slice(0, 10);
         if (version?.frequency !== frequency || !Array.isArray(version.brackets) || !version.brackets.length) continue;
         if (!asOf || effectiveFrom > asOf) continue;
@@ -56,12 +64,15 @@ export const pickWithholdingTable = (versions, frequency, asOfDate) => {
 // to use the built-in table. Brackets are checked from the highest threshold down so nothing drops through.
 export const calculateBIRWithholdingTax = (taxableIncome, table = 'weekly') => {
     const taxable = Math.max(0, toSafeNumber(taxableIncome));
+    if (!Number.isSafeInteger(Math.round(taxable * 100))) throw new Error('Taxable income exceeds the supported range.');
     const brackets = [...resolveTable(table)].sort((a, b) => Number(b.over) - Number(a.over));
 
     for (const bracket of brackets) {
         const over = toSafeNumber(bracket.over);
         if (taxable >= over) {
-            return round2(toSafeNumber(bracket.base) + (taxable - over) * toSafeNumber(bracket.rate) / 100);
+            const excess = BigInt(Math.round(taxable * 100)) - BigInt(Math.round(over * 100));
+            const numerator = excess * BigInt(Math.round(Number(bracket.rate) * 100));
+            return Number(BigInt(Math.round(Number(bracket.base) * 100)) + (numerator + 5000n) / 10000n) / 100;
         }
     }
     return 0;

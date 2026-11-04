@@ -1,8 +1,9 @@
 import { useState, useEffect, useCallback, useRef, useImperativeHandle, forwardRef } from 'react';
 import { fetchWithAuth } from '../../../utils/api';
 import { supabase } from '../../../supabaseClient';
-import { STATUTORY_INPUT_LIMITS, isValidStatutoryInput, getStatutorySettingsError, getWithholdingTableVersionError } from '../../../../../shared/statutorySettings.mjs';
+import { STATUTORY_INPUT_LIMITS, isValidStatutoryInput, getStatutorySettingsError, getWithholdingTableVersionError, WITHHOLDING_MAX_BRACKETS } from '../../../../../shared/statutorySettings.mjs';
 import BackButton from '../../../components/ui/BackButton';
+import {useQuery} from '@tanstack/react-query';
 
 const DEFAULT_SETTINGS = {
     sss_employee_rate: 5,         // 5%
@@ -86,11 +87,21 @@ const BracketTable = ({ brackets }) => (
 // Edits (new versions, changes, deletions) are only staged here. The page's single Save Changes button
 // validates and saves them through the ref (validate / commit), together with the other settings.
 const WithholdingTaxTables = forwardRef(function WithholdingTaxTables(_props, ref) {
-    const [data, setData] = useState(null);
+    const tables = useQuery({
+        queryKey:['payrollWithholdingTables'],
+        queryFn:async({signal})=>{
+            const response=await fetchWithAuth('/api/payroll/withholding-tax-tables',{signal});
+            const result=await response.json();
+            if(!response.ok||!Array.isArray(result.versions))throw new Error(result.error||'Unable to load withholding tax tables.');
+            return result;
+        },
+        staleTime:15_000,retry:false,
+    });
+    const data=tables.data;
     const [frequency, setFrequency] = useState('weekly');
     const [drafts, setDrafts] = useState({}); // staged add/edit per frequency: { id, effective_from, rows }
     const [pendingDeletes, setPendingDeletes] = useState([]); // version ids removed when the page is saved
-    const [error, setError] = useState('');
+    const error=tables.error?.message||'';
 
     const editor = drafts[frequency] || null;
     const setEditor = (updater) => setDrafts(prev => {
@@ -100,19 +111,8 @@ const WithholdingTaxTables = forwardRef(function WithholdingTaxTables(_props, re
         return copy;
     });
 
-    const load = useCallback(async () => {
-        try {
-            const response = await fetchWithAuth('/api/payroll/withholding-tax-tables');
-            const result = await response.json();
-            if (!response.ok || result.error) throw new Error(result.error || 'Unable to load withholding tax tables.');
-            setData(result);
-            setError('');
-        } catch (err) {
-            setError(err.message || 'Unable to load withholding tax tables.');
-        }
-    }, []);
-
-    useEffect(() => { load(); }, [load]);
+    const refetch=tables.refetch;
+    const load=useCallback(async()=>{const result=await refetch();if(result.isError)throw result.error;},[refetch]);
 
     const today = data?.today || '';
     const unsaved = Object.keys(drafts).length > 0 || pendingDeletes.length > 0;
@@ -123,7 +123,7 @@ const WithholdingTaxTables = forwardRef(function WithholdingTaxTables(_props, re
     const upcoming = versions.filter(v => v.effective_from > today).reverse();
     const history = versions.filter(v => v !== inEffect && v.effective_from <= today);
     const activeBrackets = inEffect ? inEffect.brackets : (data?.defaults?.[frequency] || []);
-    const canChange = (version) => version.effective_from >= today;
+    const canChange = (version) => version.effective_from > today;
     const isPendingDelete = (version) => pendingDeletes.includes(version.id);
 
     const buildPayload = (freq, draft) => ({
@@ -157,14 +157,15 @@ const WithholdingTaxTables = forwardRef(function WithholdingTaxTables(_props, re
             try {
                 for (const op of operations) {
                     if (op.kind === 'delete') {
-                        const response = await fetchWithAuth(`/api/payroll/withholding-tax-tables/${op.id}`, { method: 'DELETE' });
+                        const version = data.versions.find(v => v.id === op.id);
+                        const response = await fetchWithAuth(`/api/payroll/withholding-tax-tables/${op.id}`, { method: 'DELETE', body:JSON.stringify({expected_updated_at:version?.updated_at}) });
                         const result = await response.json();
                         if (!response.ok || result.error) throw new Error(result.error || 'Unable to delete a withholding tax table.');
                         remainingDeletes = remainingDeletes.filter(id => id !== op.id);
                     } else {
                         const response = await fetchWithAuth(
                             op.draft.id ? `/api/payroll/withholding-tax-tables/${op.draft.id}` : '/api/payroll/withholding-tax-tables',
-                            { method: op.draft.id ? 'PUT' : 'POST', body: JSON.stringify(buildPayload(op.freq, op.draft)) }
+                            { method: op.draft.id ? 'PUT' : 'POST', body: JSON.stringify({...buildPayload(op.freq, op.draft), ...(op.draft.id ? {expected_updated_at:data.versions.find(v=>v.id===op.draft.id)?.updated_at} : {})}) }
                         );
                         const result = await response.json();
                         if (!response.ok || result.error) throw new Error(`${FREQUENCY_LABELS[op.freq]}: ${result.error || 'Unable to save the withholding tax table.'}`);
@@ -178,7 +179,13 @@ const WithholdingTaxTables = forwardRef(function WithholdingTaxTables(_props, re
                 await load();
             }
         },
-    }), [drafts, pendingDeletes, today, unsaved, load]);
+    }), [drafts, pendingDeletes, today, unsaved, load, data]);
+
+    useEffect(() => {
+        const channel = supabase.channel('admin-live-payroll-ledger')
+            .on('broadcast', {event:'WITHHOLDING_TAX_TABLES_UPDATED'}, () => {load().catch(()=>{});}).subscribe();
+        return () => {supabase.removeChannel(channel);};
+    }, [load]);
 
     const switchFrequency = (next) => setFrequency(next);
 
@@ -215,7 +222,7 @@ const WithholdingTaxTables = forwardRef(function WithholdingTaxTables(_props, re
 
             {data?.setup_required && (
                 <div className="bg-warning-subtle border border-warning/20 text-warning-ink px-4 py-3 rounded-md text-sm font-semibold">
-                    The withholding tax tables are not set up in the database yet. Run the SQL migration first. Until then, payroll uses the built-in BIR tables.
+                    Custom table management is unavailable. Built-in BIR withholding tables remain active.
                 </div>
             )}
             {error && (
@@ -267,7 +274,7 @@ const WithholdingTaxTables = forwardRef(function WithholdingTaxTables(_props, re
                                             <button type="button" onClick={() => toggleDelete(inEffect)} className={`${smallButton} text-danger-ink`}>Delete</button>
                                         </>
                                     ))}
-                                    <button type="button" onClick={openNew} className="h-8 px-3 bg-accent hover:bg-accent-hover text-white font-semibold text-xs rounded-md shadow-2xs transition-colors duration-100 cursor-pointer">
+                                    <button type="button" disabled={data.setup_required} onClick={openNew} className="h-8 px-3 bg-accent hover:bg-accent-hover text-white font-semibold text-xs rounded-md shadow-2xs transition-colors duration-100 cursor-pointer disabled:opacity-50">
                                         New version
                                     </button>
                                 </div>
@@ -338,7 +345,7 @@ const WithholdingTaxTables = forwardRef(function WithholdingTaxTables(_props, re
                                             ) : <span />}
                                         </div>
                                     ))}
-                                    <button type="button" onClick={addRow} className={smallButton}>Add bracket</button>
+                                    <button type="button" disabled={editor.rows.length >= WITHHOLDING_MAX_BRACKETS} onClick={addRow} className={smallButton}>Add bracket</button>
                                 </div>
 
                                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pt-1">

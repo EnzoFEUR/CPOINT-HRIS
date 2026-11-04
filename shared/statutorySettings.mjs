@@ -1,4 +1,5 @@
 import { WORK_POLICY_INPUT_LIMITS, isValidWorkPolicyInput } from './workPolicy.mjs';
+import {isLeaveDate} from './leaveCredits.mjs';
 
 const percentage = Object.freeze({ min: 0, max: 100, step: 0.01, maxLength: 6 });
 // Input safety ceiling, not a legislated contribution amount.
@@ -94,9 +95,7 @@ export function getWithholdingTableError(brackets) {
 
 export function getWithholdingTableVersionError({ frequency, effective_from, brackets } = {}) {
     if (!WITHHOLDING_FREQUENCIES.includes(frequency)) return 'Choose weekly, semi-monthly or monthly.';
-    const validDate = typeof effective_from === 'string'
-        && /^\d{4}-\d{2}-\d{2}$/.test(effective_from)
-        && new Date(`${effective_from}T00:00:00Z`).toISOString().slice(0, 10) === effective_from;
+    const validDate = isLeaveDate(effective_from);
     if (!validDate) return 'Enter a valid effective date.';
     return getWithholdingTableError(brackets);
 }

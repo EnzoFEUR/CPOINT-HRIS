@@ -1,7 +1,7 @@
 import { isFinalVoluntarySeparation, getArchiveReviewDaysRemaining } from '../../shared/employmentExit.mjs';
 
 const EMPLOYEE_LIST_FIELDS = `id company_id first_name last_name email role job_title position department status employment_status is_active separation_type
-    archived_at separation_date separation_reason created_at updated_at shift production_group_id production_groups production_group_name production_group
+    archived_at separation_date separation_reason date_hired timekeeping_effective_date created_at updated_at shift production_group_id production_groups production_group_name production_group
     group factory_group line factory_line line_assignment assigned_line section sub_department work_center
     daily_rate hourly_rate monthly_salary salary phone phone_number has_registered_biometrics biometric_baseline_path
     avatar_url photo_url photo profile_picture image_url requires_password_change is_terminated is_suspended operational_status
