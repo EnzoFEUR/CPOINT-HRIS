@@ -172,6 +172,7 @@ const OPTIONAL_PAYROLL_COLUMNS = [
 
 const insertPayrollRow = async (payload, cash, actorId, frequency = 'weekly') => {
     if (cash?.available || cash?.statutory?.available) {
+        // Legacy RPCs require the Paid input; payroll_starts_pending stores it as Pending.
         const statutory = cash?.statutory?.available && (cash.statutory.signature.lines.length > 0 || cash.statutory.signature.coverage.length > 0);
         const result = await supabase.rpc(statutory ? 'post_payroll_with_statutory_leave' : 'post_payroll_with_sil', {
             p_actor_id: actorId,
@@ -200,7 +201,7 @@ const insertPayrollRow = async (payload, cash, actorId, frequency = 'weekly') =>
         }
         return result;
     }
-    const row = { ...payload };
+    const row = { ...payload, status: 'Pending' };
     for (let attempt = 0; attempt <= OPTIONAL_PAYROLL_COLUMNS.length; attempt++) {
         const { data, error } = await supabase.from('payrolls').insert(row).select('id').maybeSingle();
         if (!error) return { data, error: null };

@@ -3,6 +3,19 @@ export const HOLIDAY_LABELS = {
     special_non_working: 'Special Non-Working Day',
 };
 
+export function getPayslipPaymentState(payroll, query) {
+    if (query.isPending) return {label: 'Checking payment', paymentDate: null};
+    if (query.isError || !query.data) return {label: 'Payment status unavailable', paymentDate: null};
+    const payment = query.data.payment;
+    if (payment) return {
+        label: payment.acknowledged_at ? 'Paid · Employee acknowledged' : 'Paid · Awaiting employee acknowledgment',
+        paymentDate: payment.payment_date || null,
+    };
+    if (query.data.net_pay != null && Number.isFinite(Number(query.data.net_pay)) && Number(query.data.net_pay) <= 0)
+        return {label: 'No payment due', paymentDate: null};
+    return {label: ['Paid', 'Completed'].includes(payroll.status) ? 'Payment unverified' : 'Awaiting payment record', paymentDate: null};
+}
+
 export const cleanDeductionName = (rawName) => {
     if (!rawName) return '';
     let name = rawName.trim();

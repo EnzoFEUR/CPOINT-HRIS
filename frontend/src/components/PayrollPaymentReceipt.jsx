@@ -1,20 +1,14 @@
 import { useEffect, useRef, useState } from 'react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import { getUser } from '../routes/guards';
 import { supabase } from '../supabaseClient';
 import { fetchWithAuth } from '../utils/api';
-import { formatCurrency } from '../utils/payslipUtils';
+import { formatCurrency, getPayslipPaymentState } from '../utils/payslipUtils';
+import usePayrollPaymentReceipt, {readPaymentResponse} from '../utils/usePayrollPaymentReceipt';
 
 const inputClass = 'mt-1 w-full min-w-0 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm';
 const timestamp = value => value ? new Intl.DateTimeFormat('en-PH', { timeZone: 'Asia/Manila', dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value)) : '';
-async function readResponse(response) {
-    let body;
-    try { body = await response.json(); }
-    catch { throw new Error('Payment status could not be read. Refresh before retrying.'); }
-    if (!response.ok || !body.success || !body.data) throw new Error(body.error || 'Unable to load payment confirmation.');
-    return body.data;
-}
 
 export default function PayrollPaymentReceipt({ payroll }) {
     const actorId = getUser()?.id;
@@ -22,11 +16,7 @@ export default function PayrollPaymentReceipt({ payroll }) {
     const payrollId = payroll.id;
     const queryKey = ['payrollPaymentReceipt', actorId, payrollId];
     const endpoint = `/api/payroll/payment-receipts/${encodeURIComponent(payrollId)}`;
-    const query = useQuery({
-        queryKey, queryFn: async ({ signal }) => readResponse(await fetchWithAuth(endpoint, { signal })),
-        enabled: Boolean(actorId && payrollId), staleTime: 10000, refetchInterval: 30000,
-        refetchIntervalInBackground: false, refetchOnWindowFocus: true, retry: false,
-    });
+    const query = usePayrollPaymentReceipt(actorId, payrollId);
     const [reference, setReference] = useState('');
     const [today] = useState(() => new Date(Date.now() + 8 * 3600000).toISOString().slice(0, 10));
     const [date, setDate] = useState(null);
@@ -59,7 +49,7 @@ export default function PayrollPaymentReceipt({ payroll }) {
         if (request.current?.fingerprint !== fingerprint) request.current = { fingerprint, id: crypto.randomUUID() };
         busy.current = true; setSaving(true); setError(null);
         try {
-            const data = await readResponse(await fetchWithAuth(`${endpoint}/${action}`, { method: 'POST', body: JSON.stringify({ ...payload, operation_id: request.current.id }) }));
+            const data = await readPaymentResponse(await fetchWithAuth(`${endpoint}/${action}`, { method: 'POST', body: JSON.stringify({ ...payload, operation_id: request.current.id }) }));
             client.setQueryData(queryKey, data);
             setConfirmed(false);
             if (action === 'record') {
@@ -77,7 +67,7 @@ export default function PayrollPaymentReceipt({ payroll }) {
     if (!query.data) return null;
     const canRecord = query.data.can_record;
     const canAcknowledge = query.data.can_acknowledge;
-    const title = payment?.acknowledged_at ? 'Employee acknowledged payment' : payment ? 'Payment recorded · Awaiting employee acknowledgment' : Number(query.data.net_pay) <= 0 ? 'No payment due' : 'Awaiting payment record';
+    const title = getPayslipPaymentState(payroll, query).label;
 
     return <section aria-label="Payslip payment confirmation" className="mb-4 space-y-3 rounded-lg border border-slate-200 bg-white p-4 text-slate-800 print:hidden">
         <h3 role="status" className="text-sm font-semibold">{title}</h3>

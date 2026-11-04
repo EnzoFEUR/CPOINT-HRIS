@@ -2,10 +2,12 @@ import printStylesUrl from './OfficialPayslipDocument.print.css?url&no-inline';
 import dayjs from 'dayjs';
 import EmployeeAvatar from './EmployeeAvatar';
 import { SilCashEarnings } from './SilPaymentCard';
-import { HOLIDAY_LABELS, parsePayrollFinancials, formatCurrency } from '../utils/payslipUtils';
+import { HOLIDAY_LABELS, parsePayrollFinancials, formatCurrency, getPayslipPaymentState } from '../utils/payslipUtils';
 import { printHtmlElement } from '../utils/printDocument';
 import BackButton from './ui/BackButton';
 import PayrollPaymentReceipt from './PayrollPaymentReceipt';
+import usePayrollPaymentReceipt from '../utils/usePayrollPaymentReceipt';
+import {getUser} from '../routes/guards';
 
 /**
  * C-Point HRIS - Universal Official Payslip Document Component
@@ -21,6 +23,7 @@ import PayrollPaymentReceipt from './PayrollPaymentReceipt';
  * - Dual sign-off verification (Employer / HR Administrator & Employee Acknowledgment).
  */
 export default function OfficialPayslipDocument({ payroll, employee: employeeOverride, onBack, onClose, onDelete, pagination }) {
+    const paymentQuery = usePayrollPaymentReceipt(getUser()?.id, payroll?.id, false);
     if (!payroll) return null;
 
     const emp = payroll.employees || employeeOverride || {};
@@ -34,7 +37,8 @@ export default function OfficialPayslipDocument({ payroll, employee: employeeOve
     const voucherId = payroll.id ? `PAY-${String(payroll.id).slice(0, 8).toUpperCase()}` : 'RECORD';
     const periodStart = payroll.period_start ? dayjs(payroll.period_start).format('MMM DD, YYYY') : 'N/A';
     const periodEnd = payroll.period_end ? dayjs(payroll.period_end).format('MMM DD, YYYY') : 'N/A';
-    const paymentDate = payroll.created_at ? dayjs(payroll.created_at).format('MMM DD, YYYY') : dayjs().format('MMM DD, YYYY');
+    const paymentState = getPayslipPaymentState(payroll, paymentQuery);
+    const paymentDate = paymentState.paymentDate ? dayjs(paymentState.paymentDate).format('MMM DD, YYYY') : 'Not recorded';
 
     const financials = parsePayrollFinancials(payroll);
     const paternityEntitlement = (payroll.statutory_leave_lines || []).filter(line => line.component === 'paternity').reduce((sum, line) => sum + Number(line.amount || 0), 0);
@@ -192,7 +196,7 @@ export default function OfficialPayslipDocument({ payroll, employee: employeeOve
                                 #{voucherId}
                             </span>
                             <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-surface-muted text-ink border border-line print:border-slate-800">
-                                {payroll.status || 'Released'}
+                                {paymentState.label}
                             </span>
                         </div>
                     </div>

@@ -153,7 +153,7 @@ const getPendingWeeks = (cycleBounds, now = new Date()) => {
 // A week counts as paid when any of the employee's payrolls overlaps it, so a Mon-Fri
 // payroll or an older longer-range payroll still marks the week as done.
 const filterUnpaidWeeks = (weeks, paidRanges = []) =>
-    weeks.filter(week => !paidRanges.some(range => range.start <= week.end && range.end >= week.start));
+    weeks.filter(week => !paidRanges.some(range => range.start < week.end && range.end > week.start));
 
 const countDistinctWorkers = (items = []) =>
     new Set(items.map(i => String(i.employee_id ?? i.id))).size;
@@ -939,13 +939,24 @@ export default function PayrollIndex() {
 
     const cycleBounds = useMemo(() => {
         const targetYear = currentYear ? parseInt(currentYear, 10) : currentYearNum;
-        const targetMonth = currentMonth ? parseInt(currentMonth, 10) : (new Date().getMonth() + 1);
-        const start = dayjs(`${targetYear}-${String(targetMonth).padStart(2, '0')}-01`);
+        if (currentMonth) {
+            const targetMonth = parseInt(currentMonth, 10);
+            const start = dayjs(`${targetYear}-${String(targetMonth).padStart(2, '0')}-01`);
+            return {
+                year: targetYear,
+                month: targetMonth,
+                start: start.format('YYYY-MM-DD'),
+                end: start.endOf('month').format('YYYY-MM-DD'),
+            };
+        }
+        const currentMonthNum = new Date().getMonth() + 1;
+        const start = dayjs(`${targetYear}-01-01`);
+        const end = dayjs(`${targetYear}-${String(currentMonthNum).padStart(2, '0')}-01`).endOf('month');
         return {
             year: targetYear,
-            month: targetMonth,
+            month: null,
             start: start.format('YYYY-MM-DD'),
-            end: start.endOf('month').format('YYYY-MM-DD'),
+            end: end.format('YYYY-MM-DD'),
         };
     }, [currentMonth, currentYear, currentYearNum]);
 
@@ -1004,7 +1015,9 @@ export default function PayrollIndex() {
             };
         });
 
-        if (!isActiveCycle) return enrichedActual;
+        const todayKey = toLocalDateKey(new Date());
+        const isFutureCycle = cycleBounds.start > todayKey;
+        if (isFutureCycle) return enrichedActual;
 
         const isExcludedStatus = (emp) => {
             const status = (emp.status || emp.employment_status || '').toLowerCase();
@@ -1025,6 +1038,15 @@ export default function PayrollIndex() {
                 const openWeeks = filterUnpaidWeeks(pendingWeeks, employeePeriods.get(String(emp.id)));
                 if (openWeeks.length === 0) return [];
 
+                const effectiveStartDate = String(emp.timekeeping_effective_date || emp.date_hired || emp.created_at || '').slice(0, 10);
+                const separationDate = String(emp.separation_date || '').slice(0, 10);
+                const eligibleWeeks = openWeeks.filter(week => {
+                    if (effectiveStartDate && week.end < effectiveStartDate) return false;
+                    if (separationDate && week.start > separationDate) return false;
+                    return true;
+                });
+                if (eligibleWeeks.length === 0) return [];
+
                 const mockPayroll = { employees: emp };
                 const inheritedLine = employeeLastKnownLineMap[String(emp.id)];
                 const line = inheritedLine || getEmployeeLine(mockPayroll);
@@ -1035,7 +1057,7 @@ export default function PayrollIndex() {
                 const jobTitle = emp.job_title || emp.position || '';
                 const searchTokens = `${fullName} ${companyId} ${emp.email || ''} ${jobTitle} ${dept} ${line}`.toLowerCase();
 
-                return openWeeks.map(week => ({
+                return eligibleWeeks.map(week => ({
                     id: `pending-${emp.id}-${week.start}`,
                     employee_id: emp.id,
                     employees: emp,
@@ -1067,7 +1089,7 @@ export default function PayrollIndex() {
             });
 
         return [...enrichedActual, ...pendingEntries];
-    }, [payrolls, employees, cycleBounds, isActiveCycle]);
+    }, [payrolls, employees, cycleBounds]);
 
     const departments = useMemo(() => {
         const depts = new Set();
