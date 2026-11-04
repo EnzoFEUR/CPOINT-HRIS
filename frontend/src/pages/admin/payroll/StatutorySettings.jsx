@@ -1,8 +1,9 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, useRef, useImperativeHandle, forwardRef } from 'react';
 import { fetchWithAuth } from '../../../utils/api';
 import { supabase } from '../../../supabaseClient';
-import { STATUTORY_INPUT_LIMITS, isValidStatutoryInput, getStatutorySettingsError } from '../../../../../shared/statutorySettings.mjs';
+import { STATUTORY_INPUT_LIMITS, isValidStatutoryInput, getStatutorySettingsError, getWithholdingTableVersionError, WITHHOLDING_MAX_BRACKETS } from '../../../../../shared/statutorySettings.mjs';
 import BackButton from '../../../components/ui/BackButton';
+import {useQuery} from '@tanstack/react-query';
 
 const DEFAULT_SETTINGS = {
     sss_employee_rate: 5,         // 5%
@@ -52,13 +53,340 @@ const FieldInput = ({ label, name, value, onChange, hint, focusColor = 'blue', .
     </div>
 );
 
+const FREQUENCY_LABELS = { weekly: 'Weekly', 'semi-monthly': 'Semi-monthly', monthly: 'Monthly' };
+const AMOUNT_INPUT = /^\d*\.?\d{0,2}$/;
+const formatPeso = (value) => `₱${Number(value || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+const formatDate = (iso) => new Date(`${iso}T00:00:00`).toLocaleDateString('en-PH', { year: 'numeric', month: 'short', day: 'numeric' });
+const toRowDrafts = (brackets) => (brackets || []).map(b => ({ over: String(b.over), base: String(b.base), rate: String(b.rate) }));
+
+const BracketTable = ({ brackets }) => (
+    <div className="overflow-x-auto rounded-md border border-slate-200">
+        <table className="w-full text-xs">
+            <thead className="bg-slate-50 text-slate-500 uppercase text-[11px] tracking-wide">
+                <tr>
+                    <th className="text-left font-semibold px-3 py-2">Taxable income over</th>
+                    <th className="text-right font-semibold px-3 py-2">Base tax</th>
+                    <th className="text-right font-semibold px-3 py-2">Plus % of the excess</th>
+                </tr>
+            </thead>
+            <tbody>
+                {[...brackets].sort((a, b) => Number(a.over) - Number(b.over)).map((b, index) => (
+                    <tr key={index} className="border-t border-slate-100 font-mono text-slate-800">
+                        <td className="px-3 py-2">{formatPeso(b.over)}</td>
+                        <td className="px-3 py-2 text-right">{formatPeso(b.base)}</td>
+                        <td className="px-3 py-2 text-right">{Number(b.rate)}%</td>
+                    </tr>
+                ))}
+            </tbody>
+        </table>
+    </div>
+);
+
+// HR-editable BIR withholding tax tables. Each saved version has an effective date; payroll uses the
+// version in force on the payroll period end date, and falls back to the built-in BIR table.
+// Edits (new versions, changes, deletions) are only staged here. The page's single Save Changes button
+// validates and saves them through the ref (validate / commit), together with the other settings.
+const WithholdingTaxTables = forwardRef(function WithholdingTaxTables(_props, ref) {
+    const tables = useQuery({
+        queryKey:['payrollWithholdingTables'],
+        queryFn:async({signal})=>{
+            const response=await fetchWithAuth('/api/payroll/withholding-tax-tables',{signal});
+            const result=await response.json();
+            if(!response.ok||!Array.isArray(result.versions))throw new Error(result.error||'Unable to load withholding tax tables.');
+            return result;
+        },
+        staleTime:15_000,retry:false,
+    });
+    const data=tables.data;
+    const [frequency, setFrequency] = useState('weekly');
+    const [drafts, setDrafts] = useState({}); // staged add/edit per frequency: { id, effective_from, rows }
+    const [pendingDeletes, setPendingDeletes] = useState([]); // version ids removed when the page is saved
+    const error=tables.error?.message||'';
+
+    const editor = drafts[frequency] || null;
+    const setEditor = (updater) => setDrafts(prev => {
+        const next = typeof updater === 'function' ? updater(prev[frequency]) : updater;
+        const copy = { ...prev };
+        if (next) copy[frequency] = next; else delete copy[frequency];
+        return copy;
+    });
+
+    const refetch=tables.refetch;
+    const load=useCallback(async()=>{const result=await refetch();if(result.isError)throw result.error;},[refetch]);
+
+    const today = data?.today || '';
+    const unsaved = Object.keys(drafts).length > 0 || pendingDeletes.length > 0;
+    const versions = (data?.versions || [])
+        .filter(v => v.frequency === frequency)
+        .sort((a, b) => b.effective_from.localeCompare(a.effective_from));
+    const inEffect = versions.find(v => v.effective_from <= today) || null;
+    const upcoming = versions.filter(v => v.effective_from > today).reverse();
+    const history = versions.filter(v => v !== inEffect && v.effective_from <= today);
+    const activeBrackets = inEffect ? inEffect.brackets : (data?.defaults?.[frequency] || []);
+    const canChange = (version) => version.effective_from > today;
+    const isPendingDelete = (version) => pendingDeletes.includes(version.id);
+
+    const buildPayload = (freq, draft) => ({
+        frequency: freq,
+        effective_from: draft.effective_from,
+        brackets: draft.rows.map(row => ({ over: row.over, base: row.base, rate: row.rate })),
+    });
+
+    // Used by the page's Save Changes button.
+    useImperativeHandle(ref, () => ({
+        hasChanges: () => unsaved,
+        validate: () => {
+            for (const [freq, draft] of Object.entries(drafts)) {
+                const label = `${FREQUENCY_LABELS[freq]} withholding tax`;
+                const payload = buildPayload(freq, draft);
+                if (!payload.effective_from) return `${label}: choose the date the new rates take effect.`;
+                if (payload.effective_from < today) return `${label}: the effective date cannot be in the past.`;
+                const problem = getWithholdingTableVersionError(payload);
+                if (problem) return `${label}: ${problem}`;
+            }
+            return '';
+        },
+        commit: async () => {
+            // Deletions first so a new version can reuse a deleted version's date.
+            const operations = [
+                ...pendingDeletes.map(id => ({ kind: 'delete', id })),
+                ...Object.entries(drafts).map(([freq, draft]) => ({ kind: 'save', freq, draft })),
+            ];
+            const remainingDrafts = { ...drafts };
+            let remainingDeletes = [...pendingDeletes];
+            try {
+                for (const op of operations) {
+                    if (op.kind === 'delete') {
+                        const version = data.versions.find(v => v.id === op.id);
+                        const response = await fetchWithAuth(`/api/payroll/withholding-tax-tables/${op.id}`, { method: 'DELETE', body:JSON.stringify({expected_updated_at:version?.updated_at}) });
+                        const result = await response.json();
+                        if (!response.ok || result.error) throw new Error(result.error || 'Unable to delete a withholding tax table.');
+                        remainingDeletes = remainingDeletes.filter(id => id !== op.id);
+                    } else {
+                        const response = await fetchWithAuth(
+                            op.draft.id ? `/api/payroll/withholding-tax-tables/${op.draft.id}` : '/api/payroll/withholding-tax-tables',
+                            { method: op.draft.id ? 'PUT' : 'POST', body: JSON.stringify({...buildPayload(op.freq, op.draft), ...(op.draft.id ? {expected_updated_at:data.versions.find(v=>v.id===op.draft.id)?.updated_at} : {})}) }
+                        );
+                        const result = await response.json();
+                        if (!response.ok || result.error) throw new Error(`${FREQUENCY_LABELS[op.freq]}: ${result.error || 'Unable to save the withholding tax table.'}`);
+                        delete remainingDrafts[op.freq];
+                    }
+                }
+            } finally {
+                // Anything that was saved disappears from the staged list; anything that failed stays for another try.
+                setDrafts(remainingDrafts);
+                setPendingDeletes(remainingDeletes);
+                await load();
+            }
+        },
+    }), [drafts, pendingDeletes, today, unsaved, load, data]);
+
+    useEffect(() => {
+        const channel = supabase.channel('admin-live-payroll-ledger')
+            .on('broadcast', {event:'WITHHOLDING_TAX_TABLES_UPDATED'}, () => {load().catch(()=>{});}).subscribe();
+        return () => {supabase.removeChannel(channel);};
+    }, [load]);
+
+    const switchFrequency = (next) => setFrequency(next);
+
+    const openNew = () => setEditor({ id: null, effective_from: '', rows: toRowDrafts(activeBrackets) });
+    const openEdit = (version) => setEditor({ id: version.id, effective_from: version.effective_from, rows: toRowDrafts(version.brackets) });
+    const setRow = (index, field, value) => {
+        if (value !== '' && !AMOUNT_INPUT.test(value)) return;
+        setEditor(prev => ({ ...prev, rows: prev.rows.map((row, i) => (i === index ? { ...row, [field]: value } : row)) }));
+    };
+    const addRow = () => setEditor(prev => ({ ...prev, rows: [...prev.rows, { over: '', base: '', rate: '' }] }));
+    const removeRow = (index) => setEditor(prev => ({ ...prev, rows: prev.rows.filter((_, i) => i !== index) }));
+    const resetRows = () => setEditor(prev => ({ ...prev, rows: toRowDrafts(data.defaults[frequency]) }));
+    const toggleDelete = (version) => setPendingDeletes(prev => (prev.includes(version.id) ? prev.filter(id => id !== version.id) : [...prev, version.id]));
+
+    const inputClass = 'w-full h-9 bg-white border border-slate-200 rounded-md px-3 text-sm text-slate-800 font-semibold focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent transition-colors duration-100 shadow-2xs read-only:bg-slate-50 read-only:text-slate-500';
+    const smallButton = 'h-8 px-3 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 font-semibold text-xs rounded-md transition-colors duration-100 cursor-pointer';
+
+    const pendingBadge = (
+        <span className="text-[11px] font-semibold px-2 py-0.5 rounded border bg-warning-subtle text-warning-ink border-warning/20">Deleted when you save</span>
+    );
+
+    return (
+        // Enter inside these fields must not submit the whole settings form.
+        <div onKeyDown={(e) => { if (e.key === 'Enter' && e.target.tagName === 'INPUT') e.preventDefault(); }} className="bg-white rounded-lg p-5 shadow-2xs border border-slate-200 space-y-5">
+            <div className="flex items-center space-x-3">
+                <div className="w-8 h-8 rounded-md bg-slate-900 text-white flex items-center justify-center shrink-0 shadow-2xs">
+                    <i className="ti ti-receipt-tax text-base" />
+                </div>
+                <div>
+                    <h2 className="text-base font-bold text-slate-800">Withholding Tax Tables (BIR)</h2>
+                    <p className="text-xs text-slate-500 mt-0.5">When BIR changes the rates, add a new version with the date it takes effect. Payslips already issued keep their amounts.</p>
+                </div>
+            </div>
+
+            {data?.setup_required && (
+                <div className="bg-warning-subtle border border-warning/20 text-warning-ink px-4 py-3 rounded-md text-sm font-semibold">
+                    Custom table management is unavailable. Built-in BIR withholding tables remain active.
+                </div>
+            )}
+            {error && (
+                <div className="bg-warning-subtle border border-warning/20 text-warning-ink px-4 py-3 rounded-md text-sm font-semibold">{error}</div>
+            )}
+            {unsaved && (
+                <div className="bg-accent-subtle border border-accent/20 text-accent px-4 py-3 rounded-md text-sm font-semibold">
+                    You have unsaved withholding tax changes. They are applied when you press Save Changes at the bottom of the page.
+                </div>
+            )}
+
+            {!data ? (
+                <p className="text-xs text-slate-500">{error ? '' : 'Loading withholding tax tables...'}</p>
+            ) : (
+                <>
+                    <div className="flex flex-wrap gap-2 border-b border-slate-100 pb-4">
+                        {Object.entries(FREQUENCY_LABELS).map(([key, label]) => (
+                            <button
+                                key={key}
+                                type="button"
+                                onClick={() => switchFrequency(key)}
+                                className={`h-8 px-3 rounded-md text-xs font-semibold border cursor-pointer transition-colors duration-100 flex items-center gap-1.5 ${frequency === key ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'}`}
+                            >
+                                {label}
+                                {drafts[key] && <span className="w-1.5 h-1.5 rounded-full bg-warning" title="Unsaved changes" />}
+                            </button>
+                        ))}
+                    </div>
+
+                    {!editor && (
+                        <div className="space-y-3">
+                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                                <div className="flex items-center gap-2">
+                                    <p className="text-sm font-semibold text-slate-800">
+                                        {inEffect ? `In effect since ${formatDate(inEffect.effective_from)}` : 'In effect now'}
+                                    </p>
+                                    {inEffect && isPendingDelete(inEffect) ? pendingBadge : (
+                                        <span className={`text-[11px] font-semibold px-2 py-0.5 rounded border ${inEffect ? 'bg-accent-subtle text-accent border-accent/20' : 'bg-slate-50 text-slate-500 border-slate-200'}`}>
+                                            {inEffect ? 'Custom' : 'Built-in BIR 2023'}
+                                        </span>
+                                    )}
+                                </div>
+                                <div className="flex gap-2">
+                                    {inEffect && canChange(inEffect) && (isPendingDelete(inEffect) ? (
+                                        <button type="button" onClick={() => toggleDelete(inEffect)} className={smallButton}>Undo delete</button>
+                                    ) : (
+                                        <>
+                                            <button type="button" onClick={() => openEdit(inEffect)} className={smallButton}>Edit</button>
+                                            <button type="button" onClick={() => toggleDelete(inEffect)} className={`${smallButton} text-danger-ink`}>Delete</button>
+                                        </>
+                                    ))}
+                                    <button type="button" disabled={data.setup_required} onClick={openNew} className="h-8 px-3 bg-accent hover:bg-accent-hover text-white font-semibold text-xs rounded-md shadow-2xs transition-colors duration-100 cursor-pointer disabled:opacity-50">
+                                        New version
+                                    </button>
+                                </div>
+                            </div>
+                            <BracketTable brackets={activeBrackets} />
+                        </div>
+                    )}
+
+                    {!editor && upcoming.length > 0 && (
+                        <div className="space-y-2 border-t border-slate-100 pt-4">
+                            <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide">Scheduled</p>
+                            {upcoming.map(version => (
+                                <div key={version.id} className="flex items-center justify-between gap-2 rounded-md border border-slate-200 px-3 py-2">
+                                    <span className="flex items-center gap-2 text-sm font-semibold text-slate-800">
+                                        <span className={isPendingDelete(version) ? 'line-through text-slate-400' : ''}>Starts {formatDate(version.effective_from)}</span>
+                                        {isPendingDelete(version) && pendingBadge}
+                                    </span>
+                                    <div className="flex gap-2">
+                                        {isPendingDelete(version) ? (
+                                            <button type="button" onClick={() => toggleDelete(version)} className={smallButton}>Undo delete</button>
+                                        ) : (
+                                            <>
+                                                <button type="button" onClick={() => openEdit(version)} className={smallButton}>Edit</button>
+                                                <button type="button" onClick={() => toggleDelete(version)} className={`${smallButton} text-danger-ink`}>Delete</button>
+                                            </>
+                                        )}
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+
+                    {editor && (
+                        <>
+                            <div className="space-y-4 rounded-md border border-slate-200 bg-slate-50 p-4">
+                                <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-3">
+                                    <div className="sm:w-56">
+                                        <label htmlFor="tax-effective-from" className="block text-xs font-medium text-slate-700 mb-1.5">Effective from</label>
+                                        <input
+                                            id="tax-effective-from"
+                                            type="date"
+                                            min={today}
+                                            value={editor.effective_from}
+                                            onChange={(e) => setEditor(prev => ({ ...prev, effective_from: e.target.value }))}
+                                            className={inputClass}
+                                        />
+                                        <p className="text-[11px] text-slate-400 mt-1">Applies to payrolls whose period ends on or after this date.</p>
+                                    </div>
+                                    <button type="button" onClick={resetRows} className={smallButton}>Reset to BIR 2023 table</button>
+                                </div>
+
+                                <div className="space-y-2">
+                                    <div className="hidden sm:grid grid-cols-[1fr_1fr_8rem_2rem] gap-2 text-[11px] font-semibold text-slate-500 uppercase tracking-wide">
+                                        <span>Taxable income over (₱)</span>
+                                        <span>Base tax (₱)</span>
+                                        <span>Plus % of excess</span>
+                                        <span />
+                                    </div>
+                                    {editor.rows.map((row, index) => (
+                                        <div key={index} className="grid grid-cols-1 sm:grid-cols-[1fr_1fr_8rem_2rem] gap-2 items-center">
+                                            <input aria-label={`Bracket ${index + 1} over`} inputMode="decimal" maxLength={12} value={row.over} readOnly={index === 0} onChange={(e) => setRow(index, 'over', e.target.value)} placeholder="Over (₱)" className={inputClass} />
+                                            <input aria-label={`Bracket ${index + 1} base tax`} inputMode="decimal" maxLength={12} value={row.base} readOnly={index === 0} onChange={(e) => setRow(index, 'base', e.target.value)} placeholder="Base tax (₱)" className={inputClass} />
+                                            <input aria-label={`Bracket ${index + 1} rate`} inputMode="decimal" maxLength={6} value={row.rate} onChange={(e) => setRow(index, 'rate', e.target.value)} placeholder="Rate (%)" className={inputClass} />
+                                            {index > 0 ? (
+                                                <button type="button" onClick={() => removeRow(index)} aria-label={`Remove bracket ${index + 1}`} className="w-8 h-9 flex items-center justify-center rounded-md text-slate-400 hover:text-danger-ink hover:bg-white cursor-pointer">
+                                                    <i className="ti ti-x text-sm" />
+                                                </button>
+                                            ) : <span />}
+                                        </div>
+                                    ))}
+                                    <button type="button" disabled={editor.rows.length >= WITHHOLDING_MAX_BRACKETS} onClick={addRow} className={smallButton}>Add bracket</button>
+                                </div>
+
+                                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pt-1">
+                                    <p className="text-[11px] text-slate-500">Saved when you press Save Changes at the bottom of the page.</p>
+                                    <button type="button" onClick={() => setEditor(null)} className={smallButton}>Discard changes</button>
+                                </div>
+                            </div>
+                        </>
+                    )}
+
+                    {!editor && history.length > 0 && (
+                        <div className="space-y-2 border-t border-slate-100 pt-4">
+                            <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide">Earlier versions</p>
+                            {history.map(version => (
+                                <details key={version.id} className="rounded-md border border-slate-200 px-3 py-2">
+                                    <summary className="text-sm font-semibold text-slate-700 cursor-pointer">Started {formatDate(version.effective_from)}</summary>
+                                    <div className="mt-2"><BracketTable brackets={version.brackets} /></div>
+                                </details>
+                            ))}
+                        </div>
+                    )}
+                </>
+            )}
+        </div>
+    );
+});
+
 export default function StatutorySettings({ onBack }) {
+    const taxTablesRef = useRef(null);
     const [settings, setSettings] = useState(DEFAULT_SETTINGS);
     const [fetching, setFetching] = useState(true);
     const [settingsLoaded, setSettingsLoaded] = useState(false);
     const [loading, setLoading] = useState(false);
     const [successMessage, setSuccessMessage] = useState('');
     const [errorMessage, setErrorMessage] = useState('');
+    const topRef = useRef(null);
+
+    // The save button is at the bottom of a long page and the result banners are at the top: bring them into view.
+    useEffect(() => {
+        if (successMessage || errorMessage) topRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, [successMessage, errorMessage]);
 
     const getCleanErrorMessage = (err) => {
         if (!err) return "An unexpected error occurred while processing your request.";
@@ -161,6 +489,12 @@ export default function StatutorySettings({ onBack }) {
             return;
         }
 
+        const taxTableError = taxTablesRef.current?.validate() || '';
+        if (taxTableError) {
+            setErrorMessage(taxTableError);
+            return;
+        }
+
         setLoading(true);
 
         try {
@@ -179,6 +513,15 @@ export default function StatutorySettings({ onBack }) {
             const data = await response.json();
             if (!response.ok || data.error) throw new Error(data.error || 'Unable to save settings.');
             if (data.data) setSettings(previous => ({ ...previous, ...data.data }));
+
+            if (taxTablesRef.current?.hasChanges()) {
+                try {
+                    await taxTablesRef.current.commit();
+                } catch (taxError) {
+                    setErrorMessage(`Your other settings were saved, but the withholding tax changes were not: ${taxError.message}`);
+                    return;
+                }
+            }
 
             setSuccessMessage("Changes saved");
             setTimeout(() => setSuccessMessage(''), 4000);
@@ -222,7 +565,7 @@ export default function StatutorySettings({ onBack }) {
 
     return (
         <div className="space-y-5 sm:space-y-6 max-w-7xl mx-auto pb-12 px-3 sm:px-4 md:px-0">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div ref={topRef} className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <BackButton fallback="/admin/payroll" label="Back to Payroll" onClick={onBack} />
                 <div className="flex items-center gap-2">
                 </div>
@@ -432,6 +775,9 @@ export default function StatutorySettings({ onBack }) {
                     </div>
                 </div>
 
+                {/* BIR Withholding Tax Tables: staged here, saved by the single Save Changes button below */}
+                <WithholdingTaxTables ref={taxTablesRef} />
+
                 <div className="flex justify-end pt-3 sticky bottom-0 sm:static bg-white border-t border-slate-200 sm:border-0 sm:bg-transparent pb-3 sm:pb-0 -mx-3 px-3 sm:mx-0 sm:px-0">
                     <button
                         type="submit"
@@ -448,6 +794,7 @@ export default function StatutorySettings({ onBack }) {
                     </button>
                 </div>
             </form>
+
         </div>
     );
 }

@@ -1,4 +1,5 @@
 import { WORK_POLICY_INPUT_LIMITS, isValidWorkPolicyInput } from './workPolicy.mjs';
+import {isLeaveDate} from './leaveCredits.mjs';
 
 const percentage = Object.freeze({ min: 0, max: 100, step: 0.01, maxLength: 6 });
 // Input safety ceiling, not a legislated contribution amount.
@@ -41,4 +42,60 @@ export function getStatutorySettingsError(settings) {
         return 'PhilHealth minimum salary cannot exceed the maximum salary.';
     }
     return '';
+}
+
+// ---- Withholding tax tables (HR-editable, versioned by effective date) ----
+export const WITHHOLDING_FREQUENCIES = Object.freeze(['weekly', 'semi-monthly', 'monthly']);
+export const WITHHOLDING_MAX_BRACKETS = 20;
+const WITHHOLDING_AMOUNT_MAX = 999999999.99;
+// Progressive tables are continuous: a bracket's base tax should equal the tax at that point from the bracket
+// before it. BIR rounding leaves a few centavos, so allow up to P2 before treating it as a typing mistake.
+const WITHHOLDING_BOUNDARY_TOLERANCE = 2;
+const TWO_DECIMALS = /^\d+(?:\.\d{1,2})?$/;
+
+export function normalizeWithholdingBrackets(brackets) {
+    return (Array.isArray(brackets) ? brackets : [])
+        .map(row => ({
+            over: Math.round(Number(row?.over) * 100) / 100,
+            base: Math.round(Number(row?.base) * 100) / 100,
+            rate: Math.round(Number(row?.rate) * 100) / 100,
+        }))
+        .sort((a, b) => a.over - b.over);
+}
+
+export function getWithholdingTableError(brackets) {
+    if (!Array.isArray(brackets) || brackets.length < 2 || brackets.length > WITHHOLDING_MAX_BRACKETS) {
+        return `Enter between 2 and ${WITHHOLDING_MAX_BRACKETS} tax brackets.`;
+    }
+    const fields = [['over', 'the "over" amount', WITHHOLDING_AMOUNT_MAX], ['base', 'the base tax', WITHHOLDING_AMOUNT_MAX], ['rate', 'the rate (%)', 100]];
+    for (const [index, row] of brackets.entries()) {
+        for (const [field, label, max] of fields) {
+            const raw = row?.[field];
+            if (!['number', 'string'].includes(typeof raw) || !TWO_DECIMALS.test(String(raw).trim()) || Number(raw) > max) {
+                return `Bracket ${index + 1}: enter ${label} as a number from 0 to ${max}, using up to two decimal places.`;
+            }
+        }
+    }
+
+    const rows = normalizeWithholdingBrackets(brackets);
+    if (rows[0].over !== 0) return 'The first bracket must start at ₱0.';
+    if (rows[0].base !== 0) return 'The first bracket must have a base tax of ₱0.';
+    for (let i = 1; i < rows.length; i++) {
+        const previous = rows[i - 1];
+        const current = rows[i];
+        if (current.over === previous.over) return 'Every bracket must start at a different amount.';
+        if (current.base < previous.base) return `Bracket ${i + 1}: base tax cannot be lower than the bracket before it.`;
+        const expected = previous.base + (current.over - previous.over) * previous.rate / 100;
+        if (Math.abs(current.base - expected) > WITHHOLDING_BOUNDARY_TOLERANCE) {
+            return `Bracket ${i + 1}: base tax ₱${current.base.toFixed(2)} does not match the bracket before it (about ₱${expected.toFixed(2)} at ₱${current.over.toFixed(2)}). Check for a typing mistake.`;
+        }
+    }
+    return '';
+}
+
+export function getWithholdingTableVersionError({ frequency, effective_from, brackets } = {}) {
+    if (!WITHHOLDING_FREQUENCIES.includes(frequency)) return 'Choose weekly, semi-monthly or monthly.';
+    const validDate = isLeaveDate(effective_from);
+    if (!validDate) return 'Enter a valid effective date.';
+    return getWithholdingTableError(brackets);
 }

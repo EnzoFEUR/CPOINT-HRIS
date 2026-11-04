@@ -150,8 +150,7 @@ const getPendingWeeks = (cycleBounds, now = new Date()) => {
     return weeks;
 };
 
-// A week counts as paid when any of the employee's payrolls overlaps it, so a Mon-Fri
-// payroll or an older longer-range payroll still marks the week as done.
+// A saved payslip suppresses another computation even while its payment is pending.
 const filterUnpaidWeeks = (weeks, paidRanges = []) =>
     weeks.filter(week => !paidRanges.some(range => range.start < week.end && range.end > week.start));
 
@@ -460,6 +459,7 @@ const FactoryLineBannerRow = React.memo(({ group, isExpanded, onToggle, selectio
                             <span className="text-sm font-extrabold text-slate-900 group-hover/line:text-accent-hover transition-colors truncate">
                                 {group.groupName}
                             </span>
+                            <span className="text-xs text-slate-600">{dayjs(group.periodStart).format('MMM DD')} – {dayjs(group.periodEnd).format('MMM DD, YYYY')}</span>
                             <span className="px-2 py-0.5 bg-surface-muted text-ink border border-line text-[10px] font-black uppercase tracking-wider rounded-md shrink-0">
                                 Group
                             </span>
@@ -807,6 +807,7 @@ export default function PayrollIndex() {
             if (debounceTimer) clearTimeout(debounceTimer);
             debounceTimer = setTimeout(() => {
                 queryClient.invalidateQueries({ queryKey: ['adminPayrolls'], refetchType: 'active' });
+                queryClient.invalidateQueries({ queryKey: ['payrollCoverage'], refetchType: 'active' });
                 queryClient.invalidateQueries({ queryKey: ['adminEmployees', 'roster'], refetchType: 'active' });
             }, 150);
         };
@@ -924,6 +925,20 @@ export default function PayrollIndex() {
         refetchOnWindowFocus: true,
     });
 
+    const { data: coverage = [], isLoading: isLoadingCoverage, error: coverageError, refetch: refetchCoverage } = useQuery({
+        queryKey: ['payrollCoverage', currentMonth, currentYear],
+        queryFn: ({ signal }) => {
+            const params = new URLSearchParams({ view: 'coverage' });
+            if (currentMonth) params.set('month', currentMonth);
+            if (currentYear) params.set('year', currentYear);
+            return fetchCompleteList(fetchWithAuth, `/api/payroll?${params}`, signal);
+        },
+        staleTime: 10_000,
+        gcTime: 600_000,
+        refetchOnMount: 'always',
+        refetchOnWindowFocus: true,
+    });
+
     const { data: employees = [], isLoading: isLoadingEmployees, error: employeesError, refetch: refetchEmployees } = useQuery({
         queryKey: ['adminEmployees', 'roster'],
         queryFn: ({ signal }) => fetchEmployeeRoster(fetchWithAuth, signal),
@@ -934,8 +949,8 @@ export default function PayrollIndex() {
         refetchOnWindowFocus: true,
     });
 
-    const isLoading = isLoadingPayrolls || isLoadingEmployees;
-    const listError = payrollsError || employeesError;
+    const isLoading = isLoadingPayrolls || isLoadingEmployees || isLoadingCoverage;
+    const listError = payrollsError || employeesError || coverageError;
 
     const cycleBounds = useMemo(() => {
         const targetYear = currentYear ? parseInt(currentYear, 10) : currentYearNum;
@@ -967,18 +982,17 @@ export default function PayrollIndex() {
         const employeePeriods = new Map();
         const employeeLastKnownLineMap = {};
 
+        for (const p of [...coverage, ...payrolls]) {
+            if (!p.employee_id || !p.period_start) continue;
+            const key = String(p.employee_id);
+            if (!employeePeriods.has(key)) employeePeriods.set(key, []);
+            employeePeriods.get(key).push({ start: String(p.period_start).slice(0, 10), end: String(p.period_end || p.period_start).slice(0, 10) });
+        }
+
         const enrichedActual = payrolls.map(p => {
             const line = getEmployeeLine(p);
             if (line && p.employee_id) {
                 employeeLastKnownLineMap[String(p.employee_id)] = line;
-            }
-
-            const startKey = String(p.period_start || '').substring(0, 10);
-            const endKey = String(p.period_end || p.period_start || '').substring(0, 10);
-            if (startKey && p.employee_id) {
-                const empKey = String(p.employee_id);
-                if (!employeePeriods.has(empKey)) employeePeriods.set(empKey, []);
-                employeePeriods.get(empKey).push({ start: startKey, end: endKey || startKey });
             }
 
             const gross = calculateGrossPay(p);
@@ -1030,16 +1044,15 @@ export default function PayrollIndex() {
             );
         };
 
-        const pendingWeeks = getPendingWeeks(cycleBounds);
-
         const pendingEntries = employees
             .filter(emp => !isExcludedStatus(emp))
             .flatMap(emp => {
-                const openWeeks = filterUnpaidWeeks(pendingWeeks, employeePeriods.get(String(emp.id)));
-                if (openWeeks.length === 0) return [];
-
                 const effectiveStartDate = String(emp.timekeeping_effective_date || emp.date_hired || emp.created_at || '').slice(0, 10);
                 const separationDate = String(emp.separation_date || '').slice(0, 10);
+                const start = effectiveStartDate && effectiveStartDate < cycleBounds.start
+                    ? effectiveStartDate.slice(0, 7) + '-01' : cycleBounds.start;
+                const pendingWeeks = getPendingWeeks({ start, end: cycleBounds.end });
+                const openWeeks = filterUnpaidWeeks(pendingWeeks, employeePeriods.get(String(emp.id)));
                 const eligibleWeeks = openWeeks.filter(week => {
                     if (effectiveStartDate && week.end < effectiveStartDate) return false;
                     if (separationDate && week.start > separationDate) return false;
@@ -1085,11 +1098,12 @@ export default function PayrollIndex() {
                     _startFormatted: dayjs(week.start).format('MMM DD'),
                     _endFormatted: dayjs(week.end).format('MMM DD, YYYY'),
                     isPending: true,
+                    isCarryover: week.start < cycleBounds.start,
                 }));
             });
 
         return [...enrichedActual, ...pendingEntries];
-    }, [payrolls, employees, cycleBounds]);
+    }, [payrolls, coverage, employees, cycleBounds]);
 
     const departments = useMemo(() => {
         const depts = new Set();
@@ -1108,12 +1122,12 @@ export default function PayrollIndex() {
             const roleStr = (p.employees?.role || '').toLowerCase();
             if (roleStr === 'admin' || roleStr === 'security') return false;
 
-            if (targetMonth) {
+            if (targetMonth && !p.isCarryover) {
                 const pDate = dayjs(p.period_start || p.period_end);
                 if (pDate.isValid() && (pDate.month() + 1) !== targetMonth) return false;
             }
 
-            if (targetYear) {
+            if (targetYear && !p.isCarryover) {
                 const pDate = dayjs(p.period_start || p.period_end);
                 if (pDate.isValid() && pDate.year() !== targetYear) return false;
             }
@@ -1147,12 +1161,12 @@ export default function PayrollIndex() {
             const roleStr = (p.employees?.role || '').toLowerCase();
             if (roleStr === 'admin' || roleStr === 'security') return false;
 
-            if (targetMonth) {
+            if (targetMonth && !p.isCarryover) {
                 const pDate = dayjs(p.period_start || p.period_end);
                 if (pDate.isValid() && (pDate.month() + 1) !== targetMonth) return false;
             }
 
-            if (targetYear) {
+            if (targetYear && !p.isCarryover) {
                 const pDate = dayjs(p.period_start || p.period_end);
                 if (pDate.isValid() && pDate.year() !== targetYear) return false;
             }
@@ -1285,13 +1299,17 @@ export default function PayrollIndex() {
             const groupName = payroll._line || (isFactoryDept(payroll._dept) ? 'Factory General' : '');
 
             if (isFactory && groupName) {
-                const groupId = `factory-line-${groupName.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`;
+                const startKey = String(payroll.period_start || '').slice(0, 10);
+                const endKey = String(payroll.period_end || payroll.period_start || '').slice(0, 10);
+                const groupId = `factory-line-${encodeURIComponent(groupName)}-${startKey}_${endKey}`;
 
                 if (!factoryGroupsMap[groupId]) {
                     factoryGroupsMap[groupId] = {
                         type: 'group',
                         id: groupId,
                         groupName,
+                        periodStart: startKey,
+                        periodEnd: endKey,
                         department: payroll._dept || 'Factory',
                         items: [],
                         totalGross: 0,
@@ -1339,8 +1357,9 @@ export default function PayrollIndex() {
             }
         });
 
-        groupPaidList.sort((a, b) => a.groupName.localeCompare(b.groupName));
-        groupPendingList.sort((a, b) => a.groupName.localeCompare(b.groupName));
+        const compareGroups = (a, b) => a.groupName.localeCompare(b.groupName) || a.periodStart.localeCompare(b.periodStart) || a.periodEnd.localeCompare(b.periodEnd);
+        groupPaidList.sort(compareGroups);
+        groupPendingList.sort(compareGroups);
 
         const regularPaidItems = [];
         const regularPendingItems = [];
@@ -1475,7 +1494,7 @@ export default function PayrollIndex() {
             <PageHeader breadcrumbs={['Admin', 'Payroll', 'Payroll History']} />
             <div role="alert" className="rounded-lg border border-danger/20 p-5 text-sm text-danger-ink">
                 {listError.message}
-                <button type="button" onClick={() => { refetchPayrolls(); refetchEmployees(); }} className="ml-3 font-semibold underline">Retry</button>
+                <button type="button" onClick={() => { refetchPayrolls(); refetchCoverage(); refetchEmployees(); }} className="ml-3 font-semibold underline">Retry</button>
             </div>
         </div>
     );
@@ -1942,6 +1961,7 @@ export default function PayrollIndex() {
                                                     <div>
                                                         <div className="flex items-center gap-1.5">
                                                             <h3 className="text-sm font-black text-slate-800">{item.groupName}</h3>
+                                                            <p className="text-xs text-slate-600">{dayjs(item.periodStart).format('MMM DD')} – {dayjs(item.periodEnd).format('MMM DD, YYYY')}</p>
                                                             <span className="px-1.5 py-0.5 bg-surface-muted text-ink text-[9px] font-black uppercase rounded-md">
                                                                 Factory Line
                                                             </span>

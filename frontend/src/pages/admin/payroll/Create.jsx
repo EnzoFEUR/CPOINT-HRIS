@@ -1,9 +1,11 @@
-import { calculateBIRWithholdingTax } from '../../../../../shared/payrollTax.mjs';
+import { calculateBIRWithholdingTax, pickWithholdingTable } from '../../../../../shared/payrollTax.mjs';
+import {getFactoryPayReasons} from '../../../utils/factoryPayReasons.mjs';
 import { PAYROLL_NUMBER_LIMITS, isBoundedDecimalInput } from '../../../../../shared/inputLimits.mjs';
 import { isFirstCutoffOfMonth, computeEmployeeStatutory } from '../../../../../shared/statutoryTiming.mjs';
 import { isLastCutoffOfDecember } from '../../../../../shared/thirteenthMonth.mjs';
 import { getUser } from '../../../routes/guards';
-import { getEmployeeRestDays, getScheduledWorkDates, calculateTardiness, DEFAULT_WORK_POLICY } from '../../../../../shared/workPolicy.mjs';
+import { getEmployeeRestDays, getScheduledWorkDates, calculateTardiness, DEFAULT_WORK_POLICY, getManilaWorkDate } from '../../../../../shared/workPolicy.mjs';
+import {isLeaveDate} from '../../../../../shared/leaveCredits.mjs';
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useNavigate, useLocation, useSearchParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -1073,6 +1075,27 @@ const PayrollCreate = () => {
     });
     const leavePayLoading = leavePayEmployeeIds.length > 0 && (leavePayPreview.isPending || leavePayPreview.isFetching);
 
+    const withholdingTables = useQuery({
+        queryKey: ['payrollWithholdingTables', getUser()?.id],
+        queryFn: async ({signal}) => {
+            const response = await fetchWithAuth('/api/payroll/withholding-tax-tables', {signal});
+            const result = await response.json();
+            if (!response.ok || !Array.isArray(result.versions)) throw new Error('Withholding tables could not be verified. Refresh before saving.');
+            pickWithholdingTable(result.versions, 'weekly', getManilaWorkDate());
+            return result;
+        },
+        staleTime: 15_000, retry: false,
+    });
+    const taxTablesLoading = withholdingTables.isPending || withholdingTables.isFetching;
+    const batchTaxTable = useMemo(() => isLeaveDate(periodEnd)
+        ? pickWithholdingTable(withholdingTables.data?.versions || [], 'weekly', periodEnd) : null,
+    [withholdingTables.data, periodEnd]);
+    useEffect(() => {
+        const channel = supabase.channel('admin-live-payroll-ledger')
+            .on('broadcast', {event:'WITHHOLDING_TAX_TABLES_UPDATED'}, () => queryClient.invalidateQueries({queryKey:['payrollWithholdingTables']})).subscribe();
+        return () => {supabase.removeChannel(channel);};
+    }, [queryClient]);
+
     // Weekly payroll takes SSS / PhilHealth / Pag-IBIG once a month, in the first cutoff that ends in the month.
     // The server supplies each worker's monthly base (salary, or last month's average weekly pay).
     const isFirstCutoff = isFirstCutoffOfMonth(periodEnd);
@@ -1391,6 +1414,7 @@ const PayrollCreate = () => {
                 netPay: 0,
                 daysPresent: groupAttendanceMap[idStr] || 0,
                 skippedNoAttendance: zeroAttendanceIdSet.has(idStr),
+                noAttendance: zeroAttendanceIdSet.has(idStr),
                 isAbsent: !!absenteeInfo[idStr],
                 daysAbsent: absenteeInfo[idStr] ? absenteeInfo[idStr].daysAbsent : 0,
                 expectedWorkingDays,
@@ -1449,9 +1473,11 @@ const PayrollCreate = () => {
             item.holidayItems = holiday?.items || [];
             item.holidayMissingRate = !!holiday?.missingRate;
             item.thirteenthMonthPay = thirteenthByWorker[empId] || 0;
+            item.payReasons = getFactoryPayReasons(item, extra);
             const compensation = item.piecePay + item.paidLeavePay + item.holidayPay + (item.statutory?.paternity_additional_pay || 0);
             const gross = parseFloat((compensation + item.silCashPay + item.thirteenthMonthPay + (item.statutory?.tax_exempt_pay || 0)).toFixed(2));
             item.grossPay = gross;
+            item.skippedNoAttendance = item.noAttendance && gross <= 0;
             if (gross > 0 && isFirstCutoff) {
                 // Full monthly amount, taken once (first cutoff of the month). No earlier payslips: this cutoff x4.
                 const monthlyBase = statutoryBases?.[empId] ?? compensation * 4;
@@ -1461,14 +1487,14 @@ const PayrollCreate = () => {
                 item.pagIbig = deductions.pagIbig;
             }
             const statutory = item.sss + item.philHealth + item.pagIbig;
-            item.tax = calculateBIRWithholdingTax(Math.max(0, compensation + (extra?.taxable_cash || 0) + Math.max(0, item.thirteenthMonthPay - 90000) - statutory - item.lateDeduction), 'weekly');
+            item.tax = batchTaxTable ? calculateBIRWithholdingTax(Math.max(0, compensation + (extra?.taxable_cash || 0) + Math.max(0, item.thirteenthMonthPay - 90000) - statutory - item.lateDeduction), batchTaxTable) : 0;
             item.lateDeduction = Math.min(item.lateDeduction, Math.max(0, parseFloat((gross - statutory - item.tax).toFixed(2))));
             item.totalDeductions = Math.min(gross, parseFloat((statutory + item.tax + item.lateDeduction).toFixed(2)));
             item.netPay = Math.max(0, parseFloat((gross - item.totalDeductions).toFixed(2)));
         });
 
         return map;
-    }, [activeGroupEmployees, computedFactoryRows, groupAttendanceMap, groupTardinessMap, absenteeInfo, expectedWorkingDays, statutoryRates, isFirstCutoff, statutoryBases, leavePayPreview.data, holidayPayByWorker, thirteenthByWorker, zeroAttendanceIdSet]);
+    }, [activeGroupEmployees, computedFactoryRows, groupAttendanceMap, groupTardinessMap, absenteeInfo, expectedWorkingDays, statutoryRates, isFirstCutoff, statutoryBases, leavePayPreview.data, holidayPayByWorker, thirteenthByWorker, zeroAttendanceIdSet, batchTaxTable]);
 
     const grandTotalFactoryPayout = Object.values(workerPayrollMap).reduce((sum, item) => sum + item.grossPay, 0);
 
@@ -1724,6 +1750,7 @@ const PayrollCreate = () => {
 
     const handleSubmitBatch = async (e) => {
         e.preventDefault();
+        if (taxTablesLoading || withholdingTables.isError) { setError(withholdingTables.error?.message || 'Still checking withholding tables. Try again in a moment.'); return; }
         if (leavePayLoading || leavePayPreview.isError) { setError(leavePayPreview.error?.message || 'Still checking leave payments. Try again in a moment.'); return; }
         if (isInvalidDateRange) {
             setError(isRangeTooLong
@@ -1815,6 +1842,7 @@ const PayrollCreate = () => {
                     is_prorated: true,
                     gross_pay: workerData?.piecePay || 0,
                     expected_paid_leave_pay: workerData?.paidLeavePay || 0,
+                    expected_withholding_table: batchTaxTable,
                     expected_sil_cash_pay: workerData?.silCashPay || 0,
                     expected_statutory_signature: workerData?.statutory?.signature,
                     expected_statutory_pay: workerData?.statutoryLeavePay || 0,
@@ -1880,6 +1908,7 @@ const PayrollCreate = () => {
 
     const handleSubmitSingle = async (e) => {
         e.preventDefault();
+        if (taxTablesLoading || withholdingTables.isError) { setError(withholdingTables.error?.message || 'Still checking withholding tables. Try again in a moment.'); return; }
         if (leavePayLoading || leavePayPreview.isError) { setError(leavePayPreview.error?.message || 'Still checking leave payments. Try again in a moment.'); return; }
         if (attendanceError || isCalculating) { setError(attendanceError || 'Attendance is still being checked.'); return; }
         if (isInvalidDateRange) {
@@ -1915,6 +1944,7 @@ const PayrollCreate = () => {
                 hourly_rate: employeeRates.hourlyRate,
                 daily_rate: employeeRates.dailyRate,
                 expected_paid_leave_pay: leavePayPreview.data?.data?.[formData.employee_id]?.paid_leave_pay || 0,
+                expected_withholding_table: batchTaxTable,
                 expected_sil_cash_pay: singleCashPay,
                 expected_statutory_signature: holidayPreview?.statutory?.signature,
                 paid_leave_days: totalPaidLeaveDays,
@@ -1993,6 +2023,7 @@ const PayrollCreate = () => {
 
                 {/* Notifications & Error Alerts */}
                 {attendanceError && <p role="alert" className="mb-4 text-sm text-danger-ink">{attendanceError} Payroll submission is blocked until attendance is available.</p>}
+                {withholdingTables.isError && <p role="alert" className="mb-4 text-sm text-danger-ink">{withholdingTables.error.message}</p>}
                 {(error || leavePayPreview.isError) && (
                     <div className="mb-6 p-3.5 sm:p-4 bg-danger-subtle border-l-4 border-danger rounded-r-md shadow-2xs flex items-start gap-3">
                         <i className="ti ti-alert-triangle text-danger-ink mt-0.5 text-lg"></i>
@@ -2192,7 +2223,7 @@ const PayrollCreate = () => {
                         setBreakdownViewMode={setBreakdownViewMode}
                         setIsFactoryPieceOpen={setIsFactoryPieceOpen}
                         setIsGroupModalOpen={setIsGroupModalOpen}
-                        isSubmitting={isSubmitting || leavePayLoading || leavePayPreview.isError}
+                        isSubmitting={isSubmitting || leavePayLoading || leavePayPreview.isError || taxTablesLoading || withholdingTables.isError}
                         isInvalidDateRange={isInvalidDateRange || Boolean(attendanceError) || (holidayYearStatus.checked && !holidayYearStatus.generated)}
                         handleSubmitBatch={handleSubmitBatch}
                         absenteeInfo={absenteeInfo}
@@ -2215,7 +2246,7 @@ const PayrollCreate = () => {
                         isCalculating={isCalculating}
                         workPolicy={workPolicy}
                         holidayPreview={holidayPreview}
-                        isSubmitting={isSubmitting || leavePayLoading || leavePayPreview.isError}
+                        isSubmitting={isSubmitting || leavePayLoading || leavePayPreview.isError || taxTablesLoading || withholdingTables.isError}
                         isInvalidDateRange={isInvalidDateRange || Boolean(attendanceError) || (holidayYearStatus.checked && !holidayYearStatus.generated)}
                         handleSubmitSingle={handleSubmitSingle}
                         periodStart={periodStart}

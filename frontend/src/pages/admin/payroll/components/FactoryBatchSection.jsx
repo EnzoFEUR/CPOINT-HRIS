@@ -367,6 +367,10 @@ const FactoryBatchSection = ({
                                                             </span>
                                                         ))}
                                                     </div>
+                                                ) : workerData.payReasons?.length > 0 ? (
+                                                    <div className="flex flex-wrap gap-1 max-w-sm">
+                                                        {workerData.payReasons.map(reason => <span key={reason.kind + reason.label} className="text-[10px] font-semibold text-slate-700">{reason.label}</span>)}
+                                                    </div>
                                                 ) : workerData.skippedNoAttendance ? (
                                                     <span className="text-[10px] font-semibold text-danger-ink bg-danger-subtle px-2 py-0.5 rounded-md inline-block">
                                                         No attendance this cutoff
