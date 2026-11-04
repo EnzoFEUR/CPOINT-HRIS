@@ -248,13 +248,21 @@ router.get('/:id', cacheResponse(15), async (req, res) => {
             return res.status(403).json({ success: false, error: 'You may only view your own employee record.' });
         }
         const [empRes, docsRes, discRes] = await Promise.all([
-            supabase.from('employees').select('*, production_groups (id, code, name, target_output_pairs, is_active)').eq('id', id).single(),
+            supabase.from('employees').select('*, production_groups (id, code, name, target_output_pairs, is_active)').eq('id', id).maybeSingle(),
             supabase.from('employee_documents').select('*').eq('employee_id', id).order('created_at', { ascending: false }),
             supabase.from('disciplinary_logs').select('*').eq('employee_id', id).order('created_at', { ascending: false })
         ]);
-        if (empRes.error) throw empRes.error;
+        if (empRes.error) {
+            if (empRes.error.code === 'PGRST116') {
+                return res.status(404).json({ success: false, error: 'Employee not found.' });
+            }
+            throw empRes.error;
+        }
 
         const emp = empRes.data;
+        if (!emp) {
+            return res.status(404).json({ success: false, error: 'Employee not found.' });
+        }
         if (emp && emp.medical_record_url) {
             try {
                 const parsed = typeof emp.medical_record_url === 'string' ? JSON.parse(emp.medical_record_url) : emp.medical_record_url;
@@ -2051,7 +2059,7 @@ router.delete('/:id', async (req, res) => {
         } catch (_) { }
 
         // 9. Invalidate server-side cached queries
-        invalidateCache(['/api/employees', '/api/dashboard', '/api/production-groups', '/api/documents/admin-overview']);
+        invalidateCache(['/api/employees', `/api/employees/${empId}`, '/api/dashboard', '/api/production-groups', '/api/documents/admin-overview']);
 
         return res.json({
             success: true,

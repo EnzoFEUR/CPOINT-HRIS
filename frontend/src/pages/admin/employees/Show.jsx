@@ -1,6 +1,6 @@
 import { getArchiveReviewDaysRemaining, getSeparationLabel, isFinalVoluntarySeparation } from '../../../../../shared/employmentExit.mjs';
 import printStylesUrl from './Show.print.css?url&no-inline';
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import { Link, useParams, useNavigate } from 'react-router-dom';
 import QRCode from '../../../components/QRCode';
 import toast from 'react-hot-toast';
@@ -55,6 +55,7 @@ export default function Show() {
     const [isRequestDocModalOpen, setIsRequestDocModalOpen] = useState(false);
     const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
     const [isDeleting, setIsDeleting] = useState(false);
+    const isDeletingRef = useRef(false);
     const [deleteConfirmText, setDeleteConfirmText] = useState('');
     const [removalMode, setRemovalMode] = useState('archive'); // 'archive' | 'purge'
     const [separationType, setSeparationType] = useState('Resignation');
@@ -362,12 +363,16 @@ export default function Show() {
     }, [queryClient, id]);
 
     // Query employee details and documents
-    const { data: employeeData, isLoading: isEmpLoading } = useQuery({
+    const { data: employeeData, isLoading: isEmpLoading, isError, error } = useQuery({
         queryKey: ['employeeDetails', id],
         queryFn: async () => {
             const res = await fetchWithAuth(`/api/employees/${id}`);
             const data = await res.json();
-            if (!res.ok || !data.success) throw new Error(data.error || 'Failed to load employee');
+            if (!res.ok || !data.success) {
+                const fetchErr = new Error(data.error || 'Failed to load employee');
+                fetchErr.status = res.status;
+                throw fetchErr;
+            }
             const emp = data.data;
             emp.name = emp.name || `${emp.first_name || ''} ${emp.last_name || ''}`.trim();
             return {
@@ -375,9 +380,13 @@ export default function Show() {
                 documents: data.documents || []
             };
         },
-        enabled: Boolean(id && id !== 'undefined'),
+        enabled: Boolean(id && id !== 'undefined' && !isDeletingRef.current),
         staleTime: 30_000,
         gcTime: 300_000,
+        retry: (failureCount, err) => {
+            if (isDeletingRef.current || err?.status === 404) return false;
+            return failureCount < 2;
+        }
     });
 
     const employee = employeeData?.data || cachedEmp || null;
@@ -411,6 +420,7 @@ export default function Show() {
         if (!id || id === 'undefined') return;
 
         const handleSync = () => {
+            if (isDeletingRef.current) return;
             queryClient.invalidateQueries({ queryKey: ['employeeDetails', id] });
             queryClient.invalidateQueries({ queryKey: ['adminEmployees'] });
         };
@@ -419,7 +429,16 @@ export default function Show() {
 
         const channel = supabase
             .channel(`admin-live-employee-${id}`)
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'employees', filter: `id=eq.${id}` }, handleSync)
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'employees', filter: `id=eq.${id}` }, (payload) => {
+                if (payload.eventType === 'DELETE') {
+                    isDeletingRef.current = true;
+                    queryClient.removeQueries({ queryKey: ['employeeDetails', id] });
+                    queryClient.invalidateQueries({ queryKey: ['adminEmployees'] });
+                    navigate('/admin/employees');
+                    return;
+                }
+                handleSync();
+            })
             .on('postgres_changes', { event: '*', schema: 'public', table: 'disciplinary_logs', filter: `employee_id=eq.${id}` }, handleSync)
             .on('broadcast', { event: 'EMPLOYEE_UPDATED' }, handleSync)
             .on('broadcast', { event: 'EMPLOYEE_RESTORED' }, handleSync)
@@ -510,6 +529,7 @@ export default function Show() {
 
     const handleDelete = async () => {
         if (!employee) return;
+        isDeletingRef.current = true;
         setIsDeleting(true);
 
         try {
@@ -530,9 +550,11 @@ export default function Show() {
                 queryClient.invalidateQueries({ queryKey: ['dashboard'] });
                 navigate('/admin/employees');
             } else {
+                isDeletingRef.current = false;
                 toast.error(resData.error || 'Employee could not be deleted.', { id: 'employee-delete-error' });
             }
         } catch {
+            isDeletingRef.current = false;
             toast.error('Network Error. Failed to delete employee.');
         } finally {
             setIsDeleting(false);
@@ -553,6 +575,26 @@ export default function Show() {
 
 
     // Unconditional hook declarations complete - now safe for conditional early return
+    if (isError || (!isEmpLoading && !employee && !cachedEmp)) {
+        return (
+            <div className="flex flex-col items-center justify-center min-h-[60vh] space-y-4">
+                <div className="w-12 h-12 bg-slate-100 rounded-full flex items-center justify-center text-slate-400">
+                    <i className="ti ti-user-x text-2xl" />
+                </div>
+                <h3 className="text-base font-semibold text-slate-800">Employee Not Found</h3>
+                <p className="text-xs text-slate-500 max-w-sm text-center">
+                    {error?.message || 'This employee record does not exist or has been permanently deleted.'}
+                </p>
+                <button
+                    onClick={() => navigate('/admin/employees')}
+                    className="mt-2 px-4 py-2 bg-slate-900 text-white rounded-md text-xs font-medium hover:bg-slate-800 transition-colors cursor-pointer"
+                >
+                    Back to Employee Directory
+                </button>
+            </div>
+        );
+    }
+
     if (isLoading || !employee) {
         return (
             <div className="flex flex-col items-center justify-center min-h-[60vh] space-y-4">

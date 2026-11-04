@@ -6,20 +6,21 @@ import { useEffect } from 'react';
  */
 export const useBiometricProtection = () => {
   useEffect(() => {
+    const isProtectedTarget = (target) => {
+      const el = target instanceof Element ? target : target?.parentElement;
+      if (!el || typeof el.closest !== 'function') return false;
+      return el.tagName === 'IMG' || Boolean(el.closest('img, [data-protected-photo], .protected-photo'));
+    };
+
     const handleContextMenu = (e) => {
-      if (
-        e.target.tagName === 'IMG' ||
-        e.target.closest('img') ||
-        e.target.closest('[data-protected-photo]') ||
-        e.target.closest('.protected-photo')
-      ) {
+      if (isProtectedTarget(e.target)) {
         e.preventDefault();
         e.stopPropagation();
       }
     };
 
     const handleDragStart = (e) => {
-      if (e.target.tagName === 'IMG' || e.target.closest('img')) {
+      if (isProtectedTarget(e.target)) {
         e.preventDefault();
       }
     };

@@ -695,12 +695,8 @@ export default function Create({ errors = [], defaultValues = {} }) {
                                             onChange={(e) => setDepartment(e.target.value)}
                                             className="w-full h-9 px-3 bg-white border border-slate-200 rounded-md focus:outline-none focus:border-accent text-xs text-slate-800 transition-colors duration-100 appearance-none cursor-pointer shadow-2xs"
                                         >
-                                            <option value="Factory">Factory Floor (Shoe Production)</option>
-                                            <option value="Retail">Retail Store</option>
-                                            <option value="Security">Security</option>
-                                            <option value="HR/Admin">HR & Admin</option>
-                                            <option value="IT">IT Department</option>
-                                            <option value="Logistics">Logistics</option>
+                                            <option value="Factory">Factory</option>
+                                            <option value="Retail">Retail</option>
                                         </select>
                                     </div>
 
