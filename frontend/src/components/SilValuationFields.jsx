@@ -8,14 +8,26 @@ import SilWageDocumentField from './SilWageDocumentField';
 
 const money = value => Number(value).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
-export default function SilValuationFields({ employeeId, value, onChange, asOf, inputClass, previousReview, requestedDays, sourceNotice, onSourceReviewed }) {
+export default function SilValuationFields({ employeeId, value, onChange, asOf, inputClass, previousReview, requestedDays, sourceNotice, onSourceReviewed, sourceRevision = 0 }) {
     const fieldId = useId();
     const [mode, setMode] = useState(() => value.source_document_id && !value.source && !value.calculation ? 'external' : 'saved');
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
     const [evidence, setEvidence] = useState(null);
+    const [previewRevision, setPreviewRevision] = useState(sourceRevision);
+    if (previewRevision !== sourceRevision) {
+        setPreviewRevision(sourceRevision);
+        setLoading(false);
+        setError('');
+        setEvidence(null);
+    }
     const activeLoad = useRef(null);
     useEffect(() => () => activeLoad.current?.abort(), []);
+    useEffect(() => {
+        // Recheck saved evidence without remounting the document uploader or losing its file.
+        activeLoad.current?.abort();
+        activeLoad.current = null;
+    }, [sourceRevision]);
     const set = (name, next) => {
         onChange(previous => ({ ...previous, [name]: next, as_of: asOf, verified: name === 'verified' ? next : false }));
         if (name === 'verified' && next) onSourceReviewed?.();

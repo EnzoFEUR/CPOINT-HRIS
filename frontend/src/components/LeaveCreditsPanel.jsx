@@ -945,8 +945,9 @@ export default function LeaveCreditsPanel({
                                     <div className="space-y-3">
                                         {supportsValuation ? (
                                             <SilValuationFields
-                                                key={`${employeeId}:${conversionDate}:${sourceRevision}`}
+                                                key={`${employeeId}:${conversionDate}`}
                                                 employeeId={employeeId}
+                                                sourceRevision={sourceRevision}
                                                 previousReview={previousWageReview}
                                                 requestedDays={pendingCash?.days}
                                                 sourceNotice={sourceNotice}

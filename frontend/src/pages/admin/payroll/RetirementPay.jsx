@@ -12,7 +12,7 @@ import { employmentTenure } from '../../../utils/employmentTenure.mjs';
 import { supabase } from '../../../supabaseClient';
 import { getManilaWorkDate } from '../../../../../shared/workPolicy.mjs';
 import { getRetirementWorkflow } from '../../../../../shared/employmentExit.mjs';
-import { isCreditUuid } from '../../../../../shared/leaveCredits.mjs';
+import { isCreditUuid, isLeaveDate } from '../../../../../shared/leaveCredits.mjs';
 import { getShoeRoleDetails } from '../../../utils/factoryRoles';
 import { detectLocalWageProfile, applyDetectedWageDefaults } from '../../../utils/retirementWageProfile';
 import './RetirementPay.print.css';
@@ -181,7 +181,7 @@ export default function RetirementPay() {
             <Link className={buttonClass} to="/admin/employment-exit">Return to Employment Exit</Link>
         </div>
     );
-    return <RetirementPayWorkspace key={actorId + ':' + (exitRequestId || 'ledger')} exitRequestId={exitRequestId} exitLink={exitLink} />;
+    return <RetirementPayWorkspace key={actorId + ':' + (exitRequestId || 'ledger') + ':' + (exitLink.data?.record.effective_date || '')} exitRequestId={exitRequestId} exitLink={exitLink} />;
 }
 
 
@@ -192,6 +192,8 @@ function RetirementPayWorkspace({ exitRequestId, exitLink }) {
     const request = useMemo(() => createIdempotentMutation(fetchWithAuth), []);
     const formRef = useRef(null);
     const mutationLock = useRef(false);
+    const sourceRevision = useRef(0);
+    useEffect(() => () => { sourceRevision.current++; }, []);
 
     const [search, setSearch] = useState('');
     const [employeePage, setEmployeePage] = useState(1);
@@ -209,6 +211,7 @@ function RetirementPayWorkspace({ exitRequestId, exitLink }) {
             rate_note: detected?.note || '',
         };
     });
+    const [editedFields, setEditedFields] = useState(() => new Set());
     const confirmedDate = exitLink.data?.record.effective_date || '';
     const form = useMemo(() => exitRequestId
         ? { ...formFields, retirement_date: confirmedDate }
@@ -311,6 +314,7 @@ function RetirementPayWorkspace({ exitRequestId, exitLink }) {
                 queryKey: ['retirementPreview', actorId],
             });
             queryClient.invalidateQueries({ queryKey: ['retirementExitLink', actorId] });
+            queryClient.invalidateQueries({ queryKey: ['retirementDetect', actorId] });
         };
         const channel = !exitRequestId ? supabase
             .channel('retirement-pay-ledger', { config: { private: true } })
@@ -334,12 +338,21 @@ function RetirementPayWorkspace({ exitRequestId, exitLink }) {
         };
     }, [actorId, queryClient, exitRequestId]);
 
-    const changeForm = (key, value) =>
-        setForm((previous) => ({ ...previous, [key]: value }));
+    const changeForm = (key, value) => {
+        sourceRevision.current++;
+        if (key === 'retirement_date' || key === 'rate_basis') {
+            setEditedFields(new Set(key === 'rate_basis' ? ['rate_basis'] : editedFields.has('rate_basis') ? ['rate_basis'] : []));
+            setForm(previous => ({ ...previous, [key]: value, daily_rate: '', earnings_12_months: '', actual_workdays: '', rate_note: '' }));
+            return;
+        }
+        const clearAutomaticNote = key !== 'rate_note' && !editedFields.has('rate_note');
+        setEditedFields(previous => new Set([...previous, key, ...(clearAutomaticNote ? ['rate_note'] : [])]));
+        setForm(previous => ({ ...previous, [key]: value, ...(clearAutomaticNote ? { rate_note: '' } : {}) }));
+    };
 
     const autoDetect = useQuery({
-        queryKey: ['retirementDetect', employee?.id, form.retirement_date],
-        enabled: Boolean(employee?.id),
+        queryKey: ['retirementDetect', actorId, employee?.id, form.retirement_date],
+        enabled: Boolean(employee?.id && isLeaveDate(form.retirement_date)),
         queryFn: ({ signal }) =>
             readJson(
                 `/api/retirement-pay/detect/${employee.id}?retirement_date=${form.retirement_date}`,
@@ -350,15 +363,16 @@ function RetirementPayWorkspace({ exitRequestId, exitLink }) {
     });
 
     const [appliedDetection, setAppliedDetection] = useState(null);
-    if (autoDetect.data !== appliedDetection) {
-        setAppliedDetection(autoDetect.data);
-        setForm(previous => applyDetectedWageDefaults(previous, autoDetect.data));
+    const detectedSource = autoDetect.data?.employee_id === employee?.id && autoDetect.data?.retirement_date === form.retirement_date ? autoDetect.data : undefined;
+    if (detectedSource !== appliedDetection) {
+        setAppliedDetection(detectedSource);
+        setForm(previous => applyDetectedWageDefaults(previous, detectedSource, editedFields));
     }
 
     const activeDetectedProfile = useMemo(() => {
         if (!employee) return null;
-        if (autoDetect.data?.success) {
-            const d = autoDetect.data;
+        if (detectedSource?.success && !autoDetect.isError) {
+            const d = detectedSource;
             const craft = getShoeRoleDetails(d.job_title);
             return {
                 basis: d.detected_basis,
@@ -375,33 +389,31 @@ function RetirementPayWorkspace({ exitRequestId, exitLink }) {
             };
         }
         return detectLocalWageProfile(employee);
-    }, [employee, autoDetect.data]);
+    }, [employee, detectedSource, autoDetect.isError]);
 
-    const handleReapplyDetection = () => {
+    const handleReapplyDetection = async () => {
         if (!employee) return;
-        const detected = autoDetect.data?.success ? {
-            basis: autoDetect.data.detected_basis,
-            dailyRate: autoDetect.data.recommended_daily_rate,
-            earnings12Months: autoDetect.data.recommended_earnings_12_months,
-            actualWorkdays: autoDetect.data.recommended_actual_workdays,
-            note: autoDetect.data.rate_note,
-            label: autoDetect.data.detected_label
-        } : detectLocalWageProfile(employee);
-
-        if (!detected) return;
-        setForm((prev) => ({
-            ...prev,
-            rate_basis: detected.basis,
-            daily_rate: detected.dailyRate || '',
-            earnings_12_months: detected.earnings12Months || '',
-            actual_workdays: detected.actualWorkdays || '',
-            rate_note: detected.note || '',
-        }));
-        toast.success(`Re-applied auto-detection: ${detected.label || 'Wage Profile'}`, { id: 'reapply-detect' });
+        const revision = sourceRevision.current;
+        try {
+            const { data, error, isError } = await autoDetect.refetch();
+            if (revision !== sourceRevision.current) return;
+            if (isError || !data?.success) throw error || new Error('Wage evidence could not refresh. Please retry.');
+            if (data.employee_id !== employee.id || data.retirement_date !== form.retirement_date) throw new Error('The wage source does not match this employee and retirement date. Refresh the selection.');
+            setEditedFields(new Set());
+            setForm(previous => ({ ...previous, rate_basis: data.detected_basis,
+                daily_rate: data.recommended_daily_rate || '', earnings_12_months: data.recommended_earnings_12_months || '',
+                actual_workdays: data.recommended_actual_workdays || '', rate_note: data.rate_note || '' }));
+            toast.success('Recorded wage information refreshed. HR verification is still required.', { id: 'reapply-detect' });
+        } catch (error) {
+            if (revision !== sourceRevision.current) return;
+            toast.error(error.message || 'Wage evidence could not refresh. Please retry.', { id: 'reapply-detect' });
+        }
     };
 
     const chooseEmployee = (item) => {
         if (exitRequestId) return;
+        sourceRevision.current++;
+        setEditedFields(new Set());
         setEmployee(item);
         const detected = detectLocalWageProfile(item);
         setForm((previous) => ({
@@ -733,7 +745,7 @@ function RetirementPayWorkspace({ exitRequestId, exitLink }) {
                                 </div>
                                 {!exitRequestId && <button
                                     type="button"
-                                    onClick={() => setEmployee(null)}
+                                    onClick={() => { sourceRevision.current++; setEmployee(null); }}
                                     className="h-8 px-2.5 rounded-md text-xs font-semibold bg-white hover:bg-slate-100 text-slate-600 hover:text-danger border border-slate-200 shadow-2xs transition-colors flex items-center gap-1 cursor-pointer shrink-0"
                                 >
                                     <i className="ti ti-x text-xs" />
@@ -742,7 +754,7 @@ function RetirementPayWorkspace({ exitRequestId, exitLink }) {
                             </div>
 
 
-                            {/* Enterprise Wage Auto-Detection Panel */}
+                            {/* Recorded wage sources require independent HR verification. */}
                             <div className="p-3.5 bg-gradient-to-r from-slate-50 via-blue-50/25 to-white rounded-lg border border-slate-200/90 shadow-2xs space-y-2.5">
                                 <div className="flex items-center justify-between gap-2 flex-wrap">
                                     <div className="flex items-center gap-2.5">
@@ -750,11 +762,10 @@ function RetirementPayWorkspace({ exitRequestId, exitLink }) {
                                         <div>
                                             <div className="flex items-center gap-2">
                                                 <span className="text-[11px] font-bold text-slate-900 uppercase tracking-wider">
-                                                    Enterprise Auto-Detection
+                                                    Recorded Wage Information
                                                 </span>
-                                                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200/70">
-                                                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                                                    Real-Time Active
+                                                <span role="status" className="text-xs text-slate-600">
+                                                    {autoDetect.isError ? 'Source refresh failed' : 'HR review required'}
                                                 </span>
                                                 {autoDetect.isFetching && (
                                                     <span className="inline-flex items-center gap-1 text-[10px] text-accent font-medium">
@@ -769,11 +780,12 @@ function RetirementPayWorkspace({ exitRequestId, exitLink }) {
                                         <button
                                             type="button"
                                             onClick={handleReapplyDetection}
-                                            title="Sync with verified masterlist and payroll ledger"
-                                            className="text-[11px] font-semibold text-accent hover:text-accent-strong flex items-center gap-1 cursor-pointer transition-colors bg-white hover:bg-slate-50 px-2 py-1 rounded border border-slate-200 shadow-2xs"
+                                            disabled={autoDetect.isFetching}
+                                            title="Refresh and apply recorded wage information"
+                                            className="text-xs font-semibold text-accent hover:text-accent-strong flex items-center gap-1 cursor-pointer transition-colors bg-white hover:bg-slate-50 px-2 py-1 rounded border border-slate-200 shadow-2xs disabled:opacity-50"
                                         >
                                             <i className="ti ti-refresh text-xs" />
-                                            <span>Re-detect / Sync</span>
+                                            <span>Refresh / Apply</span>
                                         </button>
                                     </div>
                                 </div>
@@ -796,21 +808,21 @@ function RetirementPayWorkspace({ exitRequestId, exitLink }) {
                                                 <i className="ti ti-scale text-accent" />
                                                 <strong>{activeDetectedProfile?.doleRule || 'DOLE RA 7641'}</strong>
                                             </span>
-                                            {autoDetect.data?.total_12mo_earnings_recorded > 0 && (
+                                            {detectedSource?.total_12mo_earnings_recorded > 0 && (
                                                 <span className="text-emerald-700 font-mono font-medium">
-                                                    · 12-Mo Payroll: {php(autoDetect.data.total_12mo_earnings_recorded)}
+                                                    · Recorded basic earnings: {php(detectedSource.total_12mo_earnings_recorded)}
                                                 </span>
                                             )}
-                                            {autoDetect.data?.payroll_records_found > 0 && (
+                                            {detectedSource?.payroll_records_found > 0 && (
                                                 <span className="text-slate-400">
-                                                    ({autoDetect.data.payroll_records_found} pay periods verified)
+                                                    ({detectedSource.payroll_records_found} Paid pay periods found)
                                                 </span>
                                             )}
                                         </div>
                                     </div>
                                     <div className="text-right shrink-0">
                                         <span className="text-[10px] uppercase font-bold tracking-wider text-slate-600 block">
-                                            Statutory Wage Basis
+                                            Wage Basis for Review
                                         </span>
                                         <span className="text-xs font-mono font-bold text-accent-strong uppercase">
                                             {form.rate_basis === 'piece_rate' ? 'Piece-Rate (12-Mo ADS)' : form.rate_basis === 'monthly_equivalent' ? 'Monthly Equivalent' : 'Daily Wage'}
@@ -818,6 +830,13 @@ function RetirementPayWorkspace({ exitRequestId, exitLink }) {
                                     </div>
                                 </div>
                             </div>
+
+                            {autoDetect.isError && <div role="alert" className="rounded-md border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
+                                {autoDetect.error.message} Previously entered values have not been verified by this refresh.
+                            </div>}
+                            {detectedSource?.source_issues?.length > 0 && !autoDetect.isError && <ul className="list-disc space-y-1 rounded-md border border-slate-200 bg-white py-2 pl-6 pr-3 text-xs text-slate-700">
+                                {detectedSource.source_issues.map(issue => <li key={issue}>{issue}</li>)}
+                            </ul>}
 
                             <div className="grid sm:grid-cols-2 gap-3">
                                 <Field label="Retirement Date">
@@ -838,7 +857,7 @@ function RetirementPayWorkspace({ exitRequestId, exitLink }) {
                                     />
                                 </Field>
 
-                                <Field label="Verified Wage Basis">
+                                <Field label="Wage Basis for HR Review">
                                     <select
                                         className={inputClass}
                                         required

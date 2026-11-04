@@ -974,18 +974,12 @@ const EmployeeDashboard = () => {
                     {/* Payroll - Always Available */}
                     <div
                         onClick={() => {
-                            if (allPayrolls.length > 0 || latestPayroll) {
-                                setPayslipView('history');
-                                setSelectedPayslipId(null);
-                                setFilterYear('all');
-                                setFilterMonth('all');
-                                setPaySearchQuery('');
-                                setShowPayslipModal(true);
-                            } else if (isFactoryWorker) {
-                                toast('Factory piece-rate pool payouts are distributed per completed production batch.', { id: 'factory-pay-notice' });
-                            } else {
-                                toast.error('No payslips on record.', { id: 'no-payslips-notice' });
-                            }
+                            setPayslipView('history');
+                            setSelectedPayslipId(null);
+                            setFilterYear('all');
+                            setFilterMonth('all');
+                            setPaySearchQuery('');
+                            setShowPayslipModal(true);
                         }}
                         className="relative overflow-hidden bg-accent rounded-lg p-5 sm:p-6 md:p-8 cursor-pointer shadow-2xs select-none"
                     >
@@ -1054,10 +1048,10 @@ const EmployeeDashboard = () => {
                                                 : (isPayHistoryLoading ? 'Checking ledger...' : 'No statements yet')}
                                         </span>
                                     </span>
-                                    <span className="inline-flex items-center gap-1 text-[11px] bg-white/20 px-2 py-0.5 rounded shrink-0">
+                                    <button type="button" aria-label="Open payslips and final pay" className="inline-flex items-center gap-1 text-[11px] bg-white/20 px-2 py-0.5 rounded shrink-0 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white">
                                         <span>Payslips &amp; Final Pay</span>
                                         <i className="ti ti-chevron-right text-[10px]" />
-                                    </span>
+                                    </button>
                                 </div>
                             </div>
                         </div>

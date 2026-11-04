@@ -2,7 +2,7 @@ import express from 'express';
 import { validateApiInput, validateRecordId } from '../middleware/requestValidation.js';
 import multer from 'multer';
 import { supabase } from '../supabaseClient.js';
-import { assertDocumentOwner, assertUuid, DOCUMENT_MAX_BYTES, DOCUMENT_URL_TTL, DocumentError, documentRoute, ensureWritableEmployee, findDocument, listDocuments, normalizeDocumentPath, requireDocumentAdmin, uploadDocument } from '../services/documentService.js';
+import { assertDocumentOwner, assertUuid, DOCUMENT_MAX_BYTES, DOCUMENT_URL_TTL, DocumentError, documentRoute, ensureWritableEmployee, findDocument, listDocuments, resolveDocumentStoragePath, requireDocumentAdmin, uploadDocument } from '../services/documentService.js';
 import { documentClassifier, classificationMime } from '../services/documentClassifier.js';
 import { SIL_WAGE_DOCUMENT_TYPE } from '../../shared/documentTypes.mjs';
 import { importEmployeeDocument, requireBulkAdmin } from '../services/bulkDocumentImport.js';
@@ -84,7 +84,7 @@ router.get('/', documentRoute(async (req, res) => {
 router.get('/:id/url', documentRoute(async (req, res) => {
     const document = await findDocument(client, req.params.id);
     assertDocumentOwner(req.user, document.employee_id);
-    const path = normalizeDocumentPath(document.file_path, document.employee_id, client.supabaseUrl);
+    const path = await resolveDocumentStoragePath(client, document);
     const { data, error } = await client.storage.from('documents').createSignedUrl(path, DOCUMENT_URL_TTL);
     if (error) throw error;
     if (!data?.signedUrl) throw new Error('Storage did not return a signed URL.');

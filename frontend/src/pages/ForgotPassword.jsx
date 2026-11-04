@@ -21,7 +21,7 @@ export default function ForgotPassword() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [successMsg, setSuccessMsg] = useState(null);
-  const [maskedPhone, setMaskedPhone] = useState(restored.maskedPhone || '');
+  const [maskedPhone, setMaskedPhone] = useState(restored.email || '');
   
   // OTP state (for SMS flow)
   const [otp, setOtp] = useState(['', '', '', '', '', '']);
@@ -29,79 +29,12 @@ export default function ForgotPassword() {
   const otpInputsRef = useRef([]);
   const forgotSendLockRef = useRef(false);
   const lastForgotClickRef = useRef(0);
-  const hasUserSelectedMethodRef = useRef(Boolean(restored.method));
   const navigate = useNavigate();
 
-  // Real-time workplace account verification
-  const [accountStatus, setAccountStatus] = useState(email.trim().length >= 3 ? 'checking' : null); // null | 'checking' | 'verified' | 'not_found' | 'no_email' | 'inactive'
-  const [accountInfo, setAccountInfo] = useState(null);
-  const [lookupEmail, setLookupEmail] = useState(email);
-  if (lookupEmail !== email) {
-    setLookupEmail(email);
-    setAccountStatus(email.trim().length >= 3 ? 'checking' : null);
-    setAccountInfo(null);
-  }
-
   const { cooldown, isCooldown, startCooldown } = useOtpCooldown(
-    'pwd_reset_dest_email_' + ((accountInfo?.email || email).trim().toLowerCase() || 'global'),
+    'pwd_reset_dest_email_' + (email.trim().toLowerCase() || 'global'),
     60
   );
-
-  // Real-time low-latency workplace account existence check (<15ms)
-  useEffect(() => {
-    const query = email.trim();
-    if (!query || query.length < 3) {
-      return;
-    }
-
-    const controller = new AbortController();
-
-    const timer = setTimeout(async () => {
-      try {
-        const res = await fetch(`${API_BASE_URL}/api/auth/security/verify-workplace-account`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ identifier: query }),
-          signal: controller.signal
-        });
-        const data = await res.json();
-
-        if (!data.exists) {
-          setAccountStatus('not_found');
-          setAccountInfo({ error: data.error || 'No registered workplace account found.' });
-        } else if (!data.eligible) {
-          if (data.reason === 'pending_registration') {
-            setAccountStatus('pending_registration');
-          } else if (data.hasEmail === false) {
-            setAccountStatus('no_email');
-          } else {
-            setAccountStatus('inactive');
-          }
-          setAccountInfo(data);
-        } else {
-          setAccountStatus('verified');
-          setAccountInfo(data);
-          // Only auto-recommend method if user hasn't explicitly chosen a method tab and is on step 1
-          if (!hasUserSelectedMethodRef.current && step === 1) {
-            if (data.has_totp) {
-              setMethod('totp');
-            } else {
-              setMethod('email');
-            }
-          }
-        }
-      } catch (err) {
-        if (err.name !== 'AbortError') {
-          setAccountStatus(null);
-        }
-      }
-    }, 250);
-
-    return () => {
-      clearTimeout(timer);
-      controller.abort();
-    };
-  }, [email, step]);
 
   // 5-minute code expiration timer
   const [expiryTimer, setExpiryTimer] = useState(() => {
@@ -169,24 +102,6 @@ export default function ForgotPassword() {
     // PATH 1: Google Authenticator (TOTP) - Zero dispatch delay, 100% offline generation
     if (activeMethod === 'totp') {
       try {
-        if (accountStatus === 'pending_registration') {
-          const msg = accountInfo?.error || 'This account has not completed initial registration or forced password change. Self-service password recovery is only available for registered accounts.';
-          setError(msg);
-          toast.error(msg);
-          return;
-        }
-        if (accountStatus === 'not_found') {
-          const msg = 'No registered workplace account matches this email or Employee ID.';
-          setError(msg);
-          toast.error(msg);
-          return;
-        }
-        if (accountStatus === 'verified' && accountInfo && !accountInfo.has_totp) {
-          const msg = 'Google Authenticator 2FA is not configured for this account. Please use Email OTP.';
-          setError(msg);
-          toast.error(msg);
-          return;
-        }
         setMethod('totp');
         setStep(2);
         try {
@@ -237,34 +152,7 @@ export default function ForgotPassword() {
 
     // PATH 3: Standard Dispatch (Email OTP)
     try {
-      if (!isResend) {
-        if (accountStatus === 'pending_registration') {
-          const msg = accountInfo?.error || 'This account has not completed initial registration or forced password change. Self-service recovery is only available for registered accounts. Please sign in with your temporary credentials issued by HR.';
-          setError(msg);
-          toast.error(msg);
-          return;
-        }
-        if (accountStatus === 'not_found') {
-          const msg = 'No registered workplace account matches this email or Employee ID. You can only reset password if you have a registered account.';
-          setError(msg);
-          toast.error(msg);
-          return;
-        }
-        if (accountStatus === 'no_email') {
-          const msg = 'This account does not have a registered workplace email on file. Please contact HR or your supervisor for an in-person credential reset.';
-          setError(msg);
-          toast.error(msg);
-          return;
-        }
-        if (accountStatus === 'inactive') {
-          const msg = `This workplace account is currently ${accountInfo?.status || 'inactive'}. Password recovery is unavailable. Please contact HR.`;
-          setError(msg);
-          toast.error(msg);
-          return;
-        }
-      }
-
-      const targetIdentifier = accountInfo?.email || email.trim().toLowerCase();
+      const targetIdentifier = email.trim().toLowerCase();
       const res = await fetch(`${API_BASE_URL}/api/auth/security/forgot-password`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -298,7 +186,7 @@ export default function ForgotPassword() {
       } catch { /* Retain the existing fallback when optional browser state is unavailable. */ }
       setExpiryTimer(activeSeconds);
 
-      const resolvedMasked = accountInfo?.email || email.trim().toLowerCase();
+      const resolvedMasked = email.trim().toLowerCase();
       const resolvedPreview = data.previewCode || null;
 
       setMaskedPhone(resolvedMasked);
@@ -318,11 +206,7 @@ export default function ForgotPassword() {
         }));
       } catch { /* Retain the existing fallback when optional browser state is unavailable. */ }
 
-      toast.success(
-        isResend
-          ? `Verification code resent to ${resolvedMasked}`
-          : `Verification code dispatched to ${resolvedMasked}`
-      );
+      toast.success('If this account is eligible, check its registered inbox for a verification code.');
     } catch (err) {
       console.error('[FORGOT_PASSWORD_ERROR]', err);
       setError(err.message || 'Unable to connect to security authentication service.');
@@ -334,11 +218,6 @@ export default function ForgotPassword() {
 
   // Seamless Method Switching in Step 1
   const handleSelectMethod = (selectedMethod) => {
-    hasUserSelectedMethodRef.current = true;
-    if (selectedMethod === 'totp' && accountStatus === 'verified' && accountInfo && !accountInfo.has_totp) {
-      toast.error('Google Authenticator 2FA is not configured for this account. Please use Email OTP.');
-      return;
-    }
     setMethod(selectedMethod);
     setError(null);
   };
@@ -359,7 +238,7 @@ export default function ForgotPassword() {
           method: 'email'
         }));
       } catch { /* Retain the existing fallback when optional browser state is unavailable. */ }
-      toast.success(`Switched to Email OTP. Enter the code sent to ${maskedPhone || accountInfo?.email || email}.`);
+      toast.success('Switched to Email OTP. If eligible, enter the code from your registered inbox.');
       setTimeout(() => otpInputsRef.current[0]?.focus(), 50);
       return;
     }
@@ -372,10 +251,6 @@ export default function ForgotPassword() {
   // Seamless Method Switching in Step 2: Switch to Authenticator
   const handleSwitchToTotpInStep2 = () => {
     if (loading) return;
-    if (accountStatus === 'verified' && accountInfo && !accountInfo.has_totp) {
-      toast.error('Google Authenticator 2FA is not configured for this account.');
-      return;
-    }
     setError(null);
     setOtp(['', '', '', '', '', '']);
     setMethod('totp');
@@ -523,14 +398,14 @@ export default function ForgotPassword() {
               <div className="p-3 bg-slate-50 border border-slate-200 rounded-md text-left shadow-2xs">
                 <div className="flex items-center justify-between mb-1">
                   <span className="text-xs font-semibold text-slate-900 flex items-center gap-1.5">
-                    <span>Email code active</span>
+                    <span>Recovery request active</span>
                   </span>
                   <span className="text-[11px] font-mono font-medium text-slate-700 bg-slate-200/80 px-1.5 py-0.5 rounded-sm">
                     {cooldown}s cooldown
                   </span>
                 </div>
                 <p className="text-[11px] text-slate-500 mb-2 leading-relaxed">
-                  A verification code was dispatched to {maskedPhone} and remains valid for 5 minutes.
+                  If this account is eligible, check its registered inbox. Recovery codes expire after 5 minutes.
                 </p>
                 <div className="flex items-center gap-2">
                   <button
@@ -544,38 +419,32 @@ export default function ForgotPassword() {
                     <span>Enter Email Code</span>
                     <i className="ti ti-arrow-right text-xs" />
                   </button>
-                  {accountInfo?.has_totp && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setMethod('totp');
-                        setStep(2);
-                      }}
-                      className="h-8 px-3 bg-white hover:bg-slate-50 border border-slate-300 text-slate-700 rounded-md text-xs font-semibold shadow-2xs flex items-center justify-center gap-1 transition-colors duration-100 cursor-pointer"
-                    >
-                      <span>Use Authenticator</span>
-                    </button>
-                  )}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMethod('totp');
+                      setStep(2);
+                    }}
+                    className="h-8 px-3 bg-white hover:bg-slate-50 border border-slate-300 text-slate-700 rounded-md text-xs font-semibold shadow-2xs flex items-center justify-center gap-1 transition-colors duration-100 cursor-pointer"
+                  >
+                    <span>Use Authenticator</span>
+                  </button>
                 </div>
               </div>
             )}
 
             <div>
               <div className="flex items-center justify-between mb-1 ml-0.5">
-                <label className="block text-xs font-semibold text-slate-700">Workplace Email or Employee ID</label>
-                {accountStatus === 'checking' && (
-                  <span className="text-[10px] text-slate-500 font-medium flex items-center gap-1">
-                    <i className="ti ti-loader-2 animate-spin text-[11px]" />
-                    <span>Verifying...</span>
-                  </span>
-                )}
+                <label htmlFor="recovery-identifier" className="block text-xs font-semibold text-slate-700">Workplace Email or Employee ID</label>
               </div>
               <div className="relative">
                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400 text-sm">
                   <i className="ti ti-mail" />
                 </div>
                 <input maxLength={254}
+                  id="recovery-identifier"
                   type="text"
+                  autoComplete="username"
                   value={email}
                   onChange={(e) => {
                     setEmail(e.target.value);
@@ -584,15 +453,7 @@ export default function ForgotPassword() {
                   required
                   autoFocus
                   placeholder="name@company.com or CP-2026-..."
-                  className={`w-full h-9 pl-9 pr-3 bg-white border rounded-md text-xs text-slate-900 placeholder-slate-400 focus:outline-none transition-colors duration-100 shadow-2xs ${
-                    accountStatus === 'verified'
-                      ? 'border-line focus:border-line'
-                      : accountStatus === 'not_found'
-                      ? 'border-danger focus:border-danger bg-danger-subtle/20'
-                      : accountStatus === 'no_email'
-                      ? 'border-warning focus:border-warning bg-warning-subtle/20'
-                      : 'border-slate-300 focus:border-slate-500'
-                  }`}
+                  className="w-full h-9 pl-9 pr-3 bg-white border border-slate-300 rounded-md text-xs text-slate-900 placeholder-slate-400 focus:outline-none focus:border-slate-500 transition-colors duration-100 shadow-2xs"
                 />
               </div>
             </div>
@@ -607,15 +468,9 @@ export default function ForgotPassword() {
                   className={`h-7 font-medium rounded-sm transition-colors duration-100 cursor-pointer ${
                     method === 'totp'
                       ? 'bg-white text-slate-900 font-semibold shadow-2xs'
-                      : accountStatus === 'verified' && accountInfo && !accountInfo.has_totp
-                      ? 'text-slate-400 hover:text-slate-500'
                       : 'text-slate-600 hover:text-slate-900'
                   }`}
-                  title={
-                    accountStatus === 'verified' && accountInfo && !accountInfo.has_totp
-                      ? 'Google Authenticator 2FA is not configured for this account'
-                      : 'Verify with Google Authenticator'
-                  }
+                  title="Verify with Google Authenticator"
                 >
                   Authenticator
                 </button>
@@ -678,58 +533,15 @@ export default function ForgotPassword() {
               type="submit"
               disabled={
                 loading ||
-                (cooldown > 0 && (method === 'email' || method === 'sms')) ||
-                accountStatus === 'checking' ||
-                accountStatus === 'pending_registration' ||
-                accountStatus === 'not_found' ||
-                accountStatus === 'no_email' ||
-                accountStatus === 'inactive' ||
-                (method === 'totp' && accountStatus === 'verified' && accountInfo && !accountInfo.has_totp)
+                (cooldown > 0 && (method === 'email' || method === 'sms'))
               }
-              className={`w-full h-10 mt-2 text-white font-semibold rounded-md shadow-2xs transition-colors duration-100 flex items-center justify-center gap-2 text-xs disabled:opacity-50 cursor-pointer ${
-                accountStatus === 'not_found'
-                  ? 'bg-danger hover:bg-danger-ink'
-                  : accountStatus === 'pending_registration' || accountStatus === 'no_email'
-                  ? 'bg-warning hover:bg-warning-ink'
-                  : accountStatus === 'inactive'
-                  ? 'bg-slate-500 hover:bg-slate-600'
-                  : 'bg-slate-900 hover:bg-slate-800'
-              }`}
+              aria-busy={loading}
+              className="w-full h-10 mt-2 text-white font-semibold rounded-md shadow-2xs transition-colors duration-100 flex items-center justify-center gap-2 text-xs disabled:opacity-50 cursor-pointer bg-slate-900 hover:bg-slate-800"
             >
               {loading ? (
                 <>
                   <i className="ti ti-loader-2 animate-spin text-sm" />
                   <span>Processing...</span>
-                </>
-              ) : accountStatus === 'checking' ? (
-                <>
-                  <i className="ti ti-loader-2 animate-spin text-sm" />
-                  <span>Checking Directory...</span>
-                </>
-              ) : accountStatus === 'pending_registration' ? (
-                <>
-                  <i className="ti ti-shield-lock text-sm" />
-                  <span>Pending Initial Registration</span>
-                </>
-              ) : accountStatus === 'not_found' ? (
-                <>
-                  <i className="ti ti-ban text-sm" />
-                  <span>No Registered Account</span>
-                </>
-              ) : accountStatus === 'no_email' ? (
-                <>
-                  <i className="ti ti-alert-triangle text-sm" />
-                  <span>No Workplace Email on File</span>
-                </>
-              ) : accountStatus === 'inactive' ? (
-                <>
-                  <i className="ti ti-lock text-sm" />
-                  <span>Account Inactive</span>
-                </>
-              ) : method === 'totp' && accountStatus === 'verified' && accountInfo && !accountInfo.has_totp ? (
-                <>
-                  <i className="ti ti-alert-circle text-sm" />
-                  <span>Authenticator Not Configured</span>
                 </>
               ) : cooldown > 0 && (method === 'email' || method === 'sms') ? (
                 <span>Resend in {cooldown}s</span>
@@ -752,7 +564,7 @@ export default function ForgotPassword() {
                 {method === 'totp' ? (
                   <>Enter the 6-digit code from your <span className="font-semibold text-slate-900">Google Authenticator</span> app</>
                 ) : (
-                  <>Enter the 6-digit code sent to your email <span className="font-semibold text-slate-900">{maskedPhone || accountInfo?.email || email}</span></>
+                  <>If this account is eligible, enter the 6-digit code sent to its registered email.</>
                 )}
               </p>
             </div>
@@ -783,7 +595,7 @@ export default function ForgotPassword() {
               <div className="flex items-start gap-2.5 p-2.5 bg-slate-50 border border-slate-200 rounded-md text-xs text-slate-700">
                 <i className="ti ti-mail-check text-base text-slate-800 shrink-0 mt-0.5" />
                 <p className="text-[11px] leading-relaxed">
-                  Real-time security code dispatched via Brevo Mail Gateway. Please check your inbox and spam folder.
+                  Check your registered inbox and spam folder. If you cannot recover your account, contact HR.
                 </p>
               </div>
             )}
@@ -835,17 +647,15 @@ export default function ForgotPassword() {
                   <span>Don't have your Authenticator app? <span className="font-semibold text-slate-900 underline">Send code to email</span></span>
                 </button>
               ) : (
-                accountInfo?.has_totp && (
-                  <button
-                    type="button"
-                    onClick={handleSwitchToTotpInStep2}
-                    disabled={loading}
-                    className="text-xs text-slate-600 hover:text-slate-900 font-medium inline-flex items-center gap-1.5 transition-colors duration-100 cursor-pointer disabled:opacity-50"
-                  >
-                    <i className="ti ti-shield-lock text-slate-500" />
-                    <span>Prefer your Authenticator app? <span className="font-semibold text-slate-900 underline">Use Authenticator</span></span>
-                  </button>
-                )
+                <button
+                  type="button"
+                  onClick={handleSwitchToTotpInStep2}
+                  disabled={loading}
+                  className="text-xs text-slate-600 hover:text-slate-900 font-medium inline-flex items-center gap-1.5 transition-colors duration-100 cursor-pointer disabled:opacity-50"
+                >
+                  <i className="ti ti-shield-lock text-slate-500" />
+                  <span>Prefer your Authenticator app? <span className="font-semibold text-slate-900 underline">Use Authenticator</span></span>
+                </button>
               )}
             </div>
 

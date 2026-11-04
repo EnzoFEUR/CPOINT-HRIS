@@ -3,7 +3,7 @@ import { postgrestLikeValue } from '../middleware/requestValidation.js';
 import { otpTestMode } from '../services/otpService.js';
 import crypto from 'crypto';
 import { supabase } from '../supabaseClient.js';
-import { verifyOtpCode, sendEmailOtp, sendSmsOtp, getOrGenerateOtp, acquireOtpLock, releaseOtpLock, expireOtpForTesting, createChallenge, reserveAccountChallengeCreation, isProduction } from '../services/otpService.js';
+import { verifyOtpCode, sendEmailOtp, sendSmsOtp, getOrGenerateOtp, acquireOtpLock, releaseOtpLock, expireOtpForTesting, reserveAccountChallengeCreation, isProduction } from '../services/otpService.js';
 import { authenticatorService } from '../services/authenticatorService.js';
 import { createAuditLog } from './auditLogs.js';
 import { invalidateAuthUser, verifyToken, verifyIdentityToken } from '../middleware/authMiddleware.js';
@@ -104,88 +104,39 @@ export function validatePasswordEntropy(password) {
     return { valid: true };
 }
 
-/**
- * POST /api/auth/security/verify-workplace-account
- * Checks recovery eligibility without returning employee profile details.
- * Validates existence, active employment status, and enrolled recovery channels.
- */
-router.post('/verify-workplace-account', async (req, res) => {
-    try {
-        const { identifier } = req.body;
-        if (!identifier || typeof identifier !== 'string' || identifier.trim().length < 3) {
-            return res.json({ exists: false, error: 'Please enter a valid workplace email or Employee ID.' });
-        }
+function isRecoveryEligible(employee) {
+    return Boolean(employee && employee.is_active !== false &&
+        !['terminated', 'suspended'].includes(employee.status) &&
+        typeof employee.email === 'string' && employee.email.trim().length > 3 && employee.email.includes('@') &&
+        (employee.has_registered_biometrics || employee.biometric_baseline_path ||
+            employee.requires_password_change === false || employee.password_changed_at));
+}
 
-        const clean = identifier.trim().toLowerCase();
+function recoveryAccepted(identifier, challenge, method) {
+    return {
+        success: true,
+        method,
+        email: identifier,
+        message: 'If this account is eligible, a verification code will be sent through its registered recovery method.',
+        challengeId: challenge.challengeId,
+        cooldown: 60,
+        expiresIn: challenge.remainingSeconds
+    };
+}
 
-        // Query employees by email OR company_id
-        const { data: emp, error } = await supabase
-            .from('employees')
-            .select('id, auth_user_id, email, status, is_active, requires_password_change, has_registered_biometrics, biometric_baseline_path, password_changed_at')
-            .or(`email.ilike.${postgrestLikeValue(clean)},company_id.ilike.${postgrestLikeValue(clean)}`)
-            .maybeSingle();
+function invalidRecoveryCode(res, retryAfterSeconds = 0) {
+    if (retryAfterSeconds) res.setHeader('Retry-After', String(retryAfterSeconds));
+    return res.status(retryAfterSeconds ? 429 : 400).json({
+        success: false,
+        error: 'Invalid or expired verification code. Try again or use another recovery method.',
+        retryAfterSeconds
+    });
+}
 
-        if (error || !emp) {
-            return res.json({
-                exists: false,
-                error: 'No registered workplace account matches this email or Employee ID.'
-            });
-        }
-
-        // Check if employment is active
-        if (emp.is_active === false || emp.status === 'terminated' || emp.status === 'suspended') {
-            return res.json({
-                exists: true,
-                eligible: false,
-                status: emp.status,
-                error: `This workplace account is currently ${emp.status || 'inactive'}. Please contact HR or System Administrator.`
-            });
-        }
-
-        // Check if account has a registered workplace email
-        const hasRegisteredEmail = Boolean(emp.email && emp.email.trim().length > 3 && emp.email.includes('@'));
-        if (!hasRegisteredEmail) {
-            return res.json({
-                exists: true,
-                eligible: false,
-                hasEmail: false,
-                error: 'Account found, but no workplace email address is registered on file. Please contact HR for in-person credential reset.'
-            });
-        }
-
-        // Strict Registration & Biometrics Policy:
-        // Must either be a registered account (completed initial forced password change) OR have registered biometrics.
-        const hasBiometrics = Boolean(emp.has_registered_biometrics || emp.biometric_baseline_path);
-        const isRegisteredAccount = emp.requires_password_change === false || Boolean(emp.password_changed_at);
-
-        if (!hasBiometrics && !isRegisteredAccount) {
-            return res.json({
-                exists: true,
-                eligible: false,
-                reason: 'pending_registration',
-                error: 'This account has not completed initial registration or forced password change. Self-service password recovery is only available for registered accounts or accounts with enrolled biometrics. Please sign in with your temporary credentials issued by HR.'
-            });
-        }
-
-        // Return recovery availability without exposing the employee profile.
-        let hasTotp = false;
-        const targetUserId = emp.auth_user_id || emp.id;
-        if (targetUserId) {
-            try {
-                hasTotp = (await authenticatorService.status(targetUserId)).enabled;
-            } catch (_) {}
-        }
-
-        return res.json({
-            exists: true,
-            eligible: true,
-            hasEmail: true,
-            email: emp.email,
-            has_totp: hasTotp,
-        });
-    } catch (err) {
-        return res.status(500).json({ exists: false, error: err.message });
-    }
+// Legacy clients must not be able to enumerate employees or enrolled recovery methods.
+router.post('/verify-workplace-account', (_req, res) => {
+    res.set('Cache-Control', 'no-store');
+    return res.json({ success: true, message: 'Choose a recovery method and submit your identifier to continue.' });
 });
 
 /**
@@ -200,7 +151,7 @@ router.post('/forgot-password', async (req, res) => {
         const { email, method = 'sms' } = req.body;
         const clientIp = req.ip || req.headers['x-forwarded-for'] || req.socket.remoteAddress || 'unknown';
 
-        if (!email || typeof email !== 'string') {
+        if (typeof email !== 'string' || email.trim().length < 3 || email.length > 254 || !['email', 'sms'].includes(method)) {
             return res.status(400).json({ success: false, error: 'A valid workplace email is required.' });
         }
 
@@ -223,54 +174,15 @@ router.post('/forgot-password', async (req, res) => {
             .or(`email.ilike.${postgrestLikeValue(normalizedEmail)},company_id.ilike.${postgrestLikeValue(normalizedEmail)}`)
             .maybeSingle();
 
-        // 3. Strict Workplace Verification: Account MUST exist and have an active registered workplace email
+        // Keep eligibility private; only eligible accounts receive a usable challenge.
         if (empErr) throw Object.assign(new Error('Account verification is temporarily unavailable. Please retry shortly.'), { status: 503, code: 'OTP_ACCOUNT_UNAVAILABLE' });
-        if (!emp) {
-            const dummy = createChallenge({ accountId: normalizedEmail, purpose: 'pwd_reset', method, accountExists: false });
-            return res.json({
-                success: true,
-                method: 'email',
-                email: normalizedEmail,
-                message: `6-digit security code dispatched to your email inbox: ${normalizedEmail}`,
-                challengeId: dummy.challengeId,
-                cooldown: 60,
-                expiresIn: dummy.expiresIn
-            });
-        }
-
-        if (emp.is_active === false || emp.status === 'terminated' || emp.status === 'suspended') {
-            return res.status(403).json({
-                success: false,
-                error: `This workplace account is currently ${emp.status || 'inactive'}. Password recovery is unavailable. Please contact HR.`
-            });
-        }
-
-        if (!emp.email || emp.email.trim().length < 3 || !emp.email.includes('@')) {
-            return res.status(400).json({
-                success: false,
-                error: 'This workplace account does not have a registered workplace email on file. Please contact HR/Admin for assistance.'
-            });
-        }
-
-        // 4. Strict Registration & Biometrics Policy:
-        // Recovery codes can ONLY be dispatched to accounts that have enrolled biometrics OR have completed initial account registration / force password change.
-        const hasBiometrics = Boolean(emp.has_registered_biometrics || emp.biometric_baseline_path);
-        const isRegisteredAccount = emp.requires_password_change === false || Boolean(emp.password_changed_at);
-
-        if (!hasBiometrics && !isRegisteredAccount) {
-            return res.status(403).json({
-                success: false,
-                reason: 'pending_registration',
-                error: 'This account has not completed initial registration or forced password change. Self-service password recovery is only permitted for registered accounts or accounts with enrolled biometrics. Please log in with your temporary credentials provided by HR.'
-            });
-        }
-
-        const targetEmail = emp.email.trim().toLowerCase();
-        const userName = `${emp.first_name || ''} ${emp.last_name || ''}`.trim() || 'Colleague';
+        const eligible = isRecoveryEligible(emp);
+        const targetEmail = eligible ? emp.email.trim().toLowerCase() : normalizedEmail;
+        const userName = `${emp?.first_name || ''} ${emp?.last_name || ''}`.trim() || 'Colleague';
 
         // Retrieve registered mobile phone from Supabase Auth identity store
         let userPhone = null;
-        if (method === 'sms' && emp.id) {
+        if (method === 'sms' && eligible && emp.id) {
             try {
                 const { data: authUserData } = await supabase.auth.admin.getUserById(emp.id);
                 userPhone = authUserData?.user?.user_metadata?.phone || authUserData?.user?.phone || null;
@@ -280,7 +192,8 @@ router.post('/forgot-password', async (req, res) => {
         }
 
         // 4.5. Atomic Double-Click & Cooldown Lock Check (Purpose-isolated to prevent cross-action lockups)
-        const lockKeys = [`pwd_reset_${targetEmail}`, `dest_email_pwd_reset_${targetEmail}`];
+        const lockKeys = [...new Set([`pwd_reset_${normalizedEmail}`, `dest_email_pwd_reset_${normalizedEmail}`,
+            `pwd_reset_${targetEmail}`, `dest_email_pwd_reset_${targetEmail}`])];
         if (method === 'sms' && userPhone) {
             lockKeys.push(`dest_phone_pwd_reset_${userPhone}`);
         }
@@ -297,16 +210,27 @@ router.post('/forgot-password', async (req, res) => {
             });
         }
 
+        if (!eligible || (method === 'sms' && !userPhone)) {
+            let committed = false;
+            let reservation;
+            try {
+                // Separate aliases prevent a dummy request from replacing a real recovery challenge.
+                const dummy = getOrGenerateOtp(`pwd_reset_unavailable_${normalizedEmail}`, {
+                    challengeId: req.body.challengeId || req.body.challenge_id,
+                    purpose: 'pwd_reset', method, accountExists: false
+                });
+                if (!dummy.isRotated) reservation = reserveAccountChallengeCreation(normalizedEmail, clientIp);
+                dummy.commit();
+                committed = true;
+                return res.json({ ...recoveryAccepted(normalizedEmail, dummy, method), simulated: false });
+            } finally {
+                if (!committed) reservation?.release();
+                releaseOtpLock(lockKeys, committed);
+            }
+        }
+
         // 5. Method A: SMS OTP Dispatch (Demo Sandbox Code with 1-Click Autofill)
         if (method === 'sms') {
-            if (!userPhone) {
-                releaseOtpLock(lockKeys, false);
-                return res.status(400).json({
-                    success: false,
-                    error: 'No registered corporate phone found for this account. Please select Email Verification.'
-                });
-            }
-
             let smsSucceeded = false;
             let creationReservation;
             try {
@@ -343,13 +267,7 @@ router.post('/forgot-password', async (req, res) => {
                 });
 
                 return res.json({
-                    success: true,
-                    method: 'sms',
-                    challengeId: otpInfo.challengeId,
-                    email: targetEmail,
-                    maskedPhone: maskPhone(userPhone),
-                    message: `6-digit security code sent to ${maskPhone(userPhone)}`,
-                    cooldown: 60,
+                    ...recoveryAccepted(normalizedEmail, otpInfo, 'sms'),
                     simulated: isSimulated,
                     previewCode,
                     reusedExisting: otpInfo.isExisting,
@@ -400,12 +318,7 @@ router.post('/forgot-password', async (req, res) => {
             const previewCode = (!isProduction() && otpTestMode() && isSimulated) ? emailCode : undefined;
 
             return res.json({
-                success: true,
-                method: 'email',
-                email: targetEmail,
-                challengeId: emailOtpInfo.challengeId,
-                message: `6-digit security code dispatched to your email inbox: ${targetEmail}`,
-                cooldown: 60,
+                ...recoveryAccepted(normalizedEmail, emailOtpInfo, 'email'),
                 expiresIn: emailOtpInfo.remainingSeconds,
                 simulated: !isProduction() && isSimulated,
                 previewCode
@@ -442,26 +355,26 @@ if (otpTestMode()) {
 router.post('/verify-reset-otp', async (req, res) => {
     try {
         const { email, otp, method = 'sms' } = req.body;
-        if (!email || !otp) {
-            return res.status(400).json({ success: false, error: 'Email and 6-digit code are required.' });
+        if (typeof email !== 'string' || email.trim().length < 3 || email.length > 254 ||
+            typeof otp !== 'string' || !otp.trim() || otp.length > 128) {
+            return invalidRecoveryCode(res);
         }
 
-        const normalizedEmail = email.trim().toLowerCase();
+        const identifier = email.trim().toLowerCase();
 
-        // Fetch employee details to bind ticket
-        const { data: emp } = await supabase
+        // Resolve the submitted identifier privately and bind proof to the registered email.
+        const { data: emp, error: empErr } = await supabase
             .from('employees')
-            .select('id, auth_user_id, email, role, first_name, last_name')
-            .eq('email', normalizedEmail)
+            .select('id, auth_user_id, email, role, first_name, last_name, status, is_active, requires_password_change, has_registered_biometrics, biometric_baseline_path, password_changed_at')
+            .or(`email.ilike.${postgrestLikeValue(identifier)},company_id.ilike.${postgrestLikeValue(identifier)}`)
             .maybeSingle();
 
-        if (!emp) {
-            return res.status(400).json({ success: false, error: 'Account could not be identified.' });
-        }
+        if (empErr) throw new Error('Recovery lookup unavailable');
+        if (!isRecoveryEligible(emp)) return invalidRecoveryCode(res);
+        const normalizedEmail = emp.email.trim().toLowerCase();
 
         let verifiedVia = 'OTP';
         let isValid = false;
-        let errorMessage = 'Invalid or expired verification code.';
         let authenticatorRetryAfter = 0;
 
         // PATH A: Authenticator TOTP verification
@@ -471,7 +384,6 @@ router.post('/verify-reset-otp', async (req, res) => {
             authenticatorRetryAfter = proof.retryAfterSeconds || 0;
             isValid = proof.valid;
             if (proof.valid) verifiedVia = proof.verifiedVia;
-            else errorMessage = proof.error;
 
             // Bidirectional Omnichannel Fallback: Check if user entered active Email OTP instead
             if (!isValid) {
@@ -500,15 +412,11 @@ router.post('/verify-reset-otp', async (req, res) => {
                 const proof = await authenticatorService.verify(targetUserId, otp);
                 authenticatorRetryAfter = proof.retryAfterSeconds || 0;
                 if (proof.valid) { isValid = true; verifiedVia = proof.verifiedVia; }
-                if (!isValid) {
-                    errorMessage = verifyResult.error;
-                }
             }
         }
 
         if (!isValid) {
-            if (authenticatorRetryAfter) res.setHeader('Retry-After', String(authenticatorRetryAfter));
-            return res.status(authenticatorRetryAfter ? 429 : 400).json({ success: false, error: errorMessage, retryAfterSeconds: authenticatorRetryAfter });
+            return invalidRecoveryCode(res, authenticatorRetryAfter);
         }
 
         // Issue single-use cryptographic Reset Ticket
@@ -584,10 +492,10 @@ router.post('/verify-emergency-key', async (req, res) => {
         const { data: emp, error: empErr } = await supabase
             .from('employees')
             .select('id, auth_user_id, email, role, first_name, last_name, is_active')
-            .eq('email', normalizedEmail)
+            .or(`email.ilike.${postgrestLikeValue(normalizedEmail)},company_id.ilike.${postgrestLikeValue(normalizedEmail)}`)
             .maybeSingle();
 
-        if (empErr || !emp || emp.is_active === false) {
+        if (empErr || !emp || emp.is_active === false || typeof emp.email !== 'string' || !emp.email.includes('@')) {
             return res.status(404).json({ success: false, error: 'No active employee account matching this email.' });
         }
 
@@ -596,7 +504,7 @@ router.post('/verify-emergency-key', async (req, res) => {
         resetTicketStore.set(resetTicket, {
             userId: emp.id,
             authUserId: emp.auth_user_id || emp.id,
-            email: normalizedEmail,
+            email: emp.email.trim().toLowerCase(),
             role: emp.role,
             expiresAt: Date.now() + TICKET_EXPIRATION_MS
         });
