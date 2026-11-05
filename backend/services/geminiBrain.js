@@ -1,7 +1,7 @@
 import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import { generateGemini } from './geminiClient.js';
 import NodeCache from 'node-cache';
 import { createSummaryCache } from './summaryCache.js';
 
@@ -41,68 +41,23 @@ const fallbackWorkforceBriefing = data => ({
 });
 
 // Model configuration with fallback
-const getPrimaryModel = () => process.env.GEMINI_MODEL || 'gemini-2.5-flash';
-const getFallbackModel = () => process.env.GEMINI_FALLBACK_MODEL || 'gemini-flash-lite-latest';
-
-// Initialize GenAI client
-const getGenAI = () => {
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) {
-    throw new Error('GEMINI_API_KEY is not configured in server environment');
-  }
-  return new GoogleGenerativeAI(apiKey);
-};
-
-const generateContentWithDeadline = async (model, contents, timeoutMs, timeoutMessage) => {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(new Error(timeoutMessage)), timeoutMs);
-  try {
-    const result = await model.generateContent(contents, { signal: controller.signal });
-    controller.signal.throwIfAborted();
-    return result.response.text();
-  } catch (err) {
-    throw controller.signal.aborted ? controller.signal.reason : err;
-  } finally {
-    clearTimeout(timer);
-  }
-};
+const getPrimaryModel = () => process.env.GEMINI_BIOMETRIC_MODEL || process.env.GEMINI_MODEL || 'gemini-3.8-flash';
+const getFallbackModel = () => process.env.GEMINI_BIOMETRIC_FALLBACK_MODEL || process.env.GEMINI_FALLBACK_MODEL;
 
 // Execute prompt with timeout and fallback
 const executeGemini = async (prompt, systemInstruction = '', options = {}) => {
-  const genAI = getGenAI();
   const timeoutMs = options.timeoutMs || parseInt(process.env.GEMINI_TIMEOUT_MS, 10) || 12000;
-
-  const tryModel = async (modelName) => {
-    const model = genAI.getGenerativeModel({
-      model: modelName,
-      systemInstruction: systemInstruction || undefined,
-      generationConfig: {
+  return generateGemini({
+      task: 'summary', models: [process.env.GEMINI_SUMMARY_MODEL || 'gemini-3.5-flash-lite', process.env.GEMINI_SUMMARY_FALLBACK_MODEL || 'gemini-3.8-flash'],
+      contents: options.contents || prompt, timeoutMs,
+      config: {
+        systemInstruction: systemInstruction || undefined,
         temperature: options.temperature ?? 0.2,
-        topK: options.topK ?? 40,
         topP: options.topP ?? 0.95,
-        responseMimeType: options.isJson ? 'application/json' : undefined
+        responseMimeType: options.isJson ? 'application/json' : undefined,
+        maxOutputTokens: options.maxOutputTokens || 1024,
       }
-    });
-
-    return generateContentWithDeadline(
-      model, options.contents || prompt, timeoutMs, `Gemini timeout after ${timeoutMs}ms`
-    );
-  };
-
-  const primaryModel = getPrimaryModel();
-  const fallbackModel = getFallbackModel();
-
-  try {
-    return await tryModel(primaryModel);
-  } catch (primaryErr) {
-    console.warn(`[GEMINI_BRAIN] Primary model (${primaryModel}) note: ${primaryErr.message}. Attempting fallback to ${fallbackModel}...`);
-    try {
-      return await tryModel(fallbackModel);
-    } catch (fallbackErr) {
-      console.error(`[GEMINI_BRAIN] Fallback model error: ${fallbackErr.message}`);
-      throw fallbackErr;
-    }
-  }
+  });
 };
 
 // Parse JSON from model output
@@ -114,8 +69,8 @@ const safeParseJson = (rawText, fallback = {}) => {
       .replace(/```\s*/gi, '')
       .trim();
     return JSON.parse(cleaned);
-  } catch (err) {
-    console.warn('[GEMINI_BRAIN] JSON parse fallback used:', err.message);
+  } catch {
+    console.warn('[GEMINI_BRAIN] JSON parse fallback used.');
     return fallback;
   }
 };
@@ -124,7 +79,6 @@ export const Brain = {
   Biometrics: {
     // Single-frame liveness verification
     async checkLiveness(imageBuffer, isEnrollment = false) {
-      const genAI = getGenAI();
       const primaryModel = getPrimaryModel();
       const fallbackModel = getFallbackModel();
       const base64Data = imageBuffer.toString('base64');
@@ -166,10 +120,13 @@ Respond with strictly valid JSON:
   "reason": "string: concise forensic justification"
 }`;
 
-      const runLiveness = async (modelName) => {
-        const model = genAI.getGenerativeModel({
-          model: modelName,
-          generationConfig: {
+      const runLiveness = async () => {
+        return generateGemini({ models: [primaryModel, fallbackModel], task: 'biometric_enrollment',
+          timeoutMs: parseInt(process.env.GEMINI_TIMEOUT_MS, 10) || 15000,
+          mimeType: 'image/jpeg',
+          contents: [{ text: prompt }, { inlineData: { data: base64Data, mimeType: 'image/jpeg' } }],
+          config: {
+            maxOutputTokens: 1024,
             responseMimeType: 'application/json',
             ...(isEnrollment ? { responseSchema: {
               type: 'object',
@@ -184,21 +141,10 @@ Respond with strictly valid JSON:
             } } : {})
           }
         });
-        const livenessTimeoutMs = parseInt(process.env.GEMINI_TIMEOUT_MS, 10) || 15000;
-        return generateContentWithDeadline(model, [
-          prompt,
-          { inlineData: { data: base64Data, mimeType: 'image/jpeg' } }
-        ], livenessTimeoutMs, `Liveness timeout (${modelName})`);
       };
 
       try {
-        let rawText;
-        try {
-          rawText = await runLiveness(primaryModel);
-        } catch (primErr) {
-          console.warn(`[BRAIN_BIOMETRICS] Liveness primary model note: ${primErr.message}. Trying fallback ${fallbackModel}...`);
-          rawText = await runLiveness(fallbackModel);
-        }
+        const rawText = await runLiveness();
 
         const parsed = safeParseJson(rawText, null);
         if (!parsed || typeof parsed.is_real_person !== 'boolean' ||
@@ -243,7 +189,6 @@ Respond with strictly valid JSON:
 
     // Compare live capture against baseline photo
     async verifyIdentityMatch(liveCameraBuffer, baselineBuffer, options = {}) {
-      const genAI = getGenAI();
       const primaryModel = getPrimaryModel();
       const fallbackModel = getFallbackModel();
 
@@ -280,27 +225,18 @@ Respond with strictly valid JSON:
   "reason": "string: clear forensic summary"
 }`;
 
-      const runMatch = async (modelName) => {
-        const model = genAI.getGenerativeModel({
-          model: modelName,
-          generationConfig: { responseMimeType: 'application/json' }
-        });
-        const matchTimeoutMs = parseInt(process.env.GEMINI_TIMEOUT_MS, 10) || 15000;
-        return generateContentWithDeadline(model, [
-          prompt,
+      const runMatch = async () => {
+        return generateGemini({ models: [primaryModel, fallbackModel], task: 'biometric_attendance',
+          timeoutMs: parseInt(process.env.GEMINI_TIMEOUT_MS, 10) || 15000, mimeType: 'image/jpeg',
+          config: { responseMimeType: 'application/json', maxOutputTokens: 1024 },
+          contents: [{ text: prompt },
           { inlineData: { data: liveBase64, mimeType: 'image/jpeg' } },
           { inlineData: { data: baselineBase64, mimeType: 'image/jpeg' } }
-        ], matchTimeoutMs, `Dual biometric timeout (${modelName})`);
+        ] });
       };
 
       try {
-        let rawText;
-        try {
-          rawText = await runMatch(primaryModel);
-        } catch (primErr) {
-          console.warn(`[BRAIN_BIOMETRICS] Dual-match primary model note: ${primErr.message}. Trying fallback ${fallbackModel}...`);
-          rawText = await runMatch(fallbackModel);
-        }
+        const rawText = await runMatch();
 
         const parsed = safeParseJson(rawText, null);
         if (!parsed || typeof parsed.is_same_person !== 'boolean' || typeof parsed.is_live_person !== 'boolean' ||

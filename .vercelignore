@@ -1,0 +1,26 @@
+# Local research tools and QA artifacts are not deployment inputs.
+.temp/
+temp/
+reports/
+docs/
+tests/
+backend/tests/
+benchmarks/
+monitoring/
+scripts/
+supabase/
+
+# Install dependencies and build the frontend on Vercel.
+node_modules/
+frontend/dist/
+
+# Keep local credentials, logs and capstone exports out of the upload.
+**/.env*
+*.log
+/*.pdf
+/*.docx
+/*.xlsx
+/*.xls
+/C-Point_HRIS_*Appendix*
+/C-Point_HRIS_ALL_SOURCE_CODE.*
+/C-Point_HRIS_Capstone_Code_Viewer.html

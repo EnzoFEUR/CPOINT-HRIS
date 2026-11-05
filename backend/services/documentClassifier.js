@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
-import { GoogleGenerativeAI, SchemaType } from '@google/generative-ai';
+import { Type as SchemaType } from '@google/genai';
+import { generateGemini } from './geminiClient.js';
 import { DOCUMENT_TYPES, DOCUMENT_TYPE_IDS, DOCUMENT_CATEGORIES, CLASSIFICATION_EVIDENCE, getDocumentType } from '../../shared/documentTypes.mjs';
 import { DocumentError, DOCUMENT_MAX_BYTES } from './documentService.js';
 import { classifyPdfText, cleanDocumentText, documentDate, normalizeDocumentId, reconcileIdentity } from './documentIntelligence.js';
@@ -106,29 +107,41 @@ NBI: National Bureau of Investigation clearance; NBI ID and printed expiry. Poli
 Owner name only, as printed; never employer, signatory, physician or dependent. Null when ownership is ambiguous. IDs only when fully legible; do not fix guessed digits. Dates only when explicitly labeled and unambiguous; ISO YYYY-MM-DD or null. Do not infer NBI/police/barangay/medical expiry from generic validity periods. Do not infer dates from a filename. No extra personal fields or OCR transcript. Quality score is a qualitative estimate, not a calibrated probability. Human confirmation is always required.`;
 
 export function classificationModels() {
-    return [...new Set([process.env.DOCUMENT_CLASSIFICATION_MODEL || process.env.GEMINI_FALLBACK_MODEL || 'gemini-3.1-flash-lite', process.env.GEMINI_MODEL || 'gemini-flash-lite-latest'])];
+    return [...new Set([process.env.DOCUMENT_CLASSIFICATION_MODEL || 'gemini-3.5-flash-lite', process.env.DOCUMENT_CLASSIFICATION_FALLBACK_MODEL || 'gemini-3.8-flash'])];
 }
 
-async function geminiProvider({ file, mimeType, signal }) {
-    const part = mimeType === 'text/plain' ? { text: `Untrusted document contents:\n${file.buffer.toString('utf8')}` } : { inlineData: { mimeType, data: file.buffer.toString('base64') } };
-    const models = classificationModels();
-    for (let index = 0; index < models.length; index++) {
-        signal.throwIfAborted();
-        try {
-            const model = new GoogleGenerativeAI(process.env.GEMINI_API_KEY).getGenerativeModel({
-                model: models[index], systemInstruction: instruction,
-                generationConfig: { temperature: 0, maxOutputTokens: 2048, responseMimeType: 'application/json', responseSchema },
-            });
-            const result = await model.generateContent([{ text: 'Classify and extract the document using only its contents.' }, part], { signal });
-            return JSON.parse(result.response.text());
-        } catch (error) {
-            if (signal.aborted || index === models.length - 1 || ![404, 429, 500, 503].includes(error.status)) throw error;
+export function createGeminiDocumentProvider(generate = generateGemini) {
+    return async function geminiProvider({ file, mimeType, signal }) {
+        const part = mimeType === 'text/plain' ? { text: `Untrusted document contents:\n${file.buffer.toString('utf8')}` } : { inlineData: { mimeType, data: file.buffer.toString('base64') } };
+        const models = classificationModels(), started = Date.now();
+        const run = async candidates => JSON.parse(await generate({ models: candidates, task: 'document', mimeType, signal,
+            timeoutMs: Math.max(1, 15000 - (Date.now() - started)),
+            contents: [{ text: 'Classify and extract the document using only its contents.' }, part],
+            config: { systemInstruction: instruction, temperature: 0, maxOutputTokens: 2048, responseMimeType: 'application/json', responseSchema } }));
+        let result;
+        try { result = await run([models[0]]); }
+        catch (error) {
+            if (signal.aborted || models.length < 2 || ![404, 500, 502, 503, 504].includes(error.status)) throw error;
+            return run([models[1]]);
         }
-    }
+        // A clearly denied/unknown file stays manual; do not ask models until one approves it.
+        if (models.length > 1 && result.document_type !== 'unknown' && result.is_readable === true &&
+            result.multiple_documents === false && result.conflicting_agencies === false && result.confidence === 'medium') {
+            const escalated = await run([models[1]]);
+            const owner = value => cleanDocumentText(value)?.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase().match(/[\p{L}\p{N}]+/gu)?.sort().join(' ');
+            if (escalated.document_type !== result.document_type ||
+                escalated.id_number && result.id_number && normalizeDocumentId(result.document_type, escalated.id_number) !== normalizeDocumentId(result.document_type, result.id_number) ||
+                owner(escalated.full_name_on_document) && owner(result.full_name_on_document) && owner(escalated.full_name_on_document) !== owner(result.full_name_on_document)) return null;
+            return escalated;
+        }
+        return result;
+    };
 }
+const geminiProvider = createGeminiDocumentProvider();
 
 export function createDocumentClassifier({ provider = geminiProvider, pdfText = extractDocumentPdfText, configured = () => Boolean(process.env.GEMINI_API_KEY), now = Date.now, timeoutMs = 15000, maxConcurrent = 12, maxPerActor = 6, rateLimit = 120, rateWindowMs = 10 * 60 * 1000 } = {}) {
     const cache = new Map();
+    const pending = new Map();
     const actors = new Map();
     let active = 0;
     // Reserve before multipart buffering, including cached/unsupported requests.
@@ -160,15 +173,43 @@ export function createDocumentClassifier({ provider = geminiProvider, pdfText = 
         const mimeType = classificationMime(file);
         if (!mimeType) return finish(manualClassification('unsupported'));
         const model = classificationModels().join(':');
-        const key = `${actorId}:${model}:${mimeType}:${createHash('sha256').update(file.buffer).digest('hex')}`;
+        const key = `v2:${actorId}:${model}:${mimeType}:${createHash('sha256').update(file.buffer).digest('hex')}`;
         for (const [hash, entry] of cache) if (entry.expires <= now()) cache.delete(hash);
         if (cache.has(key)) {
             const result = cache.get(key).result;
             return finish({ ...result, is_expired: Boolean(result.expiry_date && result.expiry_date < new Date(now() + 8 * 3600000).toISOString().slice(0, 10)) }, true);
         }
-        const controller = new AbortController();
-        const abort = () => controller.abort(signal.reason);
-        signal?.addEventListener('abort', abort, { once: true });
+        let job = pending.get(key);
+        if (!job) {
+            const controller = new AbortController();
+            job = { controller, subscribers: 0 };
+            pending.set(key, job);
+            job.promise = Promise.resolve().then(() => extract(file, mimeType, controller)).finally(() => {
+                if (pending.get(key) === job) pending.delete(key);
+            });
+        }
+        job.subscribers++;
+        let rejectAbort;
+        const aborted = new Promise((_, reject) => { rejectAbort = () => reject(signal.reason); });
+        signal?.addEventListener('abort', rejectAbort, { once: true });
+        try {
+            signal?.throwIfAborted();
+            const result = await Promise.race([job.promise, aborted]);
+            signal?.throwIfAborted();
+            if (result.source !== 'manual') {
+                if (cache.size >= 100) cache.delete(cache.keys().next().value);
+                cache.set(key, { expires: now() + CACHE_TTL, result });
+            }
+            return finish(result);
+        } finally {
+            signal?.removeEventListener('abort', rejectAbort);
+            if (--job.subscribers === 0) {
+                if (pending.get(key) === job) pending.delete(key);
+                job.controller.abort(new Error('Document analysis no longer needed.'));
+            }
+        }
+    }
+    async function extract(file, mimeType, controller) {
         const timer = setTimeout(() => controller.abort(new Error('Classification timeout')), timeoutMs);
         let rejectAbort;
         const aborted = new Promise((_, reject) => { rejectAbort = () => reject(controller.signal.reason); });
@@ -187,19 +228,13 @@ export function createDocumentClassifier({ provider = geminiProvider, pdfText = 
             };
             const result = await Promise.race([operation(), aborted]);
             controller.signal.throwIfAborted();
-            if (result.source !== 'manual') {
-                if (cache.size >= 100) cache.delete(cache.keys().next().value);
-                cache.set(key, { expires: now() + CACHE_TTL, result });
-            }
-            return finish(result);
+            return result;
         } catch (error) {
-            if (signal?.aborted) signal.throwIfAborted();
             // Never log raw document data, model responses, API keys, or provider URLs.
             const reason = controller.signal.aborted ? 'timeout' : [401, 403, 404].includes(error.status) ? 'provider_access' : [429, 503].includes(error.status) ? 'provider_busy' : error instanceof SyntaxError ? 'invalid_response' : 'unavailable';
-            return finish(manualClassification(reason));
+            return manualClassification(reason);
         } finally {
             clearTimeout(timer);
-            signal?.removeEventListener('abort', abort);
             controller.signal.removeEventListener('abort', rejectAbort);
         }
     }
