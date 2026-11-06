@@ -2153,7 +2153,9 @@ router.get('/factory-logs', requirePayrollManager, async (req, res) => {
 
         let resolvedGroupId = (production_group_id && isValidUUID(production_group_id)) ? production_group_id : null;
         if (!resolvedGroupId && group_name) {
-            const { data: grp } = await supabase.from('production_groups').select('id').ilike('name', group_name.trim()).maybeSingle();
+            const { data: grp, error } = await supabase.from('production_groups').select('id').ilike('name', group_name.trim()).maybeSingle();
+            if (error) throw error;
+            if (!grp) return res.status(404).json({ error: 'Production group not found.' });
             if (grp?.id) resolvedGroupId = grp.id;
         }
 
@@ -2169,31 +2171,8 @@ router.get('/factory-logs', requirePayrollManager, async (req, res) => {
             query = query.gte('period_start', period_start);
         }
 
-        let { data, error } = await query.order('created_at', { ascending: true });
+        const { data, error } = await query.order('created_at', { ascending: true });
         if (error) throw error;
-
-        // Enterprise Fallback: If no records match this exact cutoff period, load group's latest saved batch operations
-        if ((!data || data.length === 0) && resolvedGroupId) {
-            const { data: latestData } = await supabase
-                .from('factory_production_logs')
-                .select('*')
-                .eq('production_group_id', resolvedGroupId)
-                .order('updated_at', { ascending: false })
-                .order('period_end', { ascending: false })
-                .limit(30);
-
-            if (latestData && latestData.length > 0) {
-                const seenOps = new Set();
-                const uniqueLatest = [];
-                for (const row of latestData) {
-                    if (!seenOps.has(row.operation)) {
-                        seenOps.add(row.operation);
-                        uniqueLatest.push(row);
-                    }
-                }
-                data = uniqueLatest;
-            }
-        }
 
         // Map directly into the UI expected schema
         const rows = (data || []).map(r => ({
@@ -2227,23 +2206,32 @@ router.post('/factory-logs', requirePayrollManager, async (req, res) => {
         }
         const inputError = getFactoryRowsError(rows);
         if (inputError) return res.status(400).json({ error: inputError });
+        if (!isLeaveDate(period_start) || !isLeaveDate(period_end) || period_end < period_start
+            || Date.parse(period_end) - Date.parse(period_start) > 4 * 86400000) {
+            return res.status(400).json({ error: 'Choose a valid factory payroll cutoff of up to five days.' });
+        }
 
         let resolvedGroupId = (production_group_id && isValidUUID(production_group_id)) ? production_group_id : null;
         if (!resolvedGroupId && group_name) {
-            const { data: grp } = await supabase.from('production_groups').select('id').ilike('name', group_name.trim()).maybeSingle();
+            const { data: grp, error } = await supabase.from('production_groups').select('id').ilike('name', group_name.trim()).maybeSingle();
+            if (error) throw error;
             if (grp?.id) resolvedGroupId = grp.id;
         }
+        if (!resolvedGroupId) return res.status(400).json({ error: 'Select a valid production group.' });
 
-        const pStart = period_start || new Date().toISOString().split('T')[0];
-        const pEnd = period_end || new Date().toISOString().split('T')[0];
+        const pStart = period_start;
+        const pEnd = period_end;
 
-        // Fetch existing rows for this group to resolve existing stable UUIDs
+        // Resolve row IDs only within this cutoff; previous production is immutable here.
         let existingRows = [];
         if (resolvedGroupId) {
-            const { data: dbExisting } = await supabase
+            const { data: dbExisting, error } = await supabase
                 .from('factory_production_logs')
                 .select('id, operation, production_group_id, period_start, period_end')
-                .eq('production_group_id', resolvedGroupId);
+                .eq('production_group_id', resolvedGroupId)
+                .eq('period_start', pStart)
+                .eq('period_end', pEnd);
+            if (error) throw error;
             existingRows = dbExisting || [];
         }
 
@@ -2288,12 +2276,14 @@ router.post('/factory-logs', requirePayrollManager, async (req, res) => {
 
         if (error) throw error;
 
-        // Clean up any stale operations removed by the user for this group
+        // Remove operations only from the cutoff that was just saved.
         if (resolvedGroupId && existingRows.length > 0) {
             const savedIds = new Set((data || []).map(r => r.id));
             const staleIds = existingRows.filter(er => !savedIds.has(er.id)).map(er => er.id);
             if (staleIds.length > 0) {
-                await supabase.from('factory_production_logs').delete().in('id', staleIds);
+                const { error: cleanupError } = await supabase.from('factory_production_logs').delete()
+                    .eq('production_group_id', resolvedGroupId).eq('period_start', pStart).eq('period_end', pEnd).in('id', staleIds);
+                if (cleanupError) throw cleanupError;
             }
         }
 

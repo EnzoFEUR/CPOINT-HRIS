@@ -1,4 +1,4 @@
-import { parentPort, workerData } from 'node:worker_threads';
+const workerData = await new Promise(resolve => process.once('message', resolve));
 
 let document;
 let result = null;
@@ -30,5 +30,5 @@ try {
 } finally {
     try { await document?.destroy(); } catch { result = null; }
 }
-// Complete PDF cleanup before the parent is allowed to terminate this worker.
-parentPort.postMessage(result);
+// Send only extracted text; the parent closes this isolated parser process.
+process.send(result);

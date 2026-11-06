@@ -1,4 +1,5 @@
 import { getSeparationLabel } from '../../../shared/employmentExit.mjs';
+import { formatManilaTime } from '../../../shared/monthlyAttendance.mjs';
 import OfficialPayslipDocument from '../components/OfficialPayslipDocument';
 import EmployeeRetirementStatements from '../components/EmployeeRetirementStatements';
 import OfficialRemunerationHistoryDocument from '../components/OfficialRemunerationHistoryDocument';
@@ -1659,7 +1660,7 @@ const EmployeeDashboard = () => {
                                                     {logDate.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
                                                 </p>
                                                 <p className="text-[10px] sm:text-xs text-slate-400 font-mono">
-                                                    {log.time_in ? new Date(`1970-01-01T${log.time_in}`).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '--:--'} - {log.time_out ? new Date(`1970-01-01T${log.time_out}`).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '--:--'}
+                                                    {formatManilaTime(log.time_in) || '--:--'} - {formatManilaTime(log.time_out) || '--:--'}
                                                 </p>
                                             </div>
                                         </div>

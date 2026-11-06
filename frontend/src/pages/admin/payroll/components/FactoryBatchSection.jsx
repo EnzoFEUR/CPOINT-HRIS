@@ -11,6 +11,8 @@ const FactoryBatchSection = ({
     workerPayrollMap,
     isLoadingEmployees,
     isLoadingGroupAttendance,
+    productionLoading,
+    productionError,
     breakdownSearch,
     setBreakdownSearch,
     breakdownFilter,
@@ -60,6 +62,9 @@ const FactoryBatchSection = ({
                     <span>{selectedGroup ? 'Edit Operations & Rates' : 'Select Group & Configure'}</span>
                 </button>
             </div>
+
+            {productionLoading && <p role="status" className="text-sm text-slate-500">Loading production for this cutoff...</p>}
+            {productionError && <p role="alert" className="text-sm text-danger-ink">{productionError}</p>}
 
             {/* Absentee Warning & Declaration Trigger */}
             {selectedGroup && absenteeCount > 0 && (

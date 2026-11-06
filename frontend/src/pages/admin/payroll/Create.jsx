@@ -6,7 +6,7 @@ import { isLastCutoffOfDecember } from '../../../../../shared/thirteenthMonth.mj
 import { getUser } from '../../../routes/guards';
 import { getEmployeeRestDays, getScheduledWorkDates, calculateTardiness, DEFAULT_WORK_POLICY, getManilaWorkDate } from '../../../../../shared/workPolicy.mjs';
 import {isLeaveDate} from '../../../../../shared/leaveCredits.mjs';
-import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate, useLocation, useSearchParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { fetchWithAuth } from '../../../utils/api';
@@ -47,6 +47,7 @@ const PayrollCreate = () => {
     const location = useLocation();
     const [searchParams] = useSearchParams();
     const queryClient = useQueryClient();
+    const payrollActorId = getUser()?.id;
 
     // Mode state: 'batch' (Factory Group) | 'single' (Individual Employee)
     const [entryMode, setEntryMode] = useState('batch');
@@ -118,17 +119,7 @@ const PayrollCreate = () => {
         initialCutoff.period_end
     );
 
-    // Stable refs for realtime sync across client sessions
-    const selectedGroupRef = useRef(selectedGroup);
-    const productionGroupsRef = useRef(productionGroups);
-    const periodStartRef = useRef(periodStart);
-    const periodEndRef = useRef(periodEnd);
     const lastCalcKeyRef = useRef('');
-
-    useEffect(() => { selectedGroupRef.current = selectedGroup; }, [selectedGroup]);
-    useEffect(() => { productionGroupsRef.current = productionGroups; }, [productionGroups]);
-    useEffect(() => { periodStartRef.current = periodStart; }, [periodStart]);
-    useEffect(() => { periodEndRef.current = periodEnd; }, [periodEnd]);
 
     // Single Entry Form Data
     const [formData, setFormData] = useState(() => ({
@@ -142,16 +133,31 @@ const PayrollCreate = () => {
     }));
 
     const DEFAULT_FACTORY_ROWS = useMemo(() => [
-        { id: 1, operation: 'Cutter', stock_no: 'Formal', quantity_in: '100', amount: '10.00', assignedEmployeeIds: [] },
-        { id: 2, operation: 'Marking', stock_no: 'Formal', quantity_in: '100', amount: '5.00', assignedEmployeeIds: [] },
-        { id: 3, operation: 'Areglo', stock_no: 'Formal', quantity_in: '100', amount: '50.00', assignedEmployeeIds: [] },
-        { id: 4, operation: 'Sapatero (Lapat/Swelas)', stock_no: 'Formal', quantity_in: '100', amount: '100.00', assignedEmployeeIds: [] },
-        { id: 5, operation: 'Alamoda', stock_no: 'Formal', quantity_in: '100', amount: '10.00', assignedEmployeeIds: [] },
-        { id: 6, operation: 'Finishing', stock_no: 'Formal', quantity_in: '100', amount: '20.00', assignedEmployeeIds: [] },
+        { id: 1, operation: 'Cutter', stock_no: 'Formal', quantity_in: '0', amount: '10.00', assignedEmployeeIds: [] },
+        { id: 2, operation: 'Marking', stock_no: 'Formal', quantity_in: '0', amount: '5.00', assignedEmployeeIds: [] },
+        { id: 3, operation: 'Areglo', stock_no: 'Formal', quantity_in: '0', amount: '50.00', assignedEmployeeIds: [] },
+        { id: 4, operation: 'Sapatero (Lapat/Swelas)', stock_no: 'Formal', quantity_in: '0', amount: '100.00', assignedEmployeeIds: [] },
+        { id: 5, operation: 'Alamoda', stock_no: 'Formal', quantity_in: '0', amount: '10.00', assignedEmployeeIds: [] },
+        { id: 6, operation: 'Finishing', stock_no: 'Formal', quantity_in: '0', amount: '20.00', assignedEmployeeIds: [] },
     ], []);
 
-    // Factory Batch Sheet Operations Table State
-    const [factoryRows, setFactoryRows] = useState(DEFAULT_FACTORY_ROWS);
+    // Production quantities belong to one actor, group and cutoff.
+    const factoryLogsQuery = useQuery({
+        queryKey: ['factoryPayrollLogs', payrollActorId, selectedGroup, periodStart, periodEnd],
+        queryFn: async ({ signal }) => {
+            const params = new URLSearchParams({ group_name: selectedGroup, period_start: periodStart, period_end: periodEnd });
+            const response = await fetchWithAuth(`/api/payroll/factory-logs?${params}`, { signal });
+            const result = await response.json();
+            if (!response.ok || result?.success !== true || !Array.isArray(result?.data)) {
+                throw new Error(result?.error || 'Unable to load production for this cutoff.');
+            }
+            return result.data;
+        },
+        enabled: Boolean(payrollActorId && selectedGroup && periodStart && periodEnd),
+        staleTime: 10_000,
+        retry: 1,
+    });
+    const factoryRows = !factoryLogsQuery.isError && factoryLogsQuery.data?.length ? factoryLogsQuery.data : DEFAULT_FACTORY_ROWS;
 
     // Modal & UI State
     const [isEmpModalOpen, setIsEmpModalOpen] = useState(false);
@@ -413,149 +419,28 @@ const PayrollCreate = () => {
         }
     };
 
-    // Save Factory Piece Rows Callback
+    // Publish production inputs only after the server confirms this exact cutoff.
     const handleSaveFactoryPiece = async (updatedRows, shouldClose = true, targetGroupName = null) => {
         if (!Array.isArray(updatedRows)) return;
         const groupToSave = targetGroupName || selectedGroup;
         if (!groupToSave) return;
-
-        if (groupToSave === selectedGroup) {
-            setFactoryRows(updatedRows);
-        }
-
+        const group = productionGroups.find(item => item.name === groupToSave);
+        const key = ['factoryPayrollLogs', payrollActorId, groupToSave, periodStart, periodEnd];
         try {
-            localStorage.setItem(`hris_factory_piece_rows_${groupToSave}`, JSON.stringify(updatedRows));
-        } catch { /* Best-effort browser cache or fallback lookup. */ }
-
-        const groups = productionGroupsRef.current || productionGroups;
-        let groupObj = groups.find(g => g.name === groupToSave);
-        let resolvedGroupId = groupObj?.id || null;
-
-        if (!resolvedGroupId && groupToSave) {
-            try {
-                const { data: grp } = await supabase
-                    .from('production_groups')
-                    .select('id')
-                    .ilike('name', groupToSave.trim())
-                    .maybeSingle();
-                if (grp?.id) resolvedGroupId = grp.id;
-            } catch { /* Best-effort browser cache or fallback lookup. */ }
-        }
-
-        try {
-            let existingRows = [];
-            if (resolvedGroupId) {
-                const { data: dbExisting } = await supabase
-                    .from('factory_production_logs')
-                    .select('id, operation, production_group_id')
-                    .eq('production_group_id', resolvedGroupId);
-                existingRows = dbExisting || [];
-            }
-
-            const existingById = new Map(existingRows.map(r => [r.id, r]));
-            const existingByOp = new Map(existingRows.map(r => [(r.operation || '').trim().toLowerCase(), r]));
-
-            const upsertPayloads = updatedRows.map(r => {
-                const qty = parseFloat(r.quantity_in) || 0;
-                const baseAmt = parseFloat(r.amount) || 0;
-                const opName = (r.operation || 'General Operation').trim();
-
-                let targetId = (r.id && existingById.has(r.id)) ? r.id : null;
-                if (!targetId && existingByOp.has(opName.toLowerCase())) {
-                    targetId = existingByOp.get(opName.toLowerCase()).id;
-                }
-
-                const payload = {
-                    production_group_id: resolvedGroupId,
-                    period_start: periodStart,
-                    period_end: periodEnd,
-                    operation: opName,
-                    stock_no: r.stock_no || 'Formal',
-                    quantity_in: qty,
-                    amount: baseAmt,
-                    total_amount: parseFloat((qty * baseAmt).toFixed(2)),
-                    assigned_worker_ids: Array.isArray(r.assignedEmployeeIds) ? r.assignedEmployeeIds : [],
-                    updated_at: new Date().toISOString()
-                };
-                if (targetId) payload.id = targetId;
-                return payload;
-            });
-
-            const { data: savedData, error: upsertErr } = await supabase
-                .from('factory_production_logs')
-                .upsert(upsertPayloads, { onConflict: 'id' })
-                .select('*');
-
-            if (!upsertErr && savedData && savedData.length > 0) {
-                const formatted = savedData.map(r => ({
-                    id: r.id,
-                    operation: r.operation,
-                    stock_no: r.stock_no || 'Formal',
-                    quantity_in: String(r.quantity_in ?? 0),
-                    amount: String(r.amount ?? 0),
-                    assignedEmployeeIds: Array.isArray(r.assigned_worker_ids) ? r.assigned_worker_ids : []
-                }));
-
-                if (selectedGroupRef.current === groupToSave) {
-                    setFactoryRows(formatted);
-                }
-                try {
-                    localStorage.setItem(`hris_factory_piece_rows_${groupToSave}`, JSON.stringify(formatted));
-                } catch { /* Best-effort browser cache or fallback lookup. */ }
-
-                fetchWithAuth('/api/payroll/factory-logs', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        production_group_id: resolvedGroupId,
-                        group_name: groupToSave,
-                        period_start: periodStart,
-                        period_end: periodEnd,
-                        rows: formatted
-                    })
-                }).catch(() => { });
-
-                if (shouldClose) {
-                    setSuccess(`Factory piece-rate operations for ${groupToSave} saved successfully to cloud.`);
-                    setTimeout(() => setSuccess(null), 3000);
-                    setIsFactoryPieceOpen(false);
-                }
-                return;
-            }
-        } catch (cloudErr) {
-            console.warn('Direct Cloud upsert failed, falling back to API:', cloudErr);
-        }
-
-        try {
-            const res = await fetchWithAuth('/api/payroll/factory-logs', {
+            const response = await fetchWithAuth('/api/payroll/factory-logs', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    production_group_id: resolvedGroupId,
-                    group_name: groupToSave,
-                    period_start: periodStart,
-                    period_end: periodEnd,
-                    rows: updatedRows
-                })
+                body: JSON.stringify({ production_group_id: group?.id || null, group_name: groupToSave,
+                    period_start: periodStart, period_end: periodEnd, rows: updatedRows }),
             });
-            const result = await res.json();
-            factorySaveResult(res, result);
-            if (res.ok) {
-                if (result.success && Array.isArray(result.data) && result.data.length > 0) {
-                    if (selectedGroupRef.current === groupToSave) {
-                        setFactoryRows(result.data);
-                    }
-                    try {
-                        localStorage.setItem(`hris_factory_piece_rows_${groupToSave}`, JSON.stringify(result.data));
-                    } catch { /* Best-effort browser cache or fallback lookup. */ }
-                }
-            }
-        } catch (err) {
-            console.error('Cloud sync error:', err);
-            setError(err.message || 'Factory records were not saved. Keep the form open and retry when connected.');
-            throw err;
+            const result = await response.json();
+            const saved = factorySaveResult(response, result);
+            await queryClient.cancelQueries({ queryKey: key, exact: true });
+            queryClient.setQueryData(key, saved);
+        } catch (error) {
+            setError(error.message || 'Factory records were not saved. Keep the form open and retry when connected.');
+            throw error;
         }
-
         if (shouldClose) {
             setSuccess(`Factory piece-rate operations for ${groupToSave} saved successfully.`);
             setTimeout(() => setSuccess(null), 3000);
@@ -655,16 +540,6 @@ const PayrollCreate = () => {
                                 setSelectedGroup(targetEmp.group);
                                 const groupMembers = factoryEmps.filter(e => e.group === targetEmp.group);
                                 setSelectedGroupMemberIds(groupMembers.map(e => String(e.id)));
-
-                                try {
-                                    const saved = localStorage.getItem(`hris_factory_piece_rows_${targetEmp.group}`);
-                                    if (saved) {
-                                        const parsed = JSON.parse(saved);
-                                        if (Array.isArray(parsed) && parsed.length > 0) {
-                                            setFactoryRows(parsed);
-                                        }
-                                    }
-                                } catch { /* Best-effort browser cache or fallback lookup. */ }
                             }
                             setEntryMode('batch');
                         } else {
@@ -702,248 +577,20 @@ const PayrollCreate = () => {
         return factoryEmployees.filter(e => e.group === selectedGroup);
     }, [factoryEmployees, selectedGroup]);
 
-    const loadFactoryLogs = useCallback(async (groupName, start, end) => {
-        if (!groupName) return;
-        const groups = productionGroupsRef.current || productionGroups;
-        let groupObj = groups.find(g => g.name === groupName);
-        let resolvedGroupId = groupObj?.id || null;
-
-        if (!resolvedGroupId && groupName) {
-            try {
-                const { data: grp } = await supabase
-                    .from('production_groups')
-                    .select('id')
-                    .ilike('name', groupName.trim())
-                    .maybeSingle();
-                if (grp?.id) resolvedGroupId = grp.id;
-            } catch { /* Best-effort browser cache or fallback lookup. */ }
-        }
-
-        try {
-            let query = supabase.from('factory_production_logs').select('*');
-            if (resolvedGroupId) {
-                query = query.eq('production_group_id', resolvedGroupId);
-            }
-            if (start && end) {
-                query = query.eq('period_start', start).eq('period_end', end);
-            }
-
-            let { data, error } = await query.order('created_at', { ascending: true });
-
-            if ((!data || data.length === 0) && resolvedGroupId) {
-                const { data: latestData } = await supabase
-                    .from('factory_production_logs')
-                    .select('*')
-                    .eq('production_group_id', resolvedGroupId)
-                    .order('updated_at', { ascending: false })
-                    .order('period_end', { ascending: false })
-                    .limit(30);
-
-                if (latestData && latestData.length > 0) {
-                    const seenOps = new Set();
-                    const uniqueLatest = [];
-                    for (const row of latestData) {
-                        if (!seenOps.has(row.operation)) {
-                            seenOps.add(row.operation);
-                            uniqueLatest.push(row);
-                        }
-                    }
-                    data = uniqueLatest;
-                }
-            }
-
-            if (!error && data && data.length > 0) {
-                const rows = data.map(r => ({
-                    id: r.id,
-                    operation: r.operation,
-                    stock_no: r.stock_no || 'Formal',
-                    quantity_in: String(r.quantity_in ?? 0),
-                    amount: String(r.amount ?? 0),
-                    assignedEmployeeIds: Array.isArray(r.assigned_worker_ids) ? r.assigned_worker_ids : []
-                }));
-                if (selectedGroupRef.current === groupName) {
-                    setFactoryRows(rows);
-                }
-                try {
-                    localStorage.setItem(`hris_factory_piece_rows_${groupName}`, JSON.stringify(rows));
-                } catch { /* Best-effort browser cache or fallback lookup. */ }
-                return;
-            }
-        } catch (cloudErr) {
-            console.warn('Direct Cloud fetch failed, falling back to API:', cloudErr);
-        }
-
-        const groupIdParam = resolvedGroupId ? `&production_group_id=${resolvedGroupId}` : '';
-        try {
-            const res = await fetchWithAuth(
-                `/api/payroll/factory-logs?group_name=${encodeURIComponent(groupName)}&period_start=${start}&period_end=${end}${groupIdParam}`
-            );
-            if (res.ok) {
-                const json = await res.json();
-                if (json.success && Array.isArray(json.data) && json.data.length > 0) {
-                    if (selectedGroupRef.current === groupName) {
-                        setFactoryRows(json.data);
-                    }
-                    try {
-                        localStorage.setItem(`hris_factory_piece_rows_${groupName}`, JSON.stringify(json.data));
-                    } catch { /* Best-effort browser cache or fallback lookup. */ }
-                }
-            }
-        } catch (err) {
-            console.error('Error fetching factory production logs:', err);
-        }
-    }, [productionGroups]);
-
     const handleGroupTabChange = (groupName) => {
-        if (selectedGroup === groupName) {
-            return;
-        }
+        if (selectedGroup === groupName) return;
         setSelectedGroup(groupName);
-        selectedGroupRef.current = groupName;
-        const membersOfGroup = factoryEmployees.filter(e => e.group === groupName);
-        setSelectedGroupMemberIds(membersOfGroup.map(e => String(e.id)));
-
-        let loadedFromLocal = false;
-        try {
-            const saved = localStorage.getItem(`hris_factory_piece_rows_${groupName}`);
-            if (saved) {
-                const parsed = JSON.parse(saved);
-                if (Array.isArray(parsed) && parsed.length > 0) {
-                    setFactoryRows(parsed);
-                    loadedFromLocal = true;
-                }
-            }
-        } catch { /* Best-effort browser cache or fallback lookup. */ }
-
-        if (!loadedFromLocal) {
-            setFactoryRows(DEFAULT_FACTORY_ROWS.map(r => ({ ...r })));
-        }
-
-        loadFactoryLogs(groupName, periodStart, periodEnd);
+        const members = factoryEmployees.filter(employee => employee.group === groupName);
+        setSelectedGroupMemberIds(members.map(employee => String(employee.id)));
     };
 
     useEffect(() => {
-        if (selectedGroup) {
-            loadFactoryLogs(selectedGroup, periodStart, periodEnd);
-        }
-    }, [periodStart, periodEnd, selectedGroup, loadFactoryLogs]);
-
-    // Realtime Supabase subscription for multi-client sync
-    useEffect(() => {
-        const channel = supabase
-            .channel('realtime_factory_production_logs_sync')
-            .on(
-                'postgres_changes',
-                {
-                    event: '*',
-                    schema: 'public',
-                    table: 'factory_production_logs'
-                },
-                (payload) => {
-                    if (!payload) return;
-                    const { eventType, new: updatedRow, old: oldRow } = payload;
-                    const currentGroup = selectedGroupRef.current;
-                    const groups = productionGroupsRef.current || [];
-                    const activeGroupObj = groups.find(g => g.name === currentGroup);
-                    const activeGroupId = activeGroupObj?.id;
-
-                    const rowGroupId = updatedRow?.production_group_id || oldRow?.production_group_id;
-
-                    // If the change applies to the currently active group or if no specific group is selected
-                    const isForActiveGroup = !activeGroupId || !rowGroupId || activeGroupId === rowGroupId;
-
-                    if (isForActiveGroup) {
-                        if (eventType === 'DELETE' && oldRow?.id) {
-                            setFactoryRows(prev => prev.filter(r => String(r.id) !== String(oldRow.id)));
-                        } else if ((eventType === 'UPDATE' || eventType === 'INSERT') && updatedRow) {
-                            setFactoryRows(prev => {
-                                const isMatch = (r) =>
-                                    String(r.id) === String(updatedRow.id) ||
-                                    (r.operation && updatedRow.operation && r.operation.trim().toLowerCase() === updatedRow.operation.trim().toLowerCase());
-
-                                const rowExists = prev.some(isMatch);
-                                let next;
-                                if (rowExists) {
-                                    next = prev.map(r => {
-                                        if (isMatch(r)) {
-                                            return {
-                                                ...r,
-                                                id: updatedRow.id,
-                                                operation: updatedRow.operation || r.operation,
-                                                stock_no: updatedRow.stock_no || r.stock_no,
-                                                quantity_in: String(updatedRow.quantity_in ?? r.quantity_in),
-                                                amount: String(updatedRow.amount ?? r.amount),
-                                                assignedEmployeeIds: Array.isArray(updatedRow.assigned_worker_ids)
-                                                    ? updatedRow.assigned_worker_ids
-                                                    : (r.assignedEmployeeIds || [])
-                                            };
-                                        }
-                                        if (updatedRow.stock_no && r.stock_no !== updatedRow.stock_no) {
-                                            return { ...r, stock_no: updatedRow.stock_no };
-                                        }
-                                        return r;
-                                    });
-                                } else {
-                                    next = [...prev, {
-                                        id: updatedRow.id,
-                                        operation: updatedRow.operation,
-                                        stock_no: updatedRow.stock_no || 'Formal',
-                                        quantity_in: String(updatedRow.quantity_in ?? 0),
-                                        amount: String(updatedRow.amount ?? 0),
-                                        assignedEmployeeIds: Array.isArray(updatedRow.assigned_worker_ids)
-                                            ? updatedRow.assigned_worker_ids
-                                            : []
-                                    }];
-                                }
-                                if (currentGroup) {
-                                    try {
-                                        localStorage.setItem(`hris_factory_piece_rows_${currentGroup}`, JSON.stringify(next));
-                                    } catch { /* Best-effort browser cache or fallback lookup. */ }
-                                }
-                                return next;
-                            });
-                        }
-                    } else if (rowGroupId) {
-                        // Background-sync cache for other production group if edited remotely
-                        const targetGroupObj = groups.find(g => g.id === rowGroupId);
-                        if (targetGroupObj?.name) {
-                            try {
-                                const cacheKey = `hris_factory_piece_rows_${targetGroupObj.name}`;
-                                const cached = localStorage.getItem(cacheKey);
-                                if (cached) {
-                                    const parsed = JSON.parse(cached);
-                                    if (Array.isArray(parsed)) {
-                                        const next = parsed.map(r => {
-                                            if (String(r.id) === String(updatedRow?.id) || (r.operation && updatedRow?.operation && r.operation.trim().toLowerCase() === updatedRow.operation.trim().toLowerCase())) {
-                                                return {
-                                                    ...r,
-                                                    id: updatedRow.id,
-                                                    operation: updatedRow.operation || r.operation,
-                                                    stock_no: updatedRow.stock_no || r.stock_no,
-                                                    quantity_in: String(updatedRow.quantity_in ?? r.quantity_in),
-                                                    amount: String(updatedRow.amount ?? r.amount),
-                                                    assignedEmployeeIds: Array.isArray(updatedRow.assigned_worker_ids) ? updatedRow.assigned_worker_ids : []
-                                                };
-                                            }
-                                            if (updatedRow?.stock_no && r.stock_no !== updatedRow.stock_no) {
-                                                return { ...r, stock_no: updatedRow.stock_no };
-                                            }
-                                            return r;
-                                        });
-                                        localStorage.setItem(cacheKey, JSON.stringify(next));
-                                    }
-                                }
-                            } catch { /* Best-effort browser cache or fallback lookup. */ }
-                        }
-                    }
-                }
-            )
-            .subscribe();
-
-        return () => {
-            supabase.removeChannel(channel);
-        };
-    }, []);
+        const channel = supabase.channel('realtime_factory_production_logs_sync')
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'factory_production_logs' }, () => {
+                void queryClient.invalidateQueries({ queryKey: ['factoryPayrollLogs', payrollActorId] });
+            }).subscribe();
+        return () => { supabase.removeChannel(channel); };
+    }, [queryClient, payrollActorId]);
 
     const activeGroupEmployees = useMemo(() => {
         return factoryEmployees.filter(e => selectedGroupMemberIds.includes(String(e.id)));
@@ -1764,6 +1411,11 @@ const PayrollCreate = () => {
             return;
         }
 
+        if (factoryLogsQuery.isPending || factoryLogsQuery.isFetching || factoryLogsQuery.isError) {
+            setError(factoryLogsQuery.error?.message || 'Still loading production for this cutoff. Try again in a moment.');
+            return;
+        }
+
         if (activeGroupEmployees.length === 0) {
             setError(`Please select at least one employee from ${selectedGroup} for batch production payout.`);
             return;
@@ -2189,7 +1841,6 @@ const PayrollCreate = () => {
                     activeGroupEmployees={activeGroupEmployees}
                     grandTotalFactoryPayout={grandTotalFactoryPayout}
                     factoryRows={factoryRows}
-                    setFactoryRows={setFactoryRows}
                     computedFactoryRows={computedFactoryRows}
                 />
 
@@ -2213,8 +1864,10 @@ const PayrollCreate = () => {
                         batchSummaryTotals={batchSummaryTotals}
                         filteredGroupEmployees={filteredGroupEmployees}
                         workerPayrollMap={workerPayrollMap}
-                            isLoadingEmployees={isLoadingEmployees}
+                        isLoadingEmployees={isLoadingEmployees}
                         isLoadingGroupAttendance={isLoadingGroupAttendance}
+                        productionLoading={Boolean(selectedGroup) && factoryLogsQuery.isFetching}
+                        productionError={factoryLogsQuery.error?.message}
                         breakdownSearch={breakdownSearch}
                         setBreakdownSearch={setBreakdownSearch}
                         breakdownFilter={breakdownFilter}
@@ -2224,7 +1877,7 @@ const PayrollCreate = () => {
                         setIsFactoryPieceOpen={setIsFactoryPieceOpen}
                         setIsGroupModalOpen={setIsGroupModalOpen}
                         isSubmitting={isSubmitting || leavePayLoading || leavePayPreview.isError || taxTablesLoading || withholdingTables.isError}
-                        isInvalidDateRange={isInvalidDateRange || Boolean(attendanceError) || (holidayYearStatus.checked && !holidayYearStatus.generated)}
+                        isInvalidDateRange={isInvalidDateRange || Boolean(attendanceError) || factoryLogsQuery.isPending || factoryLogsQuery.isFetching || factoryLogsQuery.isError || (holidayYearStatus.checked && !holidayYearStatus.generated)}
                         handleSubmitBatch={handleSubmitBatch}
                         absenteeInfo={absenteeInfo}
                         absenteeValidation={absenteeValidation}

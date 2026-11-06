@@ -380,7 +380,7 @@ export default function Show() {
                 documents: data.documents || []
             };
         },
-        enabled: Boolean(id && id !== 'undefined' && !isDeletingRef.current),
+        enabled: Boolean(id && id !== 'undefined' && !isDeleting),
         staleTime: 30_000,
         gcTime: 300_000,
         retry: (failureCount, err) => {
@@ -479,7 +479,7 @@ export default function Show() {
             supabase.removeChannel(syncChannel);
             supabase.removeChannel(scannerChannel);
         };
-    }, [id, queryClient]);
+    }, [id, queryClient, navigate]);
 
     const printCard = () => {
         window.print();
@@ -1531,7 +1531,9 @@ export default function Show() {
                                         {isReinstatedNote && (
                                             <div className="mt-2.5 pt-2 border-t border-success/20 text-[11px] text-success-ink font-semibold flex items-center gap-1.5">
                                                 <i className="ti ti-check text-sm" />
-                                                <span>Record cleared and active standing restored.</span>
+                                                <span>{isSuspended || isTerminated || employee.is_active === false
+                                                    ? 'This record was cleared. The employee account remains restricted.'
+                                                    : 'Record cleared and active standing restored.'}</span>
                                             </div>
                                         )}
                                     </div>

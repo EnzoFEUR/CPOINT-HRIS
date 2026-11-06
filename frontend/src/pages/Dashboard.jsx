@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../supabaseClient';
 import { fetchWithAuth } from '../utils/api';
+import { DEFAULT_WORK_POLICY, getChargeableLateMinutes, getEmployeeRestDays } from '../../../shared/workPolicy.mjs';
 import toast from 'react-hot-toast';
 import EmployeeAvatar from '../components/EmployeeAvatar';
 import {
@@ -33,15 +34,8 @@ const formatDisplayName = (name) => {
     return name;
 };
 
-// Lateness rule (same as the kiosk): call time 8:00 AM Manila, no grace period -> late after 8:00 AM
-const LATE_AFTER_MINUTES = 8 * 60;
 const isLatePunch = (att) => {
-    if (!att?.time_in) return false;
-    const d = new Date(att.time_in);
-    if (Number.isNaN(d.getTime())) return false;
-    const parts = new Intl.DateTimeFormat('en-US', { timeZone: 'Asia/Manila', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(d);
-    const mins = Number(parts.find(p => p.type === 'hour').value) * 60 + Number(parts.find(p => p.type === 'minute').value);
-    return mins > LATE_AFTER_MINUTES;
+    return getChargeableLateMinutes(att, DEFAULT_WORK_POLICY, getEmployeeRestDays(att?.employees)) > 0;
 };
 
 export default function Dashboard() {
@@ -152,7 +146,7 @@ export default function Dashboard() {
                     if (!isLeave && !isAbsent) {
                         presentTodayCount++;
                     }
-                    if (isLatePunch(att) || st.includes('late')) {
+                    if (isLatePunch(att)) {
                         lateTodayCount++;
                     }
                     if (recentLogs.length < 5) {
@@ -329,7 +323,7 @@ export default function Dashboard() {
                 'Facility monitoring and gate telemetry operational.'
             ] : [
                 `Active operational capacity operating at ${rate}% across scheduled shifts.`,
-                late > 0 ? `${late} late arrival(s) logged after the 8:00 AM call time.` : 'High morning punctuality maintained across all departments.'
+                late > 0 ? `${late} late arrival(s) logged beyond the attendance grace period.` : 'High morning punctuality maintained across all departments.'
             ],
             actionable_recommendations: isRestDay && present === 0 ? [
                 'Maintain regular gate security protocols.',
@@ -666,7 +660,7 @@ export default function Dashboard() {
                         {lateTodayCount}
                     </h3>
                     <span className="text-xs font-semibold text-warning-ink mt-2 block">
-                        After 8:00 AM &middot; <span className="group-hover:underline">View list &rarr;</span>
+                        Beyond grace period &middot; <span className="group-hover:underline">View list &rarr;</span>
                     </span>
                 </button>
 
@@ -728,6 +722,10 @@ export default function Dashboard() {
                             <h3 className="text-base font-bold text-slate-900 tracking-tight">
                                 Burnout & Overtime Risk
                                 </h3>
+                            <p className="mt-1 text-xs text-slate-500">
+                                Last 30 calendar days
+                                {anomalyData?.report?.window_start && ` · ${anomalyData.report.window_start} to ${anomalyData.report.window_end}`}
+                            </p>
                         </div>
                         <span className="px-2 py-0.5 bg-danger-subtle text-danger-ink text-[10px] font-bold uppercase rounded-md border border-danger/20">
                             {isAnomalyLoading ? '...' : `${activeFlagCount} active flag${activeFlagCount === 1 ? '' : 's'}`}
@@ -763,6 +761,7 @@ export default function Dashboard() {
                                             <p className="text-[11px] text-slate-500 font-medium pt-2.5">
                                                 {flag.department} · {flag.reason} ({flag.start_date} to {flag.end_date})
                                             </p>
+                                            {flag.evidence_dates?.length > 0 && <p className="text-[11px] text-slate-500">Counted dates: {flag.evidence_dates.join(', ')}</p>}
                                             <Link
                                                 to={auditPath(flag)}
                                                 onClick={() => acknowledgeFlag(flag.id)}
@@ -777,7 +776,7 @@ export default function Dashboard() {
                             );
                         }) : (
                             <p className="text-xs text-slate-400 font-medium py-6 text-center">
-                                {isAnomalyLoading ? 'Checking recent attendance...' : 'No attendance issues flagged.'}
+                                {isAnomalyLoading ? 'Checking recent attendance...' : 'No alerts for the monitored workforce in this 30-day window.'}
                             </p>
                         )}
                     </div>
@@ -1045,7 +1044,7 @@ export default function Dashboard() {
                                 <p className="text-xs text-slate-500 font-medium">
                                     {activeModal === 'present'
                                         ? `${presentTodayCount} of ${totalStaff} on-site · Shift start ${attendanceDetail?.shiftStart || '8:00 AM'}`
-                                        : `${lateTodayCount} clocked in after ${attendanceDetail?.shiftStart || '8:00 AM'}`}
+                                        : `${lateTodayCount} clocked in beyond the attendance grace period`}
                                 </p>
                             </div>
                             <button

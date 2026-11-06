@@ -1,4 +1,4 @@
-import { Worker } from 'node:worker_threads';
+import { fork } from 'node:child_process';
 
 // Optional parser: a missing package never prevents startup or the vision fallback.
 let parserAvailable;
@@ -12,28 +12,33 @@ export async function extractDocumentPdfText(buffer, { signal } = {}) {
     return new Promise((resolve, reject) => {
         let worker;
         try {
-            worker = new Worker(new URL('./documentPdfWorker.js', import.meta.url), {
-                workerData: new Uint8Array(buffer), resourceLimits: { maxOldGenerationSizeMb: 96 },
-                execArgv: process.execArgv.filter(arg => arg.startsWith('--preserve-symlinks')),
+            // Native PDF faults must end only the parser, never the backend process.
+            worker = fork(new URL('./documentPdfWorker.js', import.meta.url), [], {
+                windowsHide: true, stdio: ['ignore', 'ignore', 'ignore', 'ipc'], serialization: 'advanced',
+                execArgv: ['--max-old-space-size=96', ...process.execArgv.filter(arg => arg.startsWith('--preserve-symlinks'))],
             });
         } catch { activeWorkers--; resolve(null); return; }
-        let settled = false;
+        let settled = false, failure, output = null;
         const finish = (error, result = null) => {
             if (settled) return;
             settled = true;
+            failure = error;
+            output = result;
             clearTimeout(timer);
             signal?.removeEventListener('abort', abort);
-            void worker.terminate().catch(() => {}).finally(() => {
-                activeWorkers--;
-                if (error) reject(error); else resolve(result);
-            });
+            worker.kill();
         };
         const abort = () => finish(signal.reason);
         const timer = setTimeout(() => finish(null), 2000);
         signal?.addEventListener('abort', abort, { once: true });
         worker.once('message', result => finish(null, result));
         worker.once('error', () => finish(null));
-        worker.once('exit', () => finish(null));
+        worker.once('close', () => {
+            finish(null);
+            activeWorkers--;
+            if (failure) reject(failure); else resolve(output);
+        });
+        worker.send(new Uint8Array(buffer), error => { if (error) finish(null); });
         if (signal?.aborted) abort();
     });
 }

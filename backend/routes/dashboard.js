@@ -16,28 +16,8 @@ const WORK_POLICY = getWorkPolicy(process.env);
 const DAY_MS = 24 * 60 * 60 * 1000;
 const toDateStr = (d) => new Date(d).toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' });
 
-// ---- Lateness rule (matches the kiosk scanner in attendance.js) ----
-// Call time is 8:00 AM Manila with NO grace period: any time-in after 8:00 AM is late.
-// "Minutes late" is measured from 8:00 AM.
-const _envInt = (v, d) => { const n = parseInt(v, 10); return Number.isNaN(n) ? d : n; };
-const CALL_TIME_MINUTES = _envInt(process.env.CALL_TIME_HOUR, 8) * 60 + _envInt(process.env.CALL_TIME_MINUTE, 0);
-
-/** Minutes since midnight (Asia/Manila) for an ISO timestamp, or null. */
-function manilaMinutes(iso) {
-    if (!iso) return null;
-    const d = new Date(iso);
-    if (Number.isNaN(d.getTime())) return null;
-    const parts = new Intl.DateTimeFormat('en-US', {
-        timeZone: 'Asia/Manila', hour: '2-digit', minute: '2-digit', hourCycle: 'h23'
-    }).formatToParts(d);
-    return Number(parts.find(p => p.type === 'hour').value) * 60 + Number(parts.find(p => p.type === 'minute').value);
-}
-
-/** True when the punch is after the call time (8:00 AM). */
-const isLateRecord = (r) => {
-    const m = manilaMinutes(r?.time_in);
-    return m !== null && m > CALL_TIME_MINUTES;
-};
+// Match the employee calendar's grace period, rest days and whole-minute rule.
+const isLateRecord = (record, employee) => getChargeableLateMinutes(record, WORK_POLICY, getEmployeeRestDays(employee)) > 0;
 
 /** True when attendance record represents an actual punch-in or present on-site status (not leave/absent). */
 const isPresentAttendance = (att) => {
@@ -147,7 +127,7 @@ function computeDepartmentPunctualityFromRecords(records, empMap) {
         const dept = emp?.department || 'Unassigned';
         if (!deptStats[dept]) deptStats[dept] = { total: 0, late: 0 };
         deptStats[dept].total += 1;
-        if (isLateRecord(r)) {
+        if (isLateRecord(r, emp)) {
             deptStats[dept].late += 1;
         }
     });
@@ -293,25 +273,33 @@ function computeDoleComplianceFromRecords(records, empMap = new Map(), holidayDa
  * attendance-audit filter that best shows the evidence:
  *  - consecutive: 7+ straight days with no rest day                -> 'worked'
  *  - absent:      2+ unexcused absences on scheduled days          -> 'absent'
- *  - late:        3+ late arrivals (after 8:00 AM, no grace)       -> 'late'
- * Schedule: everyone works Monday to Friday.
+ *  - late:        3+ late days under the shared attendance policy -> 'late'
  */
 function computeWorkforceRiskFlags(attendances, leaves, empMap, holidayDates = new Set()) {
     const todayStr = toDateStr(new Date());
-    const windowStart = toDateStr(new Date(Date.now() - 30 * DAY_MS));
+    const windowStart = toDateStr(new Date(Date.now() - 29 * DAY_MS));
     const yesterdayNum = dayNum(todayStr) - 1;
 
     const worked = new Map();   // empId -> Set(dates)
-    const lates = new Map();    // empId -> [dates]
+    const lates = new Map();    // empId -> Set(dates)
+    const dailyPunches = new Map();
     (attendances || []).forEach(a => {
         // Only real punches count (a record with no time_in isn't a worked day - same as the calendar)
         if (!a.time_in || a.date < windowStart || a.date > todayStr || !empMap.has(a.employee_id)) return;
         if (beforeHire(empMap.get(a.employee_id), a.date)) return;
+        const employee = empMap.get(a.employee_id);
+        const trackedFrom = String(employee.timekeeping_effective_date || employee.created_at || employee.date_hired || '').slice(0, 10);
+        if (trackedFrom && a.date < trackedFrom) return;
+        const key = `${a.employee_id}:${a.date}`;
+        const previous = dailyPunches.get(key);
+        if (!previous || Date.parse(a.time_in) < Date.parse(previous.time_in)) dailyPunches.set(key, a);
+    });
+    dailyPunches.forEach(a => {
         if (!worked.has(a.employee_id)) worked.set(a.employee_id, new Set());
         worked.get(a.employee_id).add(a.date);
-        if (isLateRecord(a)) {
-            if (!lates.has(a.employee_id)) lates.set(a.employee_id, []);
-            lates.get(a.employee_id).push(a.date);
+        if (isLateRecord(a, empMap.get(a.employee_id))) {
+            if (!lates.has(a.employee_id)) lates.set(a.employee_id, new Set());
+            lates.get(a.employee_id).add(a.date);
         }
     });
 
@@ -327,13 +315,14 @@ function computeWorkforceRiskFlags(attendances, leaves, empMap, holidayDates = n
 
     const flags = [];
     const sev = (n, high, med) => (n >= high ? 'High' : n >= med ? 'Medium' : 'Low');
-    const mk = (emp, type, filter, count, startDate, endDate, reason, severity) => ({
+    const mk = (emp, type, filter, count, startDate, endDate, reason, severity, evidenceDates = []) => ({
         id: `${type}:${emp.id}:${count}:${endDate}`,
         employee_id: emp.id,
         employee_name: `${emp.first_name} ${emp.last_name}`,
         department: emp.department || 'Unassigned',
         type, filter, count,
         start_date: startDate, end_date: endDate,
+        window_start: windowStart, window_end: todayStr, evidence_dates: evidenceDates,
         audit_month: endDate.slice(0, 7),
         reason, severity
     });
@@ -348,15 +337,16 @@ function computeWorkforceRiskFlags(attendances, leaves, empMap, holidayDates = n
         if (streak.length >= 7) {
             flags.push(mk(emp, 'consecutive', 'worked', streak.length, streak.start, streak.end,
                 `Worked ${streak.length} consecutive days without a rest day`,
-                streak.length >= 10 ? 'High' : 'Medium'));
+                streak.length >= 10 ? 'High' : 'Medium', sorted.filter(date => date >= streak.start && date <= streak.end)));
         }
 
         // 2. Absences - same rules as the Monthly Work Schedule calendar: a past scheduled
         //    work day (not a rest day, not a holiday) with no punch and no approved leave.
         //    Everyone works Monday to Friday, so Saturday and Sunday are rest days.
-        const restDays = [0, 6];
+        const restDays = getEmployeeRestDays(emp);
         const leaveSet = leaveDays.get(emp.id) || new Set();
-        const startNum = Math.max(dayNum(sorted[0]), dayNum(windowStart));
+        const trackingStart = String(emp.timekeeping_effective_date || emp.created_at || emp.date_hired || sorted[0]).slice(0, 10);
+        const startNum = Math.max(dayNum(trackingStart), dayNum(hireDateOf(emp) || windowStart), dayNum(windowStart));
         const absentDates = [];
         for (let d = startNum; d <= yesterdayNum; d++) {
             const dow = new Date(d * DAY_MS).getUTCDay();
@@ -368,15 +358,15 @@ function computeWorkforceRiskFlags(attendances, leaves, empMap, holidayDates = n
         if (absentDates.length >= 2) {
             flags.push(mk(emp, 'absent', 'absent', absentDates.length, absentDates[0], absentDates[absentDates.length - 1],
                 `${absentDates.length} absences in the last 30 days`,
-                sev(absentDates.length, 5, 3)));
+                sev(absentDates.length, 5, 3), absentDates));
         }
 
         // 3. Frequent lates
-        const lateDates = (lates.get(emp.id) || []).sort();
+        const lateDates = Array.from(lates.get(emp.id) || []).sort();
         if (lateDates.length >= 3) {
             flags.push(mk(emp, 'late', 'late', lateDates.length, lateDates[0], lateDates[lateDates.length - 1],
                 `${lateDates.length} late arrivals in the last 30 days`,
-                sev(lateDates.length, 8, 5)));
+                sev(lateDates.length, 8, 5), lateDates));
         }
     });
 
@@ -661,8 +651,12 @@ router.get('/overview', checkRole('admin', 'hr'), cacheResponse(15), async (req,
         // 3. Anomaly Signals & Health Assessment (Deterministic in-memory with empMap resolution)
         const signals = computeAttendanceSignals(attendances, empMap);
         const risk_flags = computeWorkforceRiskFlags(attendances, leaves, empMap, holidayDates);
-        const general_health_assessment = risk_flags.length === 0
-            ? 'All attendance patterns are within acceptable organizational thresholds.'
+        const riskWindowStart = toDateStr(new Date(Date.now() - 29 * DAY_MS));
+        const hasObservedAttendance = attendances.some(record => record.time_in && record.date >= riskWindowStart && record.date <= todayStr);
+        const general_health_assessment = !hasObservedAttendance
+            ? 'No attendance records are available to assess in this 30-day window.'
+            : risk_flags.length === 0
+            ? `No configured attendance-risk thresholds were exceeded among ${empMap.size} monitored active employees in the last 30 days.`
             : `${risk_flags.length} attendance pattern(s) flagged across ${empMap.size} active employees in the last 30 days.`;
 
         // 4. In-memory payroll forecast
@@ -719,6 +713,9 @@ router.get('/overview', checkRole('admin', 'hr'), cacheResponse(15), async (req,
             anomalyData: {
                 report: {
                     ...signals,
+                    window_start: riskWindowStart,
+                    window_end: todayStr,
+                    grace_period_minutes: WORK_POLICY.gracePeriodMinutes,
                     risk_flags,
                     general_health_assessment
                 }

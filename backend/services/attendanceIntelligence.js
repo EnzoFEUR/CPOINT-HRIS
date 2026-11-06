@@ -1,4 +1,7 @@
+import { getChargeableLateMinutes, getEmployeeRestDays, getWorkPolicy } from '../../shared/workPolicy.mjs';
+
 const DAY_MS = 24 * 60 * 60 * 1000;
+const WORK_POLICY = getWorkPolicy(process.env);
 
 /**
  * Deterministically compute attendance intelligence signals from raw attendance
@@ -22,8 +25,22 @@ function formatTitleCase(str) {
 
 export function computeAttendanceSignals(records, empMap = null) {
     const byEmployee = {};
+    const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' });
+    const windowStart = new Date(Date.now() - 29 * DAY_MS).toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' });
+    const dailyPunches = new Map();
 
     (records || []).forEach(r => {
+        if (!r.employee_id || !r.date || !r.time_in || r.date < windowStart || r.date > today) return;
+        if (empMap && !empMap.has(r.employee_id)) return;
+        const emp = empMap?.get(r.employee_id) || r.employees;
+        const trackedFrom = String(emp?.timekeeping_effective_date || emp?.created_at || emp?.date_hired || '').slice(0, 10);
+        const hiredFrom = String(emp?.date_hired || '').slice(0, 10);
+        if ((trackedFrom && r.date < trackedFrom) || (hiredFrom && r.date < hiredFrom)) return;
+        const key = `${r.employee_id}:${r.date}`;
+        const previous = dailyPunches.get(key);
+        if (!previous || Date.parse(r.time_in) < Date.parse(previous.time_in)) dailyPunches.set(key, r);
+    });
+    dailyPunches.forEach(r => {
         const empId = r.employee_id;
         if (!empId) return;
         if (!byEmployee[empId]) {
@@ -49,7 +66,8 @@ export function computeAttendanceSignals(records, empMap = null) {
         }
         const e = byEmployee[empId];
         e.dates.push(r.date);
-        if ((r.status || '').toLowerCase().includes('late')) e.lateCount += 1;
+        const emp = empMap?.get(empId) || r.employees;
+        if (getChargeableLateMinutes(r, WORK_POLICY, getEmployeeRestDays(emp)) > 0) e.lateCount += 1;
         const dow = new Date(r.date + 'T00:00:00').getDay();
         e.dowCounts[dow] += 1;
     });
