@@ -423,7 +423,10 @@ export default function SettingsHub() {
                                                 <p className="text-[11px] text-slate-500 dark:text-slate-400">Zero-latency, multi-tab real-time theme synchronization with WCAG AA compliance</p>
                                             </div>
                                         </div>
-                                        <ThemeToggle variant="segmented" />
+                                        <div className="flex items-center gap-3 shrink-0">
+                                            <ThemeToggle variant="switch" />
+                                            <ThemeToggle variant="segmented" />
+                                        </div>
                                     </div>
                                     <p className="text-xs text-slate-600 dark:text-slate-400 mt-2.5">
                                         Configure visual preferences across workstations and kiosk displays. System mode automatically tracks OS day/night schedules. Theme changes apply in sub-millisecond real time across all open tabs.
