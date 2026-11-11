@@ -870,16 +870,16 @@ img,
 }
 
 /* ==========================================================================
-   ENTERPRISE VIEW TRANSITION & FLUID THEME SYSTEM (iOS Spring Physics)
-   Ultra-smooth 60fps radial ripple, crossfade, and motion governance
+   ENTERPRISE VIEW TRANSITION & FLUID THEME SYSTEM (iOS Spring Sliding Physics)
+   Ultra-low latency GPU-composited bouncy sliding screen transitions
    ========================================================================== */
 
-/* 1. Global View Transition Crossfade (when no coordinates / keyboard / cross-tab sync) */
+/* 1. Global View Transition Crossfade (when no sliding direction specified) */
 ::view-transition-old(root) {
-  animation: 400ms cubic-bezier(0.32, 0.72, 0, 1) both theme-fade-out;
+  animation: 350ms cubic-bezier(0.32, 0.72, 0, 1) both theme-fade-out;
 }
 ::view-transition-new(root) {
-  animation: 400ms cubic-bezier(0.32, 0.72, 0, 1) both theme-fade-in;
+  animation: 350ms cubic-bezier(0.32, 0.72, 0, 1) both theme-fade-in;
 }
 
 @keyframes theme-fade-out {
@@ -900,7 +900,73 @@ img,
   }
 }
 
-/* 2. Fluid iOS Radial Ripple (when clicked directly on toggle button or segmented control) */
+/* 2. Fluid Bouncy Sliding Transitions (iOS Spring Physics with Overshoot) */
+
+/* Slide in from RIGHT (entering Dark Mode) */
+@keyframes ios-slide-in-from-right {
+  0% {
+    transform: translate3d(100%, 0, 0);
+  }
+  58% {
+    transform: translate3d(-3%, 0, 0); /* Bouncy spring overshoot */
+  }
+  78% {
+    transform: translate3d(1.2%, 0, 0); /* Soft elastic rebound */
+  }
+  90% {
+    transform: translate3d(-0.3%, 0, 0);
+  }
+  100% {
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+@keyframes ios-slide-out-to-left {
+  0% {
+    transform: translate3d(0, 0, 0);
+    opacity: 1;
+    filter: brightness(1);
+  }
+  100% {
+    transform: translate3d(-22%, 0, 0); /* Parallax friction recession */
+    opacity: 0.35;
+    filter: brightness(0.85);
+  }
+}
+
+/* Slide in from LEFT (entering Light Mode) */
+@keyframes ios-slide-in-from-left {
+  0% {
+    transform: translate3d(-100%, 0, 0);
+  }
+  58% {
+    transform: translate3d(3%, 0, 0); /* Bouncy spring overshoot */
+  }
+  78% {
+    transform: translate3d(-1.2%, 0, 0); /* Soft elastic rebound */
+  }
+  90% {
+    transform: translate3d(0.3%, 0, 0);
+  }
+  100% {
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+@keyframes ios-slide-out-to-right {
+  0% {
+    transform: translate3d(0, 0, 0);
+    opacity: 1;
+    filter: brightness(1);
+  }
+  100% {
+    transform: translate3d(22%, 0, 0); /* Parallax friction recession */
+    opacity: 0.35;
+    filter: brightness(0.85);
+  }
+}
+
+/* Fallback / Radial Ripple keyframe */
 @keyframes ios-theme-ripple {
   from {
     clip-path: circle(0px at var(--theme-x, 50%) var(--theme-y, 50%));
@@ -908,6 +974,32 @@ img,
   to {
     clip-path: circle(var(--theme-radius, 150vmax) at var(--theme-x, 50%) var(--theme-y, 50%));
   }
+}
+
+html.theme-slide-from-right::view-transition-old(root) {
+  animation: ios-slide-out-to-left 520ms cubic-bezier(0.25, 1, 0.5, 1) both !important;
+  z-index: 1;
+  mix-blend-mode: normal !important;
+}
+
+html.theme-slide-from-right::view-transition-new(root) {
+  animation: ios-slide-in-from-right 520ms cubic-bezier(0.25, 1, 0.5, 1) both !important;
+  z-index: 9999;
+  mix-blend-mode: normal !important;
+  box-shadow: -16px 0 36px rgba(0, 0, 0, 0.35);
+}
+
+html.theme-slide-from-left::view-transition-old(root) {
+  animation: ios-slide-out-to-right 520ms cubic-bezier(0.25, 1, 0.5, 1) both !important;
+  z-index: 1;
+  mix-blend-mode: normal !important;
+}
+
+html.theme-slide-from-left::view-transition-new(root) {
+  animation: ios-slide-in-from-left 520ms cubic-bezier(0.25, 1, 0.5, 1) both !important;
+  z-index: 9999;
+  mix-blend-mode: normal !important;
+  box-shadow: 16px 0 36px rgba(0, 0, 0, 0.35);
 }
 
 html.theme-ripple-transition::view-transition-old(root) {
@@ -927,16 +1019,16 @@ html.theme-transition,
 html.theme-transition *,
 html.theme-transition *::before,
 html.theme-transition *::after {
-  transition: background-color 500ms cubic-bezier(0.32, 0.72, 0, 1),
-              border-color 500ms cubic-bezier(0.32, 0.72, 0, 1),
-              color 400ms cubic-bezier(0.32, 0.72, 0, 1),
-              fill 400ms cubic-bezier(0.32, 0.72, 0, 1),
-              stroke 400ms cubic-bezier(0.32, 0.72, 0, 1),
-              box-shadow 500ms cubic-bezier(0.32, 0.72, 0, 1) !important;
+  transition: background-color 450ms cubic-bezier(0.34, 1.25, 0.64, 1),
+              border-color 450ms cubic-bezier(0.34, 1.25, 0.64, 1),
+              color 350ms cubic-bezier(0.34, 1.25, 0.64, 1),
+              fill 350ms cubic-bezier(0.34, 1.25, 0.64, 1),
+              stroke 350ms cubic-bezier(0.34, 1.25, 0.64, 1),
+              box-shadow 450ms cubic-bezier(0.34, 1.25, 0.64, 1) !important;
   transition-delay: 0s !important;
 }
 
-/* 4. iOS Tactile Spring Icon Morph */
+/* 4. iOS Tactile Spring Icon Morph & Badge Slide */
 @keyframes ios-icon-morph {
   0% {
     transform: rotate(-75deg) scale(0.6);
@@ -952,9 +1044,29 @@ html.theme-transition *::after {
   }
 }
 
+@keyframes ios-badge-slide {
+  0% {
+    transform: translateY(7px);
+    opacity: 0;
+  }
+  60% {
+    transform: translateY(-1.5px);
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
 .theme-icon-ios {
   display: inline-block;
   animation: ios-icon-morph 500ms cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+
+.theme-badge-ios {
+  display: inline-block;
+  animation: ios-badge-slide 320ms cubic-bezier(0.34, 1.56, 0.64, 1) both;
 }
 
 /* 5. Accessibility: Instant transition for reduced motion users */
@@ -967,7 +1079,8 @@ html.theme-transition *::after {
   html.theme-transition * {
     transition: none !important;
   }
-  .theme-icon-ios {
+  .theme-icon-ios,
+  .theme-badge-ios {
     animation: none !important;
   }
 }

@@ -16,12 +16,21 @@ export const ThemeToggle = ({ variant = 'compact', className = '' }) => {
       { id: 'dark', label: 'Dark', icon: 'ti-moon' },
     ];
 
+    const activeIndex = Math.max(0, options.findIndex((opt) => opt.id === theme));
+    const pillTranslate = activeIndex === 2 ? 'calc(200% + 4px)' : activeIndex === 1 ? 'calc(100% + 2px)' : '0%';
+
     return (
       <div
         role="group"
         aria-label="Theme mode selector"
-        className={`inline-flex items-center p-1 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700/80 ${className}`}
+        className={`relative inline-grid grid-cols-3 p-1 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700/80 ${className}`}
       >
+        {/* iOS Spring Sliding Active Pill Indicator */}
+        <span
+          aria-hidden="true"
+          className="absolute top-1 bottom-1 left-1 w-[calc(33.333%-2.67px)] rounded-lg bg-white dark:bg-slate-900 shadow-2xs transition-transform duration-350 ease-[cubic-bezier(0.34,1.4,0.64,1)] pointer-events-none"
+          style={{ transform: `translate3d(${pillTranslate}, 0, 0)` }}
+        />
         {options.map((opt) => {
           const active = theme === opt.id;
           return (
@@ -29,9 +38,9 @@ export const ThemeToggle = ({ variant = 'compact', className = '' }) => {
               key={opt.id}
               type="button"
               onClick={(e) => setTheme(opt.id, e)}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all duration-200 cursor-pointer select-none active:scale-[0.93] ${
+              className={`relative z-10 flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors duration-200 cursor-pointer select-none active:scale-[0.93] ${
                 active
-                  ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 shadow-2xs font-bold'
+                  ? 'text-slate-900 dark:text-slate-100 font-bold'
                   : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'
               }`}
             >
@@ -68,7 +77,10 @@ export const ThemeToggle = ({ variant = 'compact', className = '' }) => {
         className={`ti ${currentConfig.icon} theme-icon-ios text-base text-accent transition-transform duration-300 ease-out group-hover:rotate-12`}
         aria-hidden="true"
       />
-      <span className="hidden sm:inline text-xs font-semibold tabular-nums text-slate-600 dark:text-slate-300 transition-colors duration-200">
+      <span
+        key={theme}
+        className="hidden sm:inline theme-badge-ios text-xs font-semibold tabular-nums text-slate-600 dark:text-slate-300"
+      >
         {currentConfig.badge}
       </span>
     </button>
