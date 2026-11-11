@@ -870,16 +870,16 @@ img,
 }
 
 /* ==========================================================================
-   ENTERPRISE VIEW TRANSITION & FLUID THEME SYSTEM
+   ENTERPRISE VIEW TRANSITION & FLUID THEME SYSTEM (iOS Spring Physics)
    Ultra-smooth 60fps radial ripple, crossfade, and motion governance
    ========================================================================== */
 
 /* 1. Global View Transition Crossfade (when no coordinates / keyboard / cross-tab sync) */
 ::view-transition-old(root) {
-  animation: 280ms cubic-bezier(0.16, 1, 0.3, 1) both theme-fade-out;
+  animation: 400ms cubic-bezier(0.32, 0.72, 0, 1) both theme-fade-out;
 }
 ::view-transition-new(root) {
-  animation: 280ms cubic-bezier(0.16, 1, 0.3, 1) both theme-fade-in;
+  animation: 400ms cubic-bezier(0.32, 0.72, 0, 1) both theme-fade-in;
 }
 
 @keyframes theme-fade-out {
@@ -900,18 +900,25 @@ img,
   }
 }
 
-/* 2. Fluid Radial Ripple (when clicked directly on toggle button or segmented control) */
-html.theme-ripple-transition::view-transition-old(root),
-html.theme-ripple-transition::view-transition-new(root) {
-  animation: none !important;
-  mix-blend-mode: normal !important;
+/* 2. Fluid iOS Radial Ripple (when clicked directly on toggle button or segmented control) */
+@keyframes ios-theme-ripple {
+  from {
+    clip-path: circle(0px at var(--theme-x, 50%) var(--theme-y, 50%));
+  }
+  to {
+    clip-path: circle(var(--theme-radius, 150vmax) at var(--theme-x, 50%) var(--theme-y, 50%));
+  }
 }
 
 html.theme-ripple-transition::view-transition-old(root) {
+  animation: none !important;
+  mix-blend-mode: normal !important;
   z-index: 1;
 }
 
 html.theme-ripple-transition::view-transition-new(root) {
+  animation: ios-theme-ripple 550ms cubic-bezier(0.32, 0.72, 0, 1) both !important;
+  mix-blend-mode: normal !important;
   z-index: 9999;
 }
 
@@ -920,16 +927,37 @@ html.theme-transition,
 html.theme-transition *,
 html.theme-transition *::before,
 html.theme-transition *::after {
-  transition: background-color 320ms cubic-bezier(0.16, 1, 0.3, 1),
-              border-color 320ms cubic-bezier(0.16, 1, 0.3, 1),
-              color 280ms cubic-bezier(0.16, 1, 0.3, 1),
-              fill 280ms cubic-bezier(0.16, 1, 0.3, 1),
-              stroke 280ms cubic-bezier(0.16, 1, 0.3, 1),
-              box-shadow 320ms cubic-bezier(0.16, 1, 0.3, 1) !important;
+  transition: background-color 500ms cubic-bezier(0.32, 0.72, 0, 1),
+              border-color 500ms cubic-bezier(0.32, 0.72, 0, 1),
+              color 400ms cubic-bezier(0.32, 0.72, 0, 1),
+              fill 400ms cubic-bezier(0.32, 0.72, 0, 1),
+              stroke 400ms cubic-bezier(0.32, 0.72, 0, 1),
+              box-shadow 500ms cubic-bezier(0.32, 0.72, 0, 1) !important;
   transition-delay: 0s !important;
 }
 
-/* 4. Accessibility: Instant transition for reduced motion users */
+/* 4. iOS Tactile Spring Icon Morph */
+@keyframes ios-icon-morph {
+  0% {
+    transform: rotate(-75deg) scale(0.6);
+    opacity: 0;
+  }
+  60% {
+    transform: rotate(10deg) scale(1.15);
+    opacity: 1;
+  }
+  100% {
+    transform: rotate(0deg) scale(1);
+    opacity: 1;
+  }
+}
+
+.theme-icon-ios {
+  display: inline-block;
+  animation: ios-icon-morph 500ms cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+
+/* 5. Accessibility: Instant transition for reduced motion users */
 @media (prefers-reduced-motion: reduce) {
   ::view-transition-old(root),
   ::view-transition-new(root) {
@@ -938,6 +966,9 @@ html.theme-transition *::after {
   html.theme-transition,
   html.theme-transition * {
     transition: none !important;
+  }
+  .theme-icon-ios {
+    animation: none !important;
   }
 }
 

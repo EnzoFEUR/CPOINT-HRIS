@@ -29,13 +29,17 @@ export const ThemeToggle = ({ variant = 'compact', className = '' }) => {
               key={opt.id}
               type="button"
               onClick={(e) => setTheme(opt.id, e)}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all duration-200 cursor-pointer select-none active:scale-95 ${
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all duration-200 cursor-pointer select-none active:scale-[0.93] ${
                 active
                   ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 shadow-2xs font-bold'
                   : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'
               }`}
             >
-              <i className={`ti ${opt.icon} text-sm transition-transform duration-200 ${active ? 'text-accent scale-110' : ''}`} aria-hidden="true" />
+              <i
+                key={`${opt.id}-${active}`}
+                className={`ti ${opt.icon} text-sm transition-transform duration-200 ${active ? 'theme-icon-ios text-accent scale-110' : ''}`}
+                aria-hidden="true"
+              />
               <span>{opt.label}</span>
             </button>
           );
@@ -57,11 +61,11 @@ export const ThemeToggle = ({ variant = 'compact', className = '' }) => {
       onClick={(e) => cycleTheme(e)}
       aria-label={`Current appearance: ${currentConfig.label}. Click to toggle theme.`}
       title={`Appearance: ${currentConfig.label} (Click to toggle)`}
-      className={`group relative inline-flex items-center justify-center h-8 sm:h-9 px-2 sm:px-2.5 rounded-xl border border-slate-200 dark:border-white/10 bg-white dark:bg-[#172033] text-slate-700 dark:text-slate-200 shadow-2xs hover:bg-slate-50 dark:hover:bg-[#1f2c47] active:scale-[0.97] transition-all duration-150 cursor-pointer select-none gap-1.5 shrink-0 overflow-hidden ${className}`}
+      className={`group relative inline-flex items-center justify-center h-8 sm:h-9 px-2 sm:px-2.5 rounded-xl border border-slate-200 dark:border-white/10 bg-white dark:bg-[#172033] text-slate-700 dark:text-slate-200 shadow-2xs hover:bg-slate-50 dark:hover:bg-[#1f2c47] active:scale-[0.93] transition-all duration-150 cursor-pointer select-none gap-1.5 shrink-0 overflow-hidden ${className}`}
     >
       <i
         key={theme}
-        className={`ti ${currentConfig.icon} text-base text-accent transition-transform duration-300 ease-out group-hover:rotate-12 group-active:scale-90`}
+        className={`ti ${currentConfig.icon} theme-icon-ios text-base text-accent transition-transform duration-300 ease-out group-hover:rotate-12`}
         aria-hidden="true"
       />
       <span className="hidden sm:inline text-xs font-semibold tabular-nums text-slate-600 dark:text-slate-300 transition-colors duration-200">

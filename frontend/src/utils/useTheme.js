@@ -32,11 +32,12 @@ export function applyThemeToDOM(mode) {
 }
 
 /**
- * Enterprise Fluid Transition Orchestrator
+ * Enterprise Fluid Transition Orchestrator (iOS Spring Radial Physics)
  * Progressive enhancement:
- * 1. View Transitions API (Chrome 111+, Edge 111+, Safari 18+) with radial ripple when click origin exists.
- * 2. Silky global crossfade when triggered via shortcut or cross-tab sync.
- * 3. Scoped 320ms CSS transition fallback for older browser engines.
+ * 1. View Transitions API (Chrome 111+, Edge 111+, Safari 18+) with native GPU-accelerated
+ *    radial circular reveal (@keyframes ios-theme-ripple) originating at click coordinates.
+ * 2. Silky iOS cubic-bezier crossfade when triggered via shortcut or cross-tab sync.
+ * 3. Scoped 500ms CSS transition fallback with Apple spring easing for older browser engines.
  * 4. Zero animation if user has prefers-reduced-motion enabled.
  */
 export function transitionTheme(applyFn, origin = null) {
@@ -57,48 +58,23 @@ export function transitionTheme(applyFn, origin = null) {
     return;
   }
 
-  // 1. View Transitions API
+  // 1. View Transitions API with GPU-accelerated iOS spring physics
   if (typeof document.startViewTransition === 'function') {
     if (origin && typeof origin.x === 'number' && typeof origin.y === 'number') {
-      root.classList.add('theme-ripple-transition');
       const { x, y } = origin;
       const endRadius = Math.hypot(
         Math.max(x, window.innerWidth - x),
         Math.max(y, window.innerHeight - y)
       );
 
+      root.style.setProperty('--theme-x', `${x}px`);
+      root.style.setProperty('--theme-y', `${y}px`);
+      root.style.setProperty('--theme-radius', `${endRadius}px`);
+      root.classList.add('theme-ripple-transition');
+
       try {
         const transition = document.startViewTransition(() => {
           applyFn();
-        });
-
-        transition.ready.then(() => {
-          try {
-            const animation = root.animate(
-              {
-                clipPath: [
-                  `circle(0px at ${x}px ${y}px)`,
-                  `circle(${endRadius}px at ${x}px ${y}px)`,
-                ],
-              },
-              {
-                duration: 400,
-                easing: 'cubic-bezier(0.16, 1, 0.3, 1)',
-                pseudoElement: '::view-transition-new(root)',
-              }
-            );
-
-            animation.onfinish = () => {
-              root.classList.remove('theme-ripple-transition');
-            };
-            animation.oncancel = () => {
-              root.classList.remove('theme-ripple-transition');
-            };
-          } catch {
-            root.classList.remove('theme-ripple-transition');
-          }
-        }).catch(() => {
-          root.classList.remove('theme-ripple-transition');
         });
 
         transition.finished.finally(() => {
@@ -126,7 +102,7 @@ export function transitionTheme(applyFn, origin = null) {
   applyFn();
   window.setTimeout(() => {
     root.classList.remove('theme-transition');
-  }, 350);
+  }, 520);
 }
 
 /**
