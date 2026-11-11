@@ -92,6 +92,9 @@ export default defineConfig(({ mode }) => {
             if (normalizedId.includes('@dropdowns/psgc')) {
               return 'vendor-psgc';
             }
+            if (normalizedId.includes('framer-motion')) {
+              return 'vendor-framer';
+            }
             return 'vendor-core';
           }
         },
