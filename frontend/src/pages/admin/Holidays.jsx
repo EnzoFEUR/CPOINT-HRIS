@@ -521,7 +521,7 @@ export default function Holidays() {
     const [viewMode, setViewMode] = useState('register'); // 'register' | 'matrix'
     const [showStatutoryInfo, setShowStatutoryInfo] = useState(false);
     const [showMoreFilters, setShowMoreFilters] = useState(false);
-    const [showPastHolidays, setShowPastHolidays] = useState(true);
+    const [showPastHolidays, setShowPastHolidays] = useState(false);
     const [activeMenuId, setActiveMenuId] = useState(null);
     const [expandedRowId, setExpandedRowId] = useState(null);
 
@@ -700,13 +700,15 @@ export default function Holidays() {
     // View state determination
     const isPastYear = filters.year < currentYear;
     const isFutureYear = filters.year > currentYear;
+    const isSearching = Boolean(deferredSearch.trim());
+    const isCurrentYear = !isPastYear && !isFutureYear;
+    const isDefaultCurrentYearView = isCurrentYear && !isSearching;
     const isFilteringOrSearching = Boolean(
         deferredSearch.trim() ||
         filters.month ||
         filters.type ||
         filters.coverage
     );
-    const isDefaultCurrentYearView = !isPastYear && !isFutureYear && !isFilteringOrSearching;
 
     // Filtered items when a search or filter is active, or when browsing past/future years
     const filteredItems = useMemo(() => {
@@ -730,18 +732,18 @@ export default function Holidays() {
         }).sort((a, b) => a.date.localeCompare(b.date) || a.name.localeCompare(b.name));
     }, [allHolidays, filters.month, filters.type, filters.coverage, deferredSearch, todayIso]);
 
-    // Separate upcoming vs past lists for default current year view
+    // Separate upcoming vs past lists for current year collapsible view
     const upcomingList = useMemo(() => {
-        return allHolidays
+        return filteredItems
             .filter(item => item.date >= todayIso)
             .sort((a, b) => a.date.localeCompare(b.date) || a.name.localeCompare(b.name));
-    }, [allHolidays, todayIso]);
+    }, [filteredItems, todayIso]);
 
     const pastList = useMemo(() => {
-        return allHolidays
+        return filteredItems
             .filter(item => item.date < todayIso)
             .sort((a, b) => b.date.localeCompare(a.date) || a.name.localeCompare(b.name)); // newest first
-    }, [allHolidays, todayIso]);
+    }, [filteredItems, todayIso]);
 
     // 12-Month Matrix Data
     const matrixMonths = useMemo(() => {
@@ -768,10 +770,14 @@ export default function Holidays() {
     const hasAnyFilterActive = Boolean(filters.month || filters.type || filters.coverage || filters.search);
 
     const filter = (name, value) => {
+        if (name === 'year') {
+            setShowPastHolidays(false);
+        }
         setFilters(current => ({ ...current, [name]: value }));
     };
 
     const handleClearAllFilters = () => {
+        setShowPastHolidays(false);
         setFilters(current => ({ ...current, month: '', type: '', coverage: '', search: '' }));
     };
 
@@ -1359,7 +1365,8 @@ export default function Holidays() {
                                         {!isDefaultCurrentYearView && (
                                             filteredItems.map(record => {
                                                 const isUpcomingNext = metrics.upcoming?.id === record.id;
-                                                return renderHolidayRow(record, { isUpcomingNext });
+                                                const isPastMuted = record.date < todayIso;
+                                                return renderHolidayRow(record, { isUpcomingNext, isPastMuted });
                                             })
                                         )}
 
@@ -1368,7 +1375,7 @@ export default function Holidays() {
                                             <>
                                                 {upcomingList.length === 0 ? (
                                                     <tr>
-                                                        <td colSpan={5} className="py-8 text-center text-xs text-slate-400">
+                                                        <td colSpan={5} className="py-8 text-center text-xs text-slate-400 dark:text-slate-500">
                                                             No upcoming holidays remaining in {filters.year}
                                                         </td>
                                                     </tr>
@@ -1382,8 +1389,8 @@ export default function Holidays() {
                                                 {/* Expanded Past Holidays Inline Rows */}
                                                 {showPastHolidays && pastList.length > 0 && (
                                                     <>
-                                                        <tr className="bg-slate-100/60 border-t border-b border-slate-200/60">
-                                                            <td colSpan={5} className="py-1 px-3.5 text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                                                        <tr className="bg-slate-100/60 dark:bg-[#172033] border-t border-b border-slate-200/60 dark:border-white/10">
+                                                            <td colSpan={5} className="py-1 px-3.5 text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-400">
                                                                 Past Holidays ({pastList.length}) · Newest First
                                                             </td>
                                                         </tr>
@@ -1399,11 +1406,11 @@ export default function Holidays() {
 
                         {/* Past Holidays Toggle (Shown below table in default current year view) */}
                         {isDefaultCurrentYearView && pastList.length > 0 && (
-                            <div className="border-t border-slate-100 bg-slate-50/50 px-3.5 py-2">
+                            <div className="border-t border-slate-100 dark:border-white/10 bg-slate-50/50 dark:bg-[#111827]/70 px-3.5 py-2">
                                 <button
                                     type="button"
                                     onClick={() => setShowPastHolidays(prev => !prev)}
-                                    className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-600 hover:text-slate-900 transition-colors cursor-pointer select-none"
+                                    className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white transition-colors cursor-pointer select-none"
                                 >
                                     <ChevronDown
                                         size={14}
@@ -1419,31 +1426,33 @@ export default function Holidays() {
                         )}
 
                         {/* 5. Clean Footer (No Prev/Next buttons; pure count indicator) */}
-                        <div className="flex items-center justify-between px-3.5 py-2.5 border-t border-slate-100 bg-slate-50/40 text-xs text-slate-500">
+                        <div className="flex items-center justify-between px-3.5 py-2.5 border-t border-slate-100 dark:border-white/10 bg-slate-50/40 dark:bg-[#111827]/70 text-xs text-slate-500 dark:text-slate-400">
                             <p className="tabular-nums">
-                                {isFilteringOrSearching ? (
+                                {deferredSearch.trim() ? (
                                     <>
-                                        Showing <strong className="text-slate-700 font-semibold">{filteredItems.length}</strong> of{' '}
-                                        <strong className="text-slate-700 font-semibold">{allHolidays.length}</strong> holidays in {filters.year}
+                                        Showing <strong className="text-slate-700 dark:text-slate-200 font-semibold">{filteredItems.length}</strong> matching holiday{filteredItems.length === 1 ? '' : 's'} in {filters.year}
                                     </>
                                 ) : isPastYear ? (
                                     <>
-                                        Showing <strong className="text-slate-700 font-semibold">{allHolidays.length}</strong> holidays in {filters.year}
+                                        Showing <strong className="text-slate-700 dark:text-slate-200 font-semibold">{allHolidays.length}</strong> holidays in {filters.year}
                                     </>
                                 ) : isFutureYear ? (
                                     <>
-                                        Showing <strong className="text-slate-700 font-semibold">{allHolidays.length}</strong> upcoming holidays in {filters.year}
+                                        Showing <strong className="text-slate-700 dark:text-slate-200 font-semibold">{allHolidays.length}</strong> upcoming holidays in {filters.year}
                                     </>
                                 ) : showPastHolidays ? (
                                     <>
-                                        Showing <strong className="text-slate-700 font-semibold">{upcomingList.length}</strong> upcoming and{' '}
-                                        <strong className="text-slate-700 font-semibold">{pastList.length}</strong> past of{' '}
-                                        <strong className="text-slate-700 font-semibold">{allHolidays.length}</strong> holidays in {filters.year}
+                                        Showing <strong className="text-slate-700 dark:text-slate-200 font-semibold">{upcomingList.length}</strong> upcoming and{' '}
+                                        <strong className="text-slate-700 dark:text-slate-200 font-semibold">{pastList.length}</strong> past of{' '}
+                                        <strong className="text-slate-700 dark:text-slate-200 font-semibold">{filteredItems.length}</strong> holidays in {filters.year}
                                     </>
                                 ) : (
                                     <>
-                                        Showing <strong className="text-slate-700 font-semibold">{upcomingList.length}</strong> upcoming of{' '}
-                                        <strong className="text-slate-700 font-semibold">{allHolidays.length}</strong> holidays in {filters.year}
+                                        Showing <strong className="text-slate-700 dark:text-slate-200 font-semibold">{upcomingList.length}</strong> upcoming of{' '}
+                                        <strong className="text-slate-700 dark:text-slate-200 font-semibold">{filteredItems.length}</strong> holidays in {filters.year}
+                                        {pastList.length > 0 && (
+                                            <span className="text-slate-400 dark:text-slate-500"> ({pastList.length} past hidden)</span>
+                                        )}
                                     </>
                                 )}
                             </p>
