@@ -19,6 +19,7 @@ import { fetchWithAuth } from '../../utils/api';
 import { supabase } from '../../supabaseClient';
 import { getDisciplinaryCache, setDisciplinaryCache, clearDisciplinaryCache } from '../../utils/disciplinaryCache';
 import { isExoneratedOrCleared } from '../../utils/disciplinaryStanding';
+import { Navbar } from '../../components/mobile';
 
 /**
  * Isolated LiveClock leaf component.
@@ -450,7 +451,15 @@ const MyQr = () => {
   }, [user]);
 
   return (
-    <div className="w-full max-w-sm sm:max-w-md mx-auto font-sans px-2 sm:px-4 pt-3 sm:pt-4">
+    <div className="w-full max-w-sm sm:max-w-md mx-auto font-sans px-2 sm:px-4 pt-1 sm:pt-4">
+      {/* Mobile Top Navbar (< lg only, desktop layout completely untouched) */}
+      <Navbar
+        title="My Digital QR"
+        subtitle="Workforce Pass & Terminal Access"
+        backFallback="/employee/dashboard"
+        className="-mx-2 sm:-mx-4 -mt-1 sm:-mt-4 mb-3 sm:mb-4 rounded-b-2xl border-b border-slate-200/80 dark:border-slate-800/80"
+      />
+
       <div className="w-full flex flex-col">
 
         {/* Employee identity header */}
@@ -470,10 +479,10 @@ const MyQr = () => {
 
             {/* Name & Job Title */}
             <div className="min-w-0 flex-1">
-              <h2 className="text-base sm:text-lg font-black text-slate-900 truncate leading-tight">
+              <h2 className="text-base sm:text-lg font-black text-slate-900 dark:text-white truncate leading-tight">
                 {employeeName}
               </h2>
-              <p className="text-xs text-slate-500 font-semibold truncate mt-0.5">
+              <p className="text-xs text-slate-500 dark:text-slate-400 font-semibold truncate mt-0.5">
                 {jobTitle} &middot; {department}
               </p>
             </div>
@@ -495,7 +504,7 @@ const MyQr = () => {
                 <span>Medical Grace</span>
               </span>
             ) : (
-              <span className="font-mono text-xs font-bold text-slate-600 bg-slate-50 px-2.5 py-1 rounded-md border border-slate-200 block shadow-2xs">
+              <span className="font-mono text-xs font-bold text-slate-600 dark:text-slate-300 bg-slate-50 dark:bg-slate-800 px-2.5 py-1 rounded-md border border-slate-200 dark:border-slate-700 block shadow-2xs">
                 {qrValue}
               </span>
             )}
@@ -503,7 +512,7 @@ const MyQr = () => {
         </div>
 
         {isTerminated ? (
-          <div className="w-full bg-white rounded-lg p-6 sm:p-8 flex flex-col items-center justify-center border border-slate-200 shadow-2xs text-center">
+          <div className="w-full bg-white dark:bg-slate-900 rounded-2xl p-6 sm:p-8 flex flex-col items-center justify-center border border-slate-200 dark:border-slate-800 shadow-2xs text-center">
             <div className="w-12 h-12 rounded-lg bg-warning-subtle border border-warning/20 flex items-center justify-center text-warning-ink mb-4">
               <Archive className="w-6 h-6 text-warning-ink" />
             </div>
@@ -511,14 +520,14 @@ const MyQr = () => {
               <span className="w-1.5 h-1.5 rounded-full bg-warning" />
               {isPendingArchive ? `Archive review · ${daysUntilPermanentArchive}d` : `${getSeparationLabel(user)} · Records only`}
             </span>
-            <h3 className="text-base sm:text-lg font-bold text-slate-900">Attendance Pass Revoked</h3>
-            <p className="text-xs text-slate-500 leading-relaxed max-w-xs mt-1.5 font-medium">
+            <h3 className="text-base sm:text-lg font-bold text-slate-900 dark:text-white">Attendance Pass Revoked</h3>
+            <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed max-w-xs mt-1.5 font-medium">
               This employment record is separated. Its QR and biometric attendance access is disabled. Permitted historical records remain available through your records-only account.
             </p>
             <div className="mt-5 w-full">
               <Link 
                 to="/employee/dashboard" 
-                className="w-full h-9 bg-slate-900 hover:bg-slate-800 text-white font-medium text-xs rounded-md transition-colors duration-100 flex items-center justify-center gap-1.5 shadow-2xs cursor-pointer"
+                className="w-full min-h-[44px] h-11 bg-slate-900 hover:bg-slate-800 dark:bg-slate-800 dark:hover:bg-slate-700 text-white font-medium text-xs rounded-xl transition-all flex items-center justify-center gap-1.5 shadow-2xs cursor-pointer active:scale-[0.98]"
               >
                 <Receipt className="w-4 h-4" />
                 <span>View Historical Payslips</span>
@@ -526,7 +535,7 @@ const MyQr = () => {
             </div>
           </div>
         ) : isSuspended ? (
-          <div className="w-full bg-white rounded-lg p-6 sm:p-8 flex flex-col items-center justify-center border border-warning/20 shadow-2xs text-center">
+          <div className="w-full bg-white dark:bg-slate-900 rounded-2xl p-6 sm:p-8 flex flex-col items-center justify-center border border-warning/20 shadow-2xs text-center">
             <div className="w-12 h-12 rounded-lg bg-warning-subtle border border-warning/20 flex items-center justify-center text-warning-ink mb-4">
               <Lock className="w-6 h-6 text-warning-ink" />
             </div>
@@ -534,13 +543,13 @@ const MyQr = () => {
               <span className="w-1.5 h-1.5 rounded-full bg-warning" />
               Attendance Suspended
             </span>
-            <h3 className="text-base sm:text-lg font-bold text-slate-900">Credential Paused</h3>
-            <p className="text-xs text-slate-500 leading-relaxed max-w-xs mt-1.5 font-medium">
+            <h3 className="text-base sm:text-lg font-bold text-slate-900 dark:text-white">Credential Paused</h3>
+            <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed max-w-xs mt-1.5 font-medium">
               Attendance tracking is deactivated during your disciplinary suspension. Clock-in is not permitted until reinstated by HR.
             </p>
 
             {suspensionEndDate && (
-              <div className="mt-4 p-3 bg-warning-subtle/70 border border-warning/60 rounded-md text-left w-full text-xs">
+              <div className="mt-4 p-3 bg-warning-subtle/70 border border-warning/60 rounded-xl text-left w-full text-xs">
                 <div className="flex items-center justify-between font-bold text-warning-ink">
                   <span>Scheduled End:</span>
                   <span className="font-mono">{suspensionEndDate}</span>
@@ -548,17 +557,17 @@ const MyQr = () => {
               </div>
             )}
 
-            <div className="mt-5 w-full space-y-2">
+            <div className="mt-5 w-full space-y-2.5">
               <Link 
                 to="/employee/dashboard?view=disciplinary" 
-                className="w-full h-9 bg-warning hover:bg-warning text-slate-950 font-bold text-xs rounded-md transition-colors duration-100 flex items-center justify-center gap-1.5 shadow-2xs cursor-pointer"
+                className="w-full min-h-[44px] h-11 bg-warning hover:bg-warning text-slate-950 font-bold text-xs rounded-xl transition-all flex items-center justify-center gap-1.5 shadow-2xs cursor-pointer active:scale-[0.98]"
               >
                 <FileText className="w-4 h-4" />
                 <span>Review Disciplinary Notice</span>
               </Link>
               <Link 
                 to="/employee/dashboard" 
-                className="w-full h-9 bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium text-xs rounded-md transition-colors duration-100 flex items-center justify-center gap-1.5 shadow-2xs cursor-pointer"
+                className="w-full min-h-[44px] h-11 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 font-medium text-xs rounded-xl transition-all flex items-center justify-center gap-1.5 shadow-2xs cursor-pointer active:scale-[0.98]"
               >
                 <Receipt className="w-4 h-4" />
                 <span>View Payslips</span>
@@ -566,12 +575,12 @@ const MyQr = () => {
             </div>
           </div>
         ) : !disciplinaryState.checked ? (
-          <div className="w-full bg-white rounded-lg p-8 flex flex-col items-center justify-center border border-slate-200 shadow-2xs min-h-[290px]">
-            <div className="w-8 h-8 border-2 border-slate-200 border-t-accent rounded-full animate-spin mb-3" />
+          <div className="w-full bg-white dark:bg-slate-900 rounded-2xl p-8 flex flex-col items-center justify-center border border-slate-200 dark:border-slate-800 shadow-2xs min-h-[290px]">
+            <div className="w-8 h-8 border-2 border-slate-200 dark:border-slate-800 border-t-accent rounded-full animate-spin mb-3" />
             <span className="text-xs text-slate-400 font-medium">Verifying access...</span>
           </div>
         ) : !hasFaceBiometrics ? (
-          <div className="w-full bg-white rounded-lg p-6 sm:p-8 flex flex-col items-center justify-center border border-warning/20 shadow-2xs text-center relative overflow-hidden">
+          <div className="w-full bg-white dark:bg-slate-900 rounded-2xl p-6 sm:p-8 flex flex-col items-center justify-center border border-warning/20 shadow-2xs text-center relative overflow-hidden">
             <div className="w-16 h-16 rounded-lg bg-warning/10 border border-warning/30 flex items-center justify-center text-warning-ink mb-4 relative">
               <ScanFace className="w-8 h-8 animate-pulse" />
               <div className="absolute -bottom-1 -right-1 w-6 h-6 rounded-full bg-warning text-slate-950 flex items-center justify-center text-xs font-black shadow-xs">
@@ -584,25 +593,25 @@ const MyQr = () => {
               Biometrics Incomplete · Pass Locked
             </span>
 
-            <h3 className="text-base sm:text-lg font-bold text-slate-900 tracking-tight">
+            <h3 className="text-base sm:text-lg font-bold text-slate-900 dark:text-white tracking-tight">
               Facial Biometrics Registration Required
             </h3>
 
-            <p className="text-xs text-slate-500 mt-1.5 leading-relaxed max-w-sm font-medium">
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-1.5 leading-relaxed max-w-sm font-medium">
               Your attendance QR pass becomes available after face registration. Contact HR if you need help completing registration.
             </p>
 
             <div className="mt-5 w-full max-w-xs space-y-2">
               <Link
                 to="/biometric-setup"
-                className="w-full h-10 bg-accent hover:bg-accent-hover text-white font-medium text-xs rounded-md transition-colors duration-100 shadow-2xs flex items-center justify-center gap-2 cursor-pointer"
+                className="w-full min-h-[44px] h-11 bg-accent hover:bg-accent-hover text-white font-medium text-xs rounded-xl transition-all shadow-2xs flex items-center justify-center gap-2 cursor-pointer active:scale-[0.98]"
               >
                 <Camera className="w-4 h-4" />
                 <span>Register face scan</span>
               </Link>
             </div>
 
-            <div className="mt-4 pt-4 border-t border-slate-100 w-full flex items-center justify-between text-[11px] text-slate-400 font-medium px-2">
+            <div className="mt-4 pt-4 border-t border-slate-100 dark:border-slate-800 w-full flex items-center justify-between text-[11px] text-slate-400 font-medium px-2">
               <span className="flex items-center gap-1.5">
               </span>
               <span className="font-mono text-slate-500">Unlocks instantly</span>
@@ -614,7 +623,7 @@ const MyQr = () => {
 
         {/* Medical Grace Exemption Status Callout */}
         {isMedicalExempt && !isTerminated && !isSuspended && (
-          <div className="w-full mt-4 p-4 bg-warning-subtle border border-warning/20 rounded-md text-left shadow-2xs">
+          <div className="w-full mt-4 p-4 bg-warning-subtle border border-warning/20 dark:border-warning/30 rounded-2xl text-left shadow-2xs">
             <div className="flex items-center gap-2 text-warning-ink font-bold text-xs">
               <ShieldCheck className="w-4 h-4 text-warning-ink shrink-0" />
               <span>Medical Grace Protocol Active</span>
