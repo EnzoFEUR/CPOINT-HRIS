@@ -749,12 +749,12 @@ export default function OfflineAttendanceTerminal({ canProvision = false, operat
                             <div className="flex items-center gap-2">
                               <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold border ${
                                 isTimeIn
-                                  ? 'bg-slate-900 text-white border-slate-800'
-                                  : 'bg-slate-100 text-slate-700 border-slate-200'
+                                  ? 'bg-slate-900 text-white border-slate-800 dark:bg-emerald-500/15 dark:text-emerald-300 dark:border-emerald-500/30'
+                                  : 'bg-slate-100 text-slate-700 border-slate-200 dark:bg-slate-800/80 dark:text-slate-300 dark:border-slate-700/80'
                               }`}>
                                 {isTimeIn ? 'Time In' : 'Time Out'}
                               </span>
-                              <span className="font-mono text-xs font-bold text-slate-900">
+                              <span className="font-mono text-xs font-bold text-slate-900 dark:text-white">
                                 {new Date(item.payload.captured_at).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
                               </span>
                             </div>
@@ -763,7 +763,7 @@ export default function OfflineAttendanceTerminal({ canProvision = false, operat
                               isAccepted ? 'bg-success-subtle text-success-ink border-success/20' :
                               isRejected ? 'bg-danger-subtle text-danger-ink border-danger/20' :
                               isPending ? 'bg-warning-subtle text-warning-ink border-warning/20' :
-                              'bg-slate-100 text-slate-700 border-slate-200'
+                              'bg-slate-100 text-slate-700 border-slate-200 dark:bg-slate-800/80 dark:text-slate-300 dark:border-slate-700/80'
                             }`}>
                               {item.server_received === false ? 'Rejected' : receiptLabels[item.status] || 'Needs Attention'}
                             </span>

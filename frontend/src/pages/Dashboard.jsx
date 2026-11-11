@@ -508,7 +508,7 @@ export default function Dashboard() {
         <div className="max-w-7xl mx-auto space-y-6 pb-12">
 
             {/* AI Executive Briefing */}
-            <div className="bg-slate-900 rounded-lg border border-slate-800 text-white shadow-2xs relative overflow-hidden">
+            <div className="bg-slate-900 dark:bg-gradient-to-r dark:from-[#0d1627] dark:via-[#0e172a] dark:to-[#121c33] rounded-lg border border-slate-800 dark:border-blue-500/30 text-white shadow-2xs dark:shadow-[0_4px_30px_-5px_rgba(37,99,235,0.18)] relative overflow-hidden">
                 <div className="relative z-10 space-y-4 p-5 sm:p-6">
                     {!briefing ? (
                         /* Enterprise Skeleton State only when absolutely zero telemetry is available */
@@ -632,7 +632,7 @@ export default function Dashboard() {
                 <button
                     type="button"
                     onClick={() => setActiveModal('present')}
-                    className="bg-white p-5 sm:p-6 rounded-lg border border-slate-200 shadow-2xs relative overflow-hidden group text-left cursor-pointer hover:border-success/20 hover:bg-slate-50/50 transition-colors duration-100"
+                    className="bg-white p-5 sm:p-6 rounded-lg border border-slate-200 shadow-2xs relative overflow-hidden group text-left cursor-pointer hover:border-success/20 hover:bg-slate-50/50 dark:hover:border-emerald-500/40 dark:hover:shadow-[0_0_20px_rgba(16,185,129,0.12)] transition-all duration-150"
                 >
                     
                     <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
@@ -652,7 +652,7 @@ export default function Dashboard() {
                 <button
                     type="button"
                     onClick={() => setActiveModal('late')}
-                    className="bg-white p-5 sm:p-6 rounded-lg border border-slate-200 shadow-2xs relative overflow-hidden group text-left cursor-pointer hover:border-warning/20 hover:bg-slate-50/50 transition-colors duration-100"
+                    className="bg-white p-5 sm:p-6 rounded-lg border border-slate-200 shadow-2xs relative overflow-hidden group text-left cursor-pointer hover:border-warning/20 hover:bg-slate-50/50 dark:hover:border-amber-500/40 dark:hover:shadow-[0_0_20px_rgba(245,158,11,0.12)] transition-all duration-150"
                 >
                     
                     <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Late Arrivals</p>
@@ -664,7 +664,7 @@ export default function Dashboard() {
                     </span>
                 </button>
 
-                <Link to="/admin/leaves" className="bg-slate-900 hover:bg-slate-800 transition-colors duration-100 p-5 sm:p-6 rounded-lg border border-slate-800 shadow-2xs text-white block cursor-pointer relative overflow-hidden group">
+                <Link to="/admin/leaves" className="bg-slate-900 dark:bg-gradient-to-br dark:from-blue-950/70 dark:via-slate-900 dark:to-indigo-950/70 hover:bg-slate-800 dark:hover:border-blue-400/60 transition-all duration-150 p-5 sm:p-6 rounded-lg border border-slate-800 dark:border-blue-500/30 shadow-2xs dark:shadow-[0_0_20px_rgba(37,99,235,0.15)] text-white block cursor-pointer relative overflow-hidden group">
                     
                     <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Pending Leaves</p>
                     <h3 className="text-3xl sm:text-4xl font-bold text-white mt-1 tracking-tight font-mono tabular-nums">
@@ -818,7 +818,7 @@ export default function Dashboard() {
                                         ₱{payrollData.actualPayToDate.toLocaleString()}
                                     </p>
                                 </div>
-                                <div className="bg-slate-900 border border-slate-800 rounded-md p-3.5 sm:p-4">
+                                <div className="bg-slate-900 dark:bg-gradient-to-br dark:from-[#0d1627] dark:to-[#172554]/40 border border-slate-800 dark:border-blue-500/30 rounded-md p-3.5 sm:p-4">
                                     <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Projected cutoff total</p>
                                     <p className="text-xl font-bold font-mono text-white mt-1">
                                         ₱{payrollData.projectedCutoffTotal.toLocaleString()}
@@ -1013,7 +1013,7 @@ export default function Dashboard() {
                                 <span className={`px-2 py-0.5 text-[10px] font-semibold uppercase rounded-md border shrink-0 ${
                                     log.status?.toLowerCase().includes('absent') ? 'bg-danger-subtle text-danger-ink border-danger/20' :
                                     isLatePunch(log) ? 'bg-warning-subtle text-warning-ink border-warning/20' : 
-                                    'bg-slate-900 text-white border-slate-800'
+                                    'bg-slate-900 text-white border-slate-800 dark:bg-emerald-500/15 dark:text-emerald-300 dark:border-emerald-500/30'
                                 }`}>
                                     {isLatePunch(log) ? 'Late' : (log.status?.toLowerCase().includes('late') ? 'Present' : log.status)}
                                 </span>
@@ -1104,7 +1104,7 @@ export default function Dashboard() {
                                                 <span className={`px-2 py-0.5 text-[10px] font-semibold uppercase rounded-md border shrink-0 ${
                                                     person.isLate
                                                         ? 'bg-warning-subtle text-warning-ink border-warning/20'
-                                                        : 'bg-slate-900 text-white border-slate-800'
+                                                        : 'bg-slate-900 text-white border-slate-800 dark:bg-emerald-500/15 dark:text-emerald-300 dark:border-emerald-500/30'
                                                 }`}>
                                                     {person.isLate ? 'Late' : 'Present'}
                                                 </span>
