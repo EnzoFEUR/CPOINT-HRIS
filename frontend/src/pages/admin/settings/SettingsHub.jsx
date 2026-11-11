@@ -1,5 +1,5 @@
-import { lazy, Suspense, useMemo } from 'react';
-import { useSearchParams, Link } from 'react-router-dom';
+import { lazy, Suspense, useMemo, useEffect } from 'react';
+import { useSearchParams, Link, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import PageHeader from '../../../components/ui/PageHeader';
 import { fetchWithAuth } from '../../../utils/api';
@@ -28,8 +28,16 @@ function SettingsTabLoading() {
 export default function SettingsHub() {
     const user = getUser();
     const adminUser = isAdmin(user);
+    const navigate = useNavigate();
     const [searchParams, setSearchParams] = useSearchParams();
     const activeTab = searchParams.get('tab') || 'overview';
+
+    // Optimize: Redirect /admin/settings?tab=statutory directly to the dedicated statutory settings page
+    useEffect(() => {
+        if (searchParams.get('tab') === 'statutory') {
+            navigate('/admin/payroll/statutory-settings', { replace: true });
+        }
+    }, [searchParams, navigate]);
 
     // Real-time live status queries (cached via React Query with zero latency)
     const { data: statutoryData } = useQuery({
@@ -74,6 +82,10 @@ export default function SettingsHub() {
     }, [adminUser, backupData]);
 
     const setTab = id => {
+        if (id === 'statutory') {
+            navigate('/admin/payroll/statutory-settings');
+            return;
+        }
         setSearchParams(id === 'overview' ? {} : { tab: id });
     };
 
@@ -104,8 +116,8 @@ export default function SettingsHub() {
                 }
             />
 
-            {/* Sub-Millisecond Navigation Segmented Bar */}
-            <nav className="flex items-center gap-1.5 p-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-2xs overflow-x-auto custom-scrollbar" aria-label="Settings Tabs">
+            {/* Mobile-Only Navigation Segmented Bar (Hidden on PC/Desktop for clean cockpit view) */}
+            <nav className="flex md:hidden items-center gap-1.5 p-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-2xs overflow-x-auto custom-scrollbar" aria-label="Settings Tabs">
                 {tabs.map(tab => {
                     const isActive = activeTab === tab.id;
                     return (
@@ -136,6 +148,20 @@ export default function SettingsHub() {
                     );
                 })}
             </nav>
+
+            {/* Desktop / PC Back to Cockpit Link when a sub-tab is loaded */}
+            {activeTab !== 'overview' && (
+                <div className="hidden md:flex items-center pb-1">
+                    <button
+                        type="button"
+                        onClick={() => setTab('overview')}
+                        className="inline-flex items-center gap-1.5 text-xs font-semibold text-accent hover:text-accent-hover cursor-pointer"
+                    >
+                        <i className="ti ti-arrow-left text-xs" aria-hidden="true" />
+                        <span>Back to Settings Cockpit</span>
+                    </button>
+                </div>
+            )}
 
             {/* Tab Body */}
             <div className="min-w-0">
