@@ -1,5 +1,5 @@
 import { lazy, Suspense, useMemo } from 'react';
-import { useSearchParams, Link } from 'react-router-dom';
+import { useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import PageHeader from '../../../components/ui/PageHeader';
 import { fetchWithAuth } from '../../../utils/api';
@@ -200,18 +200,15 @@ export default function SettingsHub() {
                                         <div className="flex justify-between"><span>Withholding Tax Version:</span><span className="font-semibold text-slate-800">TRAIN Law (Rev. 2026)</span></div>
                                     </div>
                                 </div>
-                                <div className="pt-3 mt-3 border-t border-slate-100 flex items-center justify-between">
+                                <div className="pt-3 mt-3 border-t border-slate-100 flex items-center">
                                     <button
                                         type="button"
                                         onClick={() => setTab('statutory')}
-                                        className="inline-flex items-center gap-1 text-xs font-semibold text-accent hover:text-accent-hover cursor-pointer"
+                                        className="inline-flex items-center gap-1.5 text-xs font-semibold text-accent hover:text-accent-hover cursor-pointer"
                                     >
                                         <span>Open Statutory Editor</span>
                                         <i className="ti ti-arrow-right text-xs" />
                                     </button>
-                                    <Link to="/admin/payroll/statutory-settings" className="text-[11px] text-slate-400 hover:text-slate-600">
-                                        Direct Route
-                                    </Link>
                                 </div>
                             </section>
 
@@ -236,11 +233,11 @@ export default function SettingsHub() {
                                         <div className="flex justify-between"><span>Penalty Deduction:</span><span className="font-semibold text-slate-800">₱{lateRate}.00 / minute</span></div>
                                     </div>
                                 </div>
-                                <div className="pt-3 mt-3 border-t border-slate-100 flex items-center justify-between">
+                                <div className="pt-3 mt-3 border-t border-slate-100 flex items-center">
                                     <button
                                         type="button"
                                         onClick={() => setTab('statutory')}
-                                        className="inline-flex items-center gap-1 text-xs font-semibold text-accent hover:text-accent-hover cursor-pointer"
+                                        className="inline-flex items-center gap-1.5 text-xs font-semibold text-accent hover:text-accent-hover cursor-pointer"
                                     >
                                         <span>Update Attendance Parameters</span>
                                         <i className="ti ti-arrow-right text-xs" />
@@ -269,18 +266,15 @@ export default function SettingsHub() {
                                         <div className="flex justify-between"><span>Official Gazette Sync:</span><span className="font-semibold text-emerald-700">Connected</span></div>
                                     </div>
                                 </div>
-                                <div className="pt-3 mt-3 border-t border-slate-100 flex items-center justify-between">
+                                <div className="pt-3 mt-3 border-t border-slate-100 flex items-center">
                                     <button
                                         type="button"
                                         onClick={() => setTab('holidays')}
-                                        className="inline-flex items-center gap-1 text-xs font-semibold text-accent hover:text-accent-hover cursor-pointer"
+                                        className="inline-flex items-center gap-1.5 text-xs font-semibold text-accent hover:text-accent-hover cursor-pointer"
                                     >
                                         <span>Open Holiday Manager</span>
                                         <i className="ti ti-arrow-right text-xs" />
                                     </button>
-                                    <Link to="/admin/holidays" className="text-[11px] text-slate-400 hover:text-slate-600">
-                                        Direct Route
-                                    </Link>
                                 </div>
                             </section>
 
@@ -305,18 +299,15 @@ export default function SettingsHub() {
                                         <div className="flex justify-between"><span>Unused Leave Conversion:</span><span className="font-semibold text-slate-800">Monetizable upon request</span></div>
                                     </div>
                                 </div>
-                                <div className="pt-3 mt-3 border-t border-slate-100 flex items-center justify-between">
+                                <div className="pt-3 mt-3 border-t border-slate-100 flex items-center">
                                     <button
                                         type="button"
                                         onClick={() => setTab('sil')}
-                                        className="inline-flex items-center gap-1 text-xs font-semibold text-accent hover:text-accent-hover cursor-pointer"
+                                        className="inline-flex items-center gap-1.5 text-xs font-semibold text-accent hover:text-accent-hover cursor-pointer"
                                     >
                                         <span>Manage SIL Conversion</span>
                                         <i className="ti ti-arrow-right text-xs" />
                                     </button>
-                                    <Link to="/admin/leaves?tab=sil-policy" className="text-[11px] text-slate-400 hover:text-slate-600">
-                                        Direct Route
-                                    </Link>
                                 </div>
                             </section>
 
@@ -355,18 +346,15 @@ export default function SettingsHub() {
                                             </div>
                                         </div>
                                     </div>
-                                    <div className="pt-3 mt-3 border-t border-slate-100 flex items-center justify-between">
+                                    <div className="pt-3 mt-3 border-t border-slate-100 flex items-center">
                                         <button
                                             type="button"
                                             onClick={() => setTab('backups')}
-                                            className="inline-flex items-center gap-1 text-xs font-semibold text-accent hover:text-accent-hover cursor-pointer"
+                                            className="inline-flex items-center gap-1.5 text-xs font-semibold text-accent hover:text-accent-hover cursor-pointer"
                                         >
                                             <span>Open Backup Control Center</span>
                                             <i className="ti ti-arrow-right text-xs" />
                                         </button>
-                                        <Link to="/admin/backups" className="text-[11px] text-slate-400 hover:text-slate-600">
-                                            Direct Route
-                                        </Link>
                                     </div>
                                 </section>
                             )}
