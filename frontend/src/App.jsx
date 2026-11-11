@@ -57,6 +57,7 @@ const PayrollCreate = lazy(() => import('./pages/admin/payroll/Create'));
 const PayrollShow = lazy(() => import('./pages/admin/payroll/Show'));
 
 // Admin - Operations
+const SettingsHub = lazy(() => import('./pages/admin/settings/SettingsHub'));
 const AuditLogsIndex = lazy(() => import('./pages/admin/audit-logs/Index'));
 const Backups = lazy(() => import('./pages/admin/Backups'));
 const Holidays = lazy(() => import('./pages/admin/Holidays'));
@@ -206,6 +207,7 @@ function App() {
           <Route path="/admin/payroll/:id" element={<ProtectedRoute allowedRoles={['admin', 'hr']} requireBiometrics><PayrollShow /></ProtectedRoute>} />
 
           {/* Admin - Operations & Governance */}
+          <Route path="/admin/settings" element={<ProtectedRoute allowedRoles={['admin', 'hr']} requireBiometrics><SettingsHub /></ProtectedRoute>} />
           <Route path="/admin/backups" element={<ProtectedRoute allowedRoles={['admin']} requireBiometrics><Backups /></ProtectedRoute>} />
           <Route path="/admin/holidays" element={<ProtectedRoute allowedRoles={['admin', 'hr']} requireBiometrics><Holidays /></ProtectedRoute>} />
           <Route path="/admin/audit-logs" element={<ProtectedRoute allowedRoles={['admin', 'hr']} requireBiometrics><AuditLogsIndex /></ProtectedRoute>} />

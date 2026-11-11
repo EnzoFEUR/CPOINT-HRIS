@@ -26,6 +26,15 @@ export const Sidebar = ({ user, handleLogout }) => {
     if (isLeavesPath) setLeavesDropdownOpen(true);
   }
 
+  const isSettingsPath = location.pathname.startsWith('/admin/settings') || location.pathname === '/admin/payroll/statutory-settings' || location.pathname === '/admin/holidays' || location.pathname === '/admin/backups';
+  const [settingsDropdownOpen, setSettingsDropdownOpen] = useState(isSettingsPath);
+
+  const [previousSettingsPath, setPreviousSettingsPath] = useState(isSettingsPath);
+  if (previousSettingsPath !== isSettingsPath) {
+    setPreviousSettingsPath(isSettingsPath);
+    if (isSettingsPath) setSettingsDropdownOpen(true);
+  }
+
   const searchParams = new URLSearchParams(location.search);
   const currentTab = searchParams.get('tab') || 'requests';
   const isApprovalsActive = isLeavesPath && (!searchParams.get('tab') || currentTab === 'requests');
@@ -116,10 +125,8 @@ export const Sidebar = ({ user, handleLogout }) => {
   ];
 
   const bottomAdminNavItems = [
-    { route: '/admin/holidays', icon: 'ti-calendar-event', label: 'Holidays' },
     { route: '/admin/disciplinary', icon: 'ti-gavel', label: 'Disciplinary' },
     { route: '/admin/audit-logs', icon: 'ti-history', label: 'Audit Trail' },
-    ...(user?.role === 'admin' ? [{ route: '/admin/backups', icon: 'ti-database-export', label: 'Backups' }] : []),
   ];
 
   return (
@@ -407,6 +414,91 @@ export const Sidebar = ({ user, handleLogout }) => {
                 <span className="ml-3 font-medium tracking-wide">{item.label}</span>
               </Link>
             ))}
+
+            {/* System Settings Submenu Dropdown */}
+            <div className="space-y-1 mt-1">
+              <button
+                type="button"
+                onClick={() => setSettingsDropdownOpen(!settingsDropdownOpen)}
+                className={`w-full flex items-center justify-between px-4 py-3.5 rounded-2xl cursor-pointer transition-colors ${
+                  isSettingsPath ? 'bg-slate-800/50 text-white' : 'text-slate-400 hover:text-white hover:bg-slate-800/30'
+                }`}
+              >
+                <div className="flex items-center min-w-0">
+                  <i className={`ti ti-settings text-xl shrink-0 ${isSettingsPath ? 'text-accent' : ''}`}></i>
+                  <span className="ml-3 font-medium tracking-wide truncate">System Settings</span>
+                </div>
+                <div className="flex items-center gap-1.5 shrink-0">
+                  <i className={`ti ti-chevron-down text-sm transition-transform duration-200 ${settingsDropdownOpen ? 'rotate-180' : ''}`}></i>
+                </div>
+              </button>
+
+              {settingsDropdownOpen && (
+                <div className="flex flex-col gap-1 pl-4 pr-2 pt-1">
+                  <Link
+                    to="/admin/settings"
+                    className={`flex items-center px-4 py-2.5 rounded-xl transition-colors ${
+                      location.pathname === '/admin/settings'
+                        ? 'bg-accent text-white shadow-md font-bold'
+                        : 'text-slate-400 hover:text-white hover:bg-white/5'
+                    }`}
+                  >
+                    <i className="ti ti-layout-grid text-lg shrink-0"></i>
+                    <span className="ml-3 text-sm font-medium truncate">Settings Hub</span>
+                  </Link>
+
+                  <Link
+                    to="/admin/payroll/statutory-settings"
+                    className={`flex items-center px-4 py-2.5 rounded-xl transition-colors ${
+                      location.pathname === '/admin/payroll/statutory-settings'
+                        ? 'bg-accent text-white shadow-md font-bold'
+                        : 'text-slate-400 hover:text-white hover:bg-white/5'
+                    }`}
+                  >
+                    <i className="ti ti-adjustments-horizontal text-lg shrink-0"></i>
+                    <span className="ml-3 text-sm font-medium truncate">Statutory & Tax Rates</span>
+                  </Link>
+
+                  <Link
+                    to="/admin/holidays"
+                    className={`flex items-center px-4 py-2.5 rounded-xl transition-colors ${
+                      location.pathname === '/admin/holidays'
+                        ? 'bg-accent text-white shadow-md font-bold'
+                        : 'text-slate-400 hover:text-white hover:bg-white/5'
+                    }`}
+                  >
+                    <i className="ti ti-calendar-event text-lg shrink-0"></i>
+                    <span className="ml-3 text-sm font-medium truncate">Holiday Calendar</span>
+                  </Link>
+
+                  <Link
+                    to="/admin/leaves?tab=sil-policy"
+                    className={`flex items-center px-4 py-2.5 rounded-xl transition-colors ${
+                      location.pathname === '/admin/leaves' && currentTab === 'sil-policy'
+                        ? 'bg-accent text-white shadow-md font-bold'
+                        : 'text-slate-400 hover:text-white hover:bg-white/5'
+                    }`}
+                  >
+                    <i className="ti ti-shield-check text-lg shrink-0"></i>
+                    <span className="ml-3 text-sm font-medium truncate">Leave Policy (SIL)</span>
+                  </Link>
+
+                  {user?.role === 'admin' && (
+                    <Link
+                      to="/admin/backups"
+                      className={`flex items-center px-4 py-2.5 rounded-xl transition-colors ${
+                        location.pathname === '/admin/backups'
+                          ? 'bg-accent text-white shadow-md font-bold'
+                          : 'text-slate-400 hover:text-white hover:bg-white/5'
+                      }`}
+                    >
+                      <i className="ti ti-database-export text-lg shrink-0"></i>
+                      <span className="ml-3 text-sm font-medium truncate">Cloud Backups</span>
+                    </Link>
+                  )}
+                </div>
+              )}
+            </div>
           </>
         ) : (
           <div className="space-y-1">

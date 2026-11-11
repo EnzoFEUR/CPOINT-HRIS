@@ -212,6 +212,23 @@ export const MobileNav = ({
             <div className="grid grid-cols-2 gap-2.5 mb-5">
               {isAdmin(user) ? (
                 <>
+                  <Link
+                    to="/admin/settings"
+                    onClick={() => setSidebarOpen(false)}
+                    className="col-span-2 p-3 bg-slate-900 hover:bg-slate-800 rounded-md border border-accent/40 bg-gradient-to-r from-accent/10 to-transparent flex items-center justify-between transition-colors duration-100 cursor-pointer"
+                  >
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <div className="w-8 h-8 rounded-md bg-accent text-white flex items-center justify-center shrink-0 shadow-2xs">
+                        <i className="ti ti-settings text-lg" />
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-xs font-semibold text-white truncate">Settings Hub</p>
+                        <p className="text-[9px] text-slate-400 truncate">Unified statutory, holidays, SIL, & backups</p>
+                      </div>
+                    </div>
+                    <i className="ti ti-chevron-right text-xs text-slate-500 shrink-0" />
+                  </Link>
+
                   <Link to="/admin/holidays" onClick={() => setSidebarOpen(false)} className="p-3 bg-slate-900 hover:bg-slate-800 rounded-md border border-slate-800 flex items-center gap-2.5 transition-colors duration-100 cursor-pointer">
                     <div className="w-8 h-8 rounded-md bg-accent-subtle text-accent flex items-center justify-center shrink-0"><i className="ti ti-calendar-event text-lg" aria-hidden="true" /></div>
                     <div className="min-w-0"><p className="text-xs font-semibold text-white truncate">Holidays</p><p className="text-[9px] text-slate-400 truncate">Declarations & coverage</p></div>
