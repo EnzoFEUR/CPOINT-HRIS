@@ -125,7 +125,7 @@ export default function PayrollShow() {
                 </div>
                 <h3 className="text-lg font-bold text-slate-800 tracking-tight">Record Unavailable</h3>
                 <p className="text-xs text-slate-500 mt-2 mb-6">{errorMessage || 'The requested payslip could not be found or has been removed.'}</p>
-                <BackButton fallback="/admin/payroll" label="Back to Payroll" />
+                <BackButton to="/admin/payroll" fallback="/admin/payroll" label="Back to Payroll" />
             </div>
         );
     }

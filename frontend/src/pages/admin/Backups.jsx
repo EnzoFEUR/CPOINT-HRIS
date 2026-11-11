@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
-import { DatabaseBackup, RefreshCw, ShieldCheck, Monitor, Clock3 } from 'lucide-react';
+import { DatabaseBackup, RefreshCw, ShieldCheck, Clock3 } from 'lucide-react';
 import PageHeader from '../../components/ui/PageHeader';
 import { fetchWithAuth } from '../../utils/api';
 import { supabase } from '../../supabaseClient';
@@ -94,21 +94,12 @@ export default function Backups() {
         <div className="space-y-4">
             <PageHeader
                 breadcrumbs={['Admin', 'Backups']}
-                title="Backups"
-                description="View encrypted local and cloud backups and daily backup activity."
+                showBack
+                backTo="/admin/settings"
+                backFallback="/admin/settings"
+                backLabel="Back to Settings Hub"
                 actions={
                     <div className="flex flex-wrap items-center gap-2">
-                        <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold ${
-                            view.hosted 
-                                ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                                : data.worker_online 
-                                    ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' 
-                                    : 'bg-slate-100 text-slate-600 border border-slate-200'
-                        }`}>
-                            <span className={`w-1.5 h-1.5 rounded-full ${view.hosted || data.worker_online ? 'bg-emerald-500 animate-pulse' : 'bg-slate-400'}`} />
-                            <span>{view.hosted ? 'Autonomous Cloud Active' : data.worker_online ? 'Workstation Connected' : 'Worker Offline'}</span>
-                        </span>
-
                         {view.workflowUrl && (
                             <a className={`${button} bg-slate-900 text-white hover:bg-slate-800 h-8`} href={view.workflowUrl} target="_blank" rel="noopener noreferrer">
                                 <i className="ti ti-brand-github text-sm" />
@@ -140,33 +131,10 @@ export default function Backups() {
                     {/* Compact Hero Status Strip */}
                     <section className="rounded-lg border border-slate-200 bg-white p-3.5 shadow-xs">
                         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                            <div className="flex min-w-0 items-center gap-3">
-                                <div className={`p-2 rounded-md shrink-0 ${view.hosted || data.worker_online ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-600'}`}>
-                                    <Monitor size={18} aria-hidden="true" />
-                                </div>
-                                <div className="space-y-0.5 min-w-0">
-                                    <div className="flex flex-wrap items-center gap-2">
-                                        <h2 className="text-sm font-semibold text-slate-900 truncate">
-                                            {query.isPending ? 'Loading backup status…' : view.availability}
-                                        </h2>
-                                        {view.hosted && (
-                                            <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200">
-                                                Zero-PC Cloud Runner
-                                            </span>
-                                        )}
-                                    </div>
-                                    {!query.isPending && view.hosted && (
-                                        <p className="text-xs text-slate-500">Runs in the cloud. Your computer can be off.</p>
-                                    )}
-                                    {!query.isPending && !view.hosted && !data.worker_online && (
-                                        <p className="text-xs text-slate-500">
-                                            {data.configured ? 'Keep the configured backup computer on and connected.' : 'Contact the system administrator to finish setup.'}
-                                        </p>
-                                    )}
-                                    {data.worker_online && !view.hosted && (
-                                        <p className="text-xs text-slate-500">Backup worker connected</p>
-                                    )}
-                                </div>
+                            <div className="min-w-0">
+                                <h2 className="text-sm font-semibold text-slate-900 truncate">
+                                    {query.isPending ? 'Loading backup status…' : view.availability}
+                                </h2>
                             </div>
 
                             <div className="flex flex-wrap items-center gap-2 shrink-0">
@@ -251,16 +219,10 @@ export default function Backups() {
                         {/* Column 1: Backup Snapshot */}
                         <section className="rounded-lg border border-slate-200 bg-white p-4 shadow-xs flex flex-col justify-between">
                             <div>
-                                <div className="flex items-center justify-between pb-2 border-b border-slate-100">
-                                    <div className="flex items-center gap-2">
-                                        <div className="p-1.5 rounded-md bg-slate-100 text-slate-700">
-                                            <DatabaseBackup size={16} aria-hidden="true" />
-                                        </div>
-                                        <h2 className="text-sm font-semibold text-slate-900">
-                                            {view.hosted ? 'Latest cloud backup' : 'Local backup'}
-                                        </h2>
-                                    </div>
-                                    <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-slate-100 text-slate-600">Snapshot</span>
+                                <div className="pb-2 border-b border-slate-200">
+                                    <h2 className="text-sm font-semibold text-slate-900">
+                                        {view.hosted ? 'Latest cloud backup' : 'Local backup'}
+                                    </h2>
                                 </div>
 
                                 <div className="mt-3">
@@ -279,7 +241,7 @@ export default function Backups() {
                             </div>
 
                             {!view.hosted && (
-                                <div className="pt-3 mt-3 border-t border-slate-100">
+                                <div className="pt-3 mt-3 border-t border-slate-200">
                                     <button
                                         type="button"
                                         className={`${button} w-full bg-slate-900 text-white hover:bg-slate-800 h-8`}
@@ -301,16 +263,8 @@ export default function Backups() {
                         {/* Column 2: Integrity & Verification */}
                         <section className="rounded-lg border border-slate-200 bg-white p-4 shadow-xs flex flex-col justify-between">
                             <div>
-                                <div className="flex items-center justify-between pb-2 border-b border-slate-100">
-                                    <div className="flex items-center gap-2">
-                                        <div className={`p-1.5 rounded-md ${view.checkCurrent ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-700'}`}>
-                                            <ShieldCheck size={16} aria-hidden="true" />
-                                        </div>
-                                        <h2 className="text-sm font-semibold text-slate-900">Backup integrity</h2>
-                                    </div>
-                                    <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${view.checkCurrent ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-slate-100 text-slate-600'}`}>
-                                        {view.checkLabel}
-                                    </span>
+                                <div className="pb-2 border-b border-slate-200">
+                                    <h2 className="text-sm font-semibold text-slate-900">Backup integrity</h2>
                                 </div>
 
                                 <div className="mt-3">
@@ -338,7 +292,7 @@ export default function Backups() {
                             </div>
 
                             {!view.hosted && (
-                                <div className="pt-3 mt-3 border-t border-slate-100">
+                                <div className="pt-3 mt-3 border-t border-slate-200">
                                     <button
                                         type="button"
                                         className={`${button} w-full border border-slate-300 text-slate-800 hover:bg-slate-50 h-8`}
@@ -358,14 +312,8 @@ export default function Backups() {
                         {/* Column 3: Offsite Cloud Protection & Cadence */}
                         <section className="rounded-lg border border-slate-200 bg-white p-4 shadow-xs flex flex-col justify-between">
                             <div>
-                                <div className="flex items-center justify-between pb-2 border-b border-slate-100">
-                                    <div className="flex items-center gap-2">
-                                        <div className="p-1.5 rounded-md bg-indigo-50 text-indigo-700">
-                                            <i className="ti ti-cloud-lock text-base" />
-                                        </div>
-                                        <h2 className="text-sm font-semibold text-slate-900">Cloud protection</h2>
-                                    </div>
-                                    <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 font-mono">Backblaze B2</span>
+                                <div className="pb-2 border-b border-slate-200">
+                                    <h2 className="text-sm font-semibold text-slate-900">Cloud protection</h2>
                                 </div>
 
                                 <div className="mt-3 space-y-2">
@@ -382,20 +330,15 @@ export default function Backups() {
                                         </p>
                                     </div>
 
-                                    <div className="pt-2 border-t border-slate-100">
+                                    <div className="pt-2 border-t border-slate-200">
                                         <div className="flex items-center justify-between text-xs">
                                             <span className="text-slate-500 font-medium">Cadence:</span>
                                             <span className="font-semibold text-slate-900">{view.scheduleLabel}</span>
                                         </div>
-                                        {data.schedule?.enabled && (
-                                            <p className="text-[11px] text-slate-500 mt-0.5">
-                                                {view.hosted ? 'Cloud scheduling may be delayed. Check recent activity for completion.' : 'The configured backup worker must be running and connected.'}
-                                            </p>
-                                        )}
                                     </div>
 
                                     {data.cloud?.provider === 'b2' && data.cloud?.stored_bytes != null && (
-                                        <div className="pt-2 border-t border-slate-100">
+                                        <div className="pt-2 border-t border-slate-200">
                                             <div className="flex justify-between items-center text-xs">
                                                 <span className="text-slate-500">Data Stored:</span>
                                                 <span className="font-semibold text-slate-900">{(data.cloud.stored_bytes / 1e6).toFixed(1)} MB</span>
@@ -435,7 +378,6 @@ export default function Backups() {
                         <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3 bg-slate-50/50">
                             <div>
                                 <h2 className="text-xs font-semibold uppercase tracking-wider text-slate-800">Recent activity</h2>
-                                <p className="text-[11px] text-slate-500">Immutable audit trail of execution attempts and verification jobs</p>
                             </div>
                             <span className="text-xs font-mono text-slate-500">
                                 {historyList.length} {historyList.length === 1 ? 'record' : 'records'}
@@ -469,21 +411,16 @@ export default function Backups() {
                                         </div>
 
                                         <div className="flex items-center gap-2 shrink-0">
-                                            <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-semibold ${
+                                            <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold ${
                                                 job.status === 'completed'
-                                                    ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                                                    ? 'bg-success-subtle text-success-ink border border-success/20'
                                                     : job.status === 'running'
-                                                        ? 'bg-amber-50 text-amber-700 border border-amber-200 animate-pulse'
-                                                        : 'bg-rose-50 text-rose-700 border border-rose-200'
+                                                        ? 'bg-warning-subtle text-warning-ink border border-warning/20 animate-pulse'
+                                                        : 'bg-danger-subtle text-danger-ink border border-danger/20'
                                             }`}>
-                                                <span className={`w-1.5 h-1.5 rounded-full ${
-                                                    job.status === 'completed' ? 'bg-emerald-500' : job.status === 'running' ? 'bg-amber-500' : 'bg-rose-500'
-                                                }`} />
-                                                <span>
-                                                    {job.status === 'completed' && job.action === 'create' 
-                                                        ? job.executor === 'github_actions' ? 'Cloud backup saved' : 'Local backup saved'
-                                                        : backupStages[job.status === 'running' ? job.stage : job.status] || 'Needs attention'}
-                                                </span>
+                                                {job.status === 'completed' && job.action === 'create' 
+                                                    ? job.executor === 'github_actions' ? 'Cloud backup saved' : 'Local backup saved'
+                                                    : backupStages[job.status === 'running' ? job.stage : job.status] || 'Needs attention'}
                                             </span>
                                         </div>
                                     </li>

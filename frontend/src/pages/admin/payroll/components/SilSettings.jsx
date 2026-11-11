@@ -212,7 +212,7 @@ export default function SilSettings() {
                                         </div>
                                     </div>
 
-                                    <div className="bg-slate-50 rounded-md p-3 border border-slate-100 space-y-1.5 text-xs">
+                                    <div className="bg-slate-50 rounded-md p-3 border border-slate-200 space-y-1.5 text-xs">
                                         <div className="flex items-center justify-between">
                                             <span className="text-slate-500">Accrual timing:</span>
                                             <span className="font-semibold text-slate-700">Every 12 months from hire date</span>
@@ -279,7 +279,7 @@ export default function SilSettings() {
                                         </select>
                                     </div>
 
-                                    <label className="flex items-start gap-2.5 bg-slate-50 p-3 rounded-md border border-slate-100 cursor-pointer">
+                                    <label className="flex items-start gap-2.5 bg-slate-50 p-3 rounded-md border border-slate-200 cursor-pointer">
                                         <input
                                             type="checkbox"
                                             className="mt-0.5 h-4 w-4 rounded border-slate-300 text-accent focus:ring-accent"
@@ -412,13 +412,13 @@ export default function SilSettings() {
                         <span>Checking scheduled obligations...</span>
                     </div>
                 ) : totalCount === 0 ? (
-                    <div className="py-8 text-center bg-slate-50/80 rounded-lg border border-slate-100">
+                    <div className="py-8 text-center bg-slate-50/80 rounded-lg border border-slate-200">
                         <i className="ti ti-check-double text-2xl text-success mb-1 inline-block" />
                         <p className="text-xs font-semibold text-slate-700">All SIL obligations up to date</p>
                         <p className="text-[11px] text-slate-400 mt-0.5">No outstanding annual anniversary encashments or separation reviews required at this time.</p>
                     </div>
                 ) : filteredObligations.length === 0 ? (
-                    <div className="py-6 text-center bg-slate-50/80 rounded-lg border border-slate-100">
+                    <div className="py-6 text-center bg-slate-50/80 rounded-lg border border-slate-200">
                         <i className="ti ti-search text-xl text-slate-400 mb-1 inline-block" />
                         <p className="text-xs font-semibold text-slate-700">No matching employees found</p>
                         <p className="text-[11px] text-slate-400 mt-0.5">
@@ -435,7 +435,7 @@ export default function SilSettings() {
                         )}
                     </div>
                 ) : (
-                    <div className="divide-y divide-slate-100 border border-slate-100 rounded-lg overflow-hidden">
+                    <div className="divide-y divide-slate-100 border border-slate-200 rounded-lg overflow-hidden">
                         {filteredObligations.map(item => {
                             const first = item.employees?.first_name || '';
                             const last = item.employees?.last_name || '';

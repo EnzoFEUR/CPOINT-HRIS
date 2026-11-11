@@ -150,6 +150,28 @@ app.use(apiErrorHandler);
 const server = app.listen(port, () => {
     console.log('HRIS server running on port ' + port);
 });
-server.headersTimeout = 15000;
+// Cloud reverse proxy alignment (Render / Cloudflare 60s idle socket timeout):
+// keepAliveTimeout must exceed proxy timeout to eliminate 502 ECONNRESET race conditions.
+server.keepAliveTimeout = 65000;
+server.headersTimeout = 66000;
 server.requestTimeout = 120000;
-server.keepAliveTimeout = 5000;
+
+// Graceful termination handling for zero-downtime Render rolling deployments and SIGTERM
+const gracefulShutdown = (signal) => {
+    console.log(`Received ${signal}. Draining connections and shutting down gracefully...`);
+    server.close((err) => {
+        if (err) {
+            console.error('Error closing HTTP server:', err);
+            process.exit(1);
+        }
+        console.log('HTTP server closed cleanly. Process exiting.');
+        process.exit(0);
+    });
+    setTimeout(() => {
+        console.error('Graceful shutdown deadline exceeded (10s). Forcing termination.');
+        process.exit(1);
+    }, 10000).unref();
+};
+
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));

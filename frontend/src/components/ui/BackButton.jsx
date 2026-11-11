@@ -9,6 +9,7 @@ import { ArrowLeft } from 'lucide-react';
  */
 export const BackButton = ({
     fallback = '/',
+    to,
     label = 'Back',
     compact = false,
     enableShortcut = true,
@@ -29,6 +30,11 @@ export const BackButton = ({
             return;
         }
 
+        if (to) {
+            navigate(to);
+            return;
+        }
+
         // Smart history depth inspection:
         // In React Router, window.history.state.idx tracks navigation depth within the current session.
         const hasHistory = typeof window !== 'undefined' &&
@@ -41,7 +47,7 @@ export const BackButton = ({
         } else {
             navigate(fallback, { replace: true });
         }
-    }, [navigate, fallback, onClick]);
+    }, [navigate, fallback, to, onClick]);
 
     // Keyboard shortcut acceleration: Alt + ArrowLeft
     useEffect(() => {

@@ -989,23 +989,12 @@ function EmployeeMonthlyWorkCalendar({ employeeId, className = '', isEmployeeVie
                         {/* Modal Header */}
                         <div className="flex items-center justify-between pb-3 border-b border-slate-100">
                             <div className="flex items-center gap-3">
-                                <div className={`w-9 h-9 rounded-md flex items-center justify-center border ${getStatusTheme(selectedDayDetail).iconBox}`}>
-                                    <i className={`ti ${getStatusTheme(selectedDayDetail).icon} text-lg`} />
-                                </div>
                                 <div>
                                     <h3 id="calendar-day-title" className="text-base font-semibold text-slate-900">
                                         {selectedDayDetail.full_day_name}, {selectedDayDetail.date}
                                     </h3>
                                 </div>
                             </div>
-                            <button
-                                type="button"
-                                onClick={() => setSelectedDayDetail(null)}
-                                className="text-slate-400 hover:text-slate-600 transition-colors p-1 rounded-md hover:bg-slate-100 cursor-pointer"
-                                title="Close" aria-label="Close day details"
-                            >
-                                <i className="ti ti-x text-lg" />
-                            </button>
                         </div>
 
                         {/* Modal Body */}

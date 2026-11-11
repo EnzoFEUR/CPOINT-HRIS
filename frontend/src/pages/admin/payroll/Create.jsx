@@ -1569,7 +1569,7 @@ const PayrollCreate = () => {
     return (
         <div className="max-w-5xl mx-auto py-4 sm:py-8 px-3 sm:px-6 pb-[calc(2.5rem+env(safe-area-inset-bottom))]">
             <div className="mb-4">
-                <BackButton fallback="/admin/payroll" label="Back to Payroll Ledger" />
+                <BackButton to="/admin/payroll" fallback="/admin/payroll" label="Back to Payroll Ledger" />
             </div>
 
             <div className="bg-white p-5 sm:p-6 rounded-lg shadow-2xs border border-slate-200">

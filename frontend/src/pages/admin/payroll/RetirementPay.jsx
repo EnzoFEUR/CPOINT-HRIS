@@ -173,7 +173,7 @@ export default function RetirementPay() {
     });
     if (exitRequestId && (!exitLink.data || !exitLink.isFetchedAfterMount)) return (
         <div className="space-y-4 p-4 sm:p-6">
-            <PageHeader title="Retirement Pay" breadcrumbs={['Admin', 'Payroll', 'Retirement Pay']} showBack backFallback="/admin/payroll" backLabel="Back to Payroll" />
+            <PageHeader title="Retirement Pay" breadcrumbs={['Admin', 'Payroll', 'Retirement Pay']} showBack backTo="/admin/payroll" backFallback="/admin/payroll" backLabel="Back to Payroll" />
             <div role={exitLink.isError || !isCreditUuid(exitRequestId) ? 'alert' : 'status'} className="rounded-md border border-slate-200 bg-white p-4 text-sm text-slate-700">
                 {!isCreditUuid(exitRequestId) ? 'Invalid Employment Exit case reference.' : exitLink.isError ? exitLink.error.message : 'Opening the retirement case and its saved calculation…'}
                 {exitLink.isError && <button type="button" className={buttonClass} onClick={() => exitLink.refetch()}>Retry</button>}
@@ -504,6 +504,7 @@ function RetirementPayWorkspace({ exitRequestId, exitLink }) {
             <PageHeader
                 breadcrumbs={['Admin', 'Payroll', 'Retirement Pay']}
                 showBack
+                backTo="/admin/payroll"
                 backFallback="/admin/payroll"
                 backLabel="Back to Payroll"
                 actions={

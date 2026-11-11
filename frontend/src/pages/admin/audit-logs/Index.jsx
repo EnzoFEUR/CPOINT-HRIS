@@ -153,6 +153,10 @@ export default function AuditLogsIndex() {
         <div className="max-w-7xl mx-auto pb-24 lg:pb-8 px-4 sm:px-6 lg:px-8 font-sans">
             <PageHeader
                 breadcrumbs={['Admin', 'System', 'Audit Trail']}
+                showBack
+                backTo="/admin/settings"
+                backFallback="/admin/settings"
+                backLabel="Back to Settings Hub"
                 actions={
                     <div className="flex items-center gap-3 bg-slate-50 border border-slate-200 px-3.5 py-2 rounded-md">
                         <Activity className="w-3.5 h-3.5 text-slate-500" />
@@ -358,7 +362,7 @@ export default function AuditLogsIndex() {
                                         </p>
                                     )}
 
-                                    <div className="flex items-center justify-between pt-1 text-xs text-slate-400 border-t border-slate-50">
+                                    <div className="flex items-center justify-between pt-1 text-xs text-slate-400 border-t border-slate-100">
                                         <div className="flex items-center gap-1.5">
                                             <User className="w-3.5 h-3.5 text-slate-400" />
                                             <span className="font-semibold text-slate-700">{isSystem ? 'System' : userNameStr}</span>

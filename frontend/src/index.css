@@ -463,6 +463,8 @@ img,
 }
 
 /* 2. Borders, Dividers & Outlines */
+.dark .border-slate-50:not([class*="dark:border-"]),
+.dark [class*="border-slate-50"]:not([class*="dark:border-"]),
 .dark .border-slate-100:not([class*="dark:border-"]),
 .dark [class*="border-slate-100"]:not([class*="dark:border-"]),
 .dark .border-slate-200:not([class*="dark:border-"]),
@@ -484,6 +486,8 @@ img,
   border-color: rgba(255, 255, 255, 0.25) !important;
 }
 
+.dark .divide-slate-50 > :not([hidden]) ~ :not([hidden]),
+.dark [class*="divide-slate-50"] > :not([hidden]) ~ :not([hidden]),
 .dark .divide-slate-100 > :not([hidden]) ~ :not([hidden]),
 .dark .divide-slate-200 > :not([hidden]) ~ :not([hidden]) {
   border-color: rgba(255, 255, 255, 0.06) !important;

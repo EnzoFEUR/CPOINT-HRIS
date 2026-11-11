@@ -370,7 +370,7 @@ export default function LeavesIndex() {
                             </div>
 
                             <form
-                                className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-3 pt-3 border-t border-slate-100 text-xs items-end"
+                                className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-3 pt-3 border-t border-slate-200 text-xs items-end"
                                 onSubmit={event => { event.preventDefault(); setCashFilters(cashDraft); setCashPage(1); }}
                             >
                                 <div>
@@ -523,7 +523,7 @@ export default function LeavesIndex() {
                                     <div className="hidden md:block overflow-x-auto">
                                         <table className="w-full text-left text-xs min-w-[640px]">
                                             <thead>
-                                                <tr className="border-b border-slate-100 bg-slate-50/60 text-[10px] uppercase font-bold text-slate-400 tracking-wider">
+                                                <tr className="bg-slate-50/60 text-[10px] uppercase font-bold text-slate-400 tracking-wider">
                                                     <th className="py-3 px-4">Employee</th>
                                                     <th className="py-3 px-4">Requested Days</th>
                                                     <th className="py-3 px-4">Status</th>
@@ -531,7 +531,7 @@ export default function LeavesIndex() {
                                                     <th className="py-3 px-4 text-right">Action</th>
                                                 </tr>
                                             </thead>
-                                            <tbody className="divide-y divide-slate-100">
+                                            <tbody>
                                                 {cashQueue.data.data.map(item => (
                                                     <tr key={item.id} className="hover:bg-slate-50/60 transition-colors">
                                                         <td className="py-3 px-4 font-semibold text-slate-800">
@@ -589,7 +589,7 @@ export default function LeavesIndex() {
                             )}
 
                             {(cashQueue.data?.count > 10 || cashPage > 1) && (
-                                <div className="px-4 py-3 border-t border-slate-100 bg-slate-50/60 flex items-center justify-between text-xs text-slate-500 font-semibold">
+                                <div className="px-4 py-3 border-t border-slate-200 bg-slate-50/60 flex items-center justify-between text-xs text-slate-500 font-semibold">
                                     <span>Showing page {cashPage} of {Math.ceil((cashQueue.data?.count || 1) / 10)}</span>
                                     <div className="flex items-center gap-2">
                                         <button
@@ -753,7 +753,7 @@ export default function LeavesIndex() {
                 {/* Desktop table view */}
                 <div className="hidden md:block overflow-x-auto no-scrollbar [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
                     <table className="w-full text-left border-collapse">
-                        <thead className="bg-slate-50/80 text-slate-400 text-xs uppercase tracking-widest font-black border-b border-slate-100">
+                        <thead className="bg-slate-50/80 text-slate-400 text-xs uppercase tracking-widest font-black">
                             <tr>
                                 <th className="px-6 lg:px-8 py-4">Applicant</th>
                                 <th className="px-6 lg:px-8 py-4">Duration</th>
@@ -763,7 +763,7 @@ export default function LeavesIndex() {
                                 <th className="px-6 lg:px-8 py-4 text-right">Actions</th>
                             </tr>
                         </thead>
-                        <tbody className="divide-y divide-slate-50">
+                        <tbody>
                             {paginatedLeaves.length > 0 ? paginatedLeaves.map((leave) => {
                                 const daysCount = leave.scheduled_workdays;
                                 
@@ -879,7 +879,7 @@ export default function LeavesIndex() {
                 </div>
 
                 {/* Pagination */}
-                <div className="px-4 sm:px-8 py-3.5 border-t border-slate-100 bg-slate-50/60 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-500 font-semibold">
+                <div className="px-4 sm:px-8 py-3.5 border-t border-slate-200 bg-slate-50/60 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-500 font-semibold">
                     <div>
                         {totalItems > 0 ? (
                             <span>Showing <span className="text-slate-800 font-semibold">{(visiblePage - 1) * itemsPerPage + 1}</span> - <span className="text-slate-800 font-semibold">{Math.min(visiblePage * itemsPerPage, totalItems)}</span> of <span className="text-slate-800 font-semibold">{totalItems}</span></span>

@@ -13,6 +13,7 @@ export const PageHeader = ({
     actions,
     showBack = false,
     backFallback = '/',
+    backTo,
     backLabel = 'Back',
     className = ''
 }) => {
@@ -22,7 +23,7 @@ export const PageHeader = ({
                 <div className={`flex items-start sm:items-center min-w-0 flex-1 ${showBack ? 'gap-2.5 sm:gap-3' : ''}`}>
                     {showBack && (
                         <div className="shrink-0 mt-0.5 sm:mt-0">
-                            <BackButton fallback={backFallback} label={backLabel} />
+                            <BackButton fallback={backFallback} to={backTo} label={backLabel} />
                         </div>
                     )}
                     <div className="min-w-0 flex-1">

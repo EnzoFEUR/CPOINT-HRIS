@@ -1116,10 +1116,6 @@ export default function Show() {
 
                     <div className="min-w-0 [overflow-wrap:anywhere] bg-white rounded-lg border border-slate-200 p-5 shadow-2xs space-y-4">
                         <div className="flex items-center gap-3 pb-3 border-b border-slate-100">
-                            <div className={`h-8 w-8 rounded-md flex items-center justify-center border ${isFactory ? 'bg-warning-subtle text-warning-ink border-warning/20' : 'bg-surface-muted text-ink border-line'
-                                }`}>
-                                <i className={`ti ${isFactory ? 'ti-building-factory-2' : 'ti-cash-banknote'} text-lg`} />
-                            </div>
                             <div>
                                 <h3 className="text-sm sm:text-base font-semibold text-slate-900">Payroll & Job Specs</h3>
                             </div>

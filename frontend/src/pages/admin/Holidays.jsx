@@ -801,7 +801,7 @@ export default function Holidays() {
             <tr
                 key={record.id}
                 onClick={() => setExpandedRowId(isExpanded ? null : record.id)}
-                className={`group h-11 border-b border-slate-100 transition-colors cursor-pointer ${
+                className={`group h-11 transition-colors cursor-pointer ${
                     isUpcomingNext
                         ? 'bg-blue-50/30 border-l-3 border-l-blue-600'
                         : isPastMuted
@@ -958,6 +958,10 @@ export default function Holidays() {
         <div className="space-y-4">
             <PageHeader
                 breadcrumbs={['Admin', 'Holidays']}
+                showBack
+                backTo="/admin/settings"
+                backFallback="/admin/settings"
+                backLabel="Back to Settings Hub"
             />
             <div className="rounded-md border border-line bg-surface p-4">
                 <p role="status" className="text-sm text-ink">{holidayAvailabilityMessage(query.data, query.error)}</p>
@@ -978,6 +982,10 @@ export default function Holidays() {
             {/* Enterprise PageHeader */}
             <PageHeader
                 breadcrumbs={['Admin', 'Holidays']}
+                showBack
+                backTo="/admin/settings"
+                backFallback="/admin/settings"
+                backLabel="Back to Settings Hub"
                 actions={
                     <div className="flex flex-wrap items-center gap-2">
                         {!isApprovalReady && (
@@ -1099,7 +1107,7 @@ export default function Holidays() {
             {/* Main Content Container (Single Surface, No Nested Cards) */}
             <div className="rounded-xl border border-slate-200 bg-white shadow-2xs overflow-hidden">
                 {/* 3. Toolbar (ONE row only) */}
-                <div className="flex flex-wrap items-center justify-between gap-2 p-3 sm:px-4 border-b border-slate-100 bg-slate-50/40">
+                <div className="flex flex-wrap items-center justify-between gap-2 p-3 sm:px-4 border-b border-slate-200 bg-slate-50/40">
                     <div className="flex flex-wrap items-center gap-2 flex-1 min-w-0">
                         {/* Year switcher (‹ 2026 ›) */}
                         <div className="inline-flex items-center rounded-lg border border-slate-200 bg-white p-0.5 shadow-2xs shrink-0">
@@ -1406,7 +1414,7 @@ export default function Holidays() {
 
                         {/* Past Holidays Toggle (Shown below table in default current year view) */}
                         {isDefaultCurrentYearView && pastList.length > 0 && (
-                            <div className="border-t border-slate-100 dark:border-white/10 bg-slate-50/50 dark:bg-[#111827]/70 px-3.5 py-2">
+                            <div className="border-t border-slate-200 dark:border-white/10 bg-slate-50/50 dark:bg-[#111827]/70 px-3.5 py-2">
                                 <button
                                     type="button"
                                     onClick={() => setShowPastHolidays(prev => !prev)}
@@ -1426,7 +1434,7 @@ export default function Holidays() {
                         )}
 
                         {/* 5. Clean Footer (No Prev/Next buttons; pure count indicator) */}
-                        <div className="flex items-center justify-between px-3.5 py-2.5 border-t border-slate-100 dark:border-white/10 bg-slate-50/40 dark:bg-[#111827]/70 text-xs text-slate-500 dark:text-slate-400">
+                        <div className="flex items-center justify-between px-3.5 py-2.5 border-t border-slate-200 dark:border-white/10 bg-slate-50/40 dark:bg-[#111827]/70 text-xs text-slate-500 dark:text-slate-400">
                             <p className="tabular-nums">
                                 {deferredSearch.trim() ? (
                                     <>
@@ -1532,7 +1540,7 @@ export default function Holidays() {
                 <HolidayDialog
                     title={editor.action === 'cancel' ? 'Rescind Holiday Declaration' : editor.record ? 'Edit Holiday Declaration' : 'Declare Official Holiday'}
                     titleId="holiday-editor-title"
-                    subtitle={editor.record?.name || 'Publish an official proclamation and configure employee coverage.'}
+                    subtitle={editor.record?.name}
                     busy={mutation.isPending}
                     onClose={() => setEditor(null)}
                 >

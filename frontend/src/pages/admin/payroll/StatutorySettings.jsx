@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef, useImperativeHandle, forwardRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { fetchWithAuth } from '../../../utils/api';
 import { supabase } from '../../../supabaseClient';
 import { STATUTORY_INPUT_LIMITS, isValidStatutoryInput, getStatutorySettingsError, getWithholdingTableVersionError, WITHHOLDING_MAX_BRACKETS } from '../../../../../shared/statutorySettings.mjs';
@@ -210,14 +211,8 @@ const WithholdingTaxTables = forwardRef(function WithholdingTaxTables(_props, re
     return (
         // Enter inside these fields must not submit the whole settings form.
         <div onKeyDown={(e) => { if (e.key === 'Enter' && e.target.tagName === 'INPUT') e.preventDefault(); }} className="bg-white rounded-lg p-5 shadow-2xs border border-slate-200 space-y-5">
-            <div className="flex items-center space-x-3">
-                <div className="w-8 h-8 rounded-md bg-slate-900 text-white flex items-center justify-center shrink-0 shadow-2xs">
-                    <i className="ti ti-receipt-tax text-base" />
-                </div>
-                <div>
-                    <h2 className="text-base font-bold text-slate-800">Withholding Tax Tables (BIR)</h2>
-                    <p className="text-xs text-slate-500 mt-0.5">When BIR changes the rates, add a new version with the date it takes effect. Payslips already issued keep their amounts.</p>
-                </div>
+            <div>
+                <h2 className="text-base font-bold text-slate-800">Withholding Tax Tables (BIR)</h2>
             </div>
 
             {data?.setup_required && (
@@ -374,6 +369,7 @@ const WithholdingTaxTables = forwardRef(function WithholdingTaxTables(_props, re
 });
 
 export default function StatutorySettings({ onBack }) {
+    const navigate = useNavigate();
     const taxTablesRef = useRef(null);
     const [settings, setSettings] = useState(DEFAULT_SETTINGS);
     const [fetching, setFetching] = useState(true);
@@ -565,9 +561,22 @@ export default function StatutorySettings({ onBack }) {
 
     return (
         <div className="space-y-5 sm:space-y-6 max-w-7xl mx-auto pb-12 px-3 sm:px-4 md:px-0">
-            <div ref={topRef} className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                <BackButton fallback="/admin/payroll" label="Back to Payroll" onClick={onBack} />
+            <div ref={topRef} className="flex flex-wrap items-center justify-between gap-3">
                 <div className="flex items-center gap-2">
+                    <BackButton
+                        to="/admin/payroll"
+                        fallback="/admin/payroll"
+                        label="Back to Payroll"
+                        onClick={onBack || (() => navigate('/admin/payroll'))}
+                    />
+                    <button
+                        type="button"
+                        onClick={() => navigate('/admin/settings')}
+                        className="group inline-flex items-center justify-center gap-1.5 h-8 px-2.5 sm:px-3 border border-slate-200 dark:border-slate-700 rounded-md text-xs font-semibold bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 active:bg-slate-100 dark:active:bg-slate-700/80 shadow-2xs cursor-pointer transition-all duration-100 select-none shrink-0 active:scale-[0.98]"
+                    >
+                        <i className="ti ti-layout-grid text-xs text-slate-500 dark:text-slate-400 group-hover:text-slate-900 dark:group-hover:text-white" aria-hidden="true" />
+                        <span>Back to Settings Hub</span>
+                    </button>
                 </div>
             </div>
 
@@ -614,12 +623,7 @@ export default function StatutorySettings({ onBack }) {
             <form onSubmit={handleSubmit} className="space-y-5 sm:space-y-6">
                 {/* SSS Contributions Card */}
                 <div className="bg-white rounded-lg p-5 shadow-2xs border border-slate-200">
-                    <div className="flex items-center space-x-3 mb-5">
-                        <div className="w-8 h-8 rounded-md bg-accent-subtle text-accent flex items-center justify-center shrink-0">
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5m0 0h4m-4 0V9a2 2 0 012-2h2a2 2 0 012 2v12" />
-                            </svg>
-                        </div>
+                    <div className="mb-5">
                         <h2 className="text-base font-bold text-slate-800">SSS Contributions</h2>
                     </div>
                     <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
@@ -631,12 +635,7 @@ export default function StatutorySettings({ onBack }) {
 
                 {/* PhilHealth Contributions Card */}
                 <div className="bg-white rounded-lg p-5 shadow-2xs border border-slate-200">
-                    <div className="flex items-center space-x-3 mb-5">
-                        <div className="w-8 h-8 rounded-md bg-danger-subtle text-danger-ink flex items-center justify-center shrink-0">
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.684a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
-                            </svg>
-                        </div>
+                    <div className="mb-5">
                         <h2 className="text-base font-bold text-slate-800">PhilHealth Contributions</h2>
                     </div>
                     <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
@@ -648,12 +647,7 @@ export default function StatutorySettings({ onBack }) {
 
                 {/* Pag-IBIG Contributions Card */}
                 <div className="bg-white rounded-lg p-5 shadow-2xs border border-slate-200">
-                    <div className="flex items-center space-x-3 mb-5">
-                        <div className="w-8 h-8 rounded-md bg-surface-muted text-ink flex items-center justify-center shrink-0">
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
-                            </svg>
-                        </div>
+                    <div className="mb-5">
                         <h2 className="text-base font-bold text-slate-800">Pag-IBIG (HDMF) Contributions</h2>
                     </div>
                     <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
@@ -665,12 +659,8 @@ export default function StatutorySettings({ onBack }) {
 
                 {/* Attendance, Grace Period & Tardiness Policy Card */}
                 <div className="bg-white rounded-lg p-5 shadow-2xs border border-slate-200 space-y-5">
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-4">
-                        <div>
-                            <h2 className="text-base font-bold text-slate-900">Attendance, Grace Period &amp; Tardiness Policy</h2>
-                                <p className="text-xs text-slate-500 mt-0.5">
-                                </p>
-                            </div>
+                    <div className="border-b border-slate-100 pb-4">
+                        <h2 className="text-base font-bold text-slate-900">Attendance, Grace Period &amp; Tardiness Policy</h2>
                     </div>
 
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -711,8 +701,7 @@ export default function StatutorySettings({ onBack }) {
                     {/* Live Enterprise Policy Simulation & Ledger Preview */}
                     <div className="bg-slate-50 rounded-lg p-4 border border-slate-200 space-y-3">
                         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
-                            <span className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
-                                <i className="ti ti-calculator text-slate-600 text-sm" />
+                            <span className="text-xs font-bold text-slate-800 uppercase tracking-wider">
                                 Policy Preview
                             </span>
                             <span className="text-[11px] font-semibold text-slate-600">
@@ -762,12 +751,7 @@ export default function StatutorySettings({ onBack }) {
 
                 {/* Piece-rate holiday pay floor */}
                 <div className="bg-white rounded-lg p-5 shadow-2xs border border-slate-200">
-                    <div className="flex items-center space-x-3 mb-5">
-                        <div className="w-8 h-8 rounded-md bg-surface-muted text-ink flex items-center justify-center shrink-0">
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                            </svg>
-                        </div>
+                    <div className="mb-5">
                         <h2 className="text-base font-bold text-slate-800">Holiday Pay Floor (Piece-Rate Workers)</h2>
                     </div>
                     <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">

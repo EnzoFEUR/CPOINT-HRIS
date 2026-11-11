@@ -4,7 +4,6 @@ import { getPageTitle } from '../routes/guards';
 import HeaderClock from '../components/navigation/HeaderClock';
 import GlobalSearch from '../components/navigation/GlobalSearch';
 import NotificationBell from '../components/notifications/NotificationBell';
-import ThemeToggle from '../components/navigation/ThemeToggle';
 
 export const Header = ({ user }) => {
   const location = useLocation();
@@ -24,7 +23,6 @@ export const Header = ({ user }) => {
 
       <div className="flex items-center gap-2 sm:gap-2.5 relative shrink-0">
         <GlobalSearch user={user} />
-        <ThemeToggle />
         <NotificationBell key={user?.id} user={user} />
       </div>
     </header>
