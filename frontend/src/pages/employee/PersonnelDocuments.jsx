@@ -23,6 +23,8 @@ import {
 import { HUMAN_TEXT_LIMITS } from '../../../../shared/inputLimits.mjs';
 import DocumentThumbnail from '../../components/DocumentThumbnail';
 import DocumentPreviewModal from '../../components/DocumentPreviewModal';
+import Navbar from '../../components/mobile/Navbar';
+import StickyActionBar from '../../components/mobile/StickyActionBar';
 
 const CATEGORIES = [
     'General',
@@ -396,41 +398,63 @@ export default function PersonnelDocuments() {
 
     return (
         <div
-            className="max-w-5xl mx-auto space-y-5 pb-20 px-4 sm:px-6"
+            className="max-w-5xl mx-auto space-y-5 pb-28 lg:pb-20 px-4 sm:px-6"
             onDragEnter={handleDragEnter}
             onDragLeave={handleDragLeave}
             onDragOver={handleDragOver}
             onDrop={handleDrop}
         >
-            <PageHeader
+            {/* Mobile iOS-style navigation header (< lg) */}
+            <Navbar
                 title="Personnel Documents"
-                breadcrumbs={['Employee', 'Personnel Documents']}
-                description="Manage your personnel files and respond to HR document requests."
+                subtitle="201 Vault & Records"
                 showBack
                 backFallback="/employee/dashboard"
-                actions={
-                    <>
-                        <button
-                            type="button"
-                            disabled={
-                                isTerminated ||
-                                documentQuery.isPending ||
-                                documentQuery.isError
-                            }
-                            onClick={() => openUploadModal()}
-                            className="rounded-md bg-accent px-3 py-2 text-sm font-semibold text-white disabled:opacity-50"
-                        >
-                            Upload Document
-                        </button>
-                        <Link
-                            to="/employee/profile"
-                            className="rounded-md border border-slate-200 px-3 py-2 text-sm font-semibold"
-                        >
-                            My Profile
-                        </Link>
-                    </>
+                rightAction={
+                    <Link
+                        to="/employee/profile"
+                        className="w-10 h-10 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:text-slate-900 dark:hover:text-white flex items-center justify-center transition-colors border border-slate-200/60 dark:border-slate-700/60 active:scale-95"
+                        aria-label="My Profile"
+                        title="My Profile"
+                    >
+                        <i className="ti ti-user text-base font-semibold" />
+                    </Link>
                 }
+                className="-mx-4 sm:-mx-6 mb-4"
             />
+
+            {/* Desktop header banner (>= lg) */}
+            <div className="hidden lg:block">
+                <PageHeader
+                    title="Personnel Documents"
+                    breadcrumbs={['Employee', 'Personnel Documents']}
+                    description="Manage your personnel files and respond to HR document requests."
+                    showBack
+                    backFallback="/employee/dashboard"
+                    actions={
+                        <>
+                            <button
+                                type="button"
+                                disabled={
+                                    isTerminated ||
+                                    documentQuery.isPending ||
+                                    documentQuery.isError
+                                }
+                                onClick={() => openUploadModal()}
+                                className="rounded-md bg-accent px-3 py-2 text-sm font-semibold text-white disabled:opacity-50 cursor-pointer"
+                            >
+                                Upload Document
+                            </button>
+                            <Link
+                                to="/employee/profile"
+                                className="rounded-md border border-slate-200 dark:border-slate-700 px-3 py-2 text-sm font-semibold hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
+                            >
+                                My Profile
+                            </Link>
+                        </>
+                    }
+                />
+            </div>
             {isDraggingFile && (
                 <div className="fixed inset-0 z-[60] bg-slate-900/20 flex items-center justify-center pointer-events-none">
                     <div className="bg-white rounded-lg shadow-xl border-2 border-dashed border-accent px-10 py-8 flex flex-col items-center">
@@ -616,7 +640,7 @@ export default function PersonnelDocuments() {
                     </div>
                 )}
 
-                <div className="bg-white rounded-lg p-5 sm:p-6 shadow-2xs border border-slate-200">
+                <div className="bg-white dark:bg-slate-900 rounded-lg p-5 sm:p-6 shadow-2xs border border-slate-200 dark:border-slate-800">
                     {/* Separation notice */}
 
                     {isTerminated && (
@@ -641,9 +665,9 @@ export default function PersonnelDocuments() {
                         </div>
                     )}
 
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-5 pb-4 border-b border-slate-100">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-5 pb-4 border-b border-slate-100 dark:border-slate-800">
                         <div>
-                            <h3 className="font-bold text-slate-900 text-sm sm:text-base">
+                            <h3 className="font-bold text-slate-900 dark:text-slate-100 text-sm sm:text-base">
                                     Personnel Documents
                                 </h3>
                             </div>
@@ -653,7 +677,7 @@ export default function PersonnelDocuments() {
                                 aria-label="Document review status"
                                 value={docStatus}
                                 onChange={(e) => setDocStatus(e.target.value)}
-                                className="h-8 rounded-md border border-slate-200 px-2 text-xs"
+                                className="h-8 rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 px-2 text-xs focus:outline-none focus:border-slate-400"
                             >
                                 {DOCUMENT_STATUSES.map((status) => (
                                     <option key={status.key} value={status.key}>
@@ -666,7 +690,7 @@ export default function PersonnelDocuments() {
                                 aria-label="Document category"
                                 value={docCategory}
                                 onChange={(e) => setDocCategory(e.target.value)}
-                                className="h-8 rounded-md border border-slate-200 px-2 text-xs"
+                                className="h-8 rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 px-2 text-xs focus:outline-none focus:border-slate-400"
                             >
                                 {[
                                     'All',
@@ -686,7 +710,7 @@ export default function PersonnelDocuments() {
                                 aria-label="Document sort order"
                                 value={docSort}
                                 onChange={(e) => setDocSort(e.target.value)}
-                                className="h-8 rounded-md border border-slate-200 px-2 text-xs"
+                                className="h-8 rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 px-2 text-xs focus:outline-none focus:border-slate-400"
                             >
                                 <option value="newest">Newest first</option>
                                 <option value="oldest">Oldest first</option>
@@ -704,12 +728,12 @@ export default function PersonnelDocuments() {
                                         onChange={(e) =>
                                             setDocSearch(e.target.value)
                                         }
-                                        className="h-8 pl-7 pr-3 bg-slate-50 border border-slate-200 rounded-md outline-none focus:bg-white focus:border-slate-400 font-medium text-xs text-slate-800 transition-colors duration-100 w-36 sm:w-48"
+                                        className="h-8 pl-7 pr-3 bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-md outline-none focus:bg-white dark:focus:bg-slate-800 focus:border-slate-400 font-medium text-xs text-slate-800 dark:text-slate-200 transition-colors duration-100 w-36 sm:w-48"
                                     />
                                 </div>
                             )}
 
-                            <span className="px-2.5 py-1 bg-slate-100 text-slate-700 rounded-md font-mono text-xs font-semibold whitespace-nowrap">
+                            <span className="px-2.5 py-1 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 rounded-md font-mono text-xs font-semibold whitespace-nowrap">
                                 {filteredDocuments.length} File
                                 {filteredDocuments.length !== 1 ? 's' : ''}
                             </span>
@@ -796,7 +820,7 @@ export default function PersonnelDocuments() {
                                 return (
                                     <div
                                         key={doc.id}
-                                        className="p-3.5 rounded-lg border border-slate-200 hover:border-slate-300 transition-all duration-100 flex items-start gap-3 bg-white hover:shadow-2xs"
+                                        className="p-3.5 rounded-lg border border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 transition-all duration-100 flex items-start gap-3 bg-white dark:bg-slate-900 hover:shadow-2xs"
                                     >
                                         <DocumentThumbnail
                                             document={doc}
@@ -808,7 +832,7 @@ export default function PersonnelDocuments() {
 
                                         <div className="min-w-0 flex-1">
                                             <p
-                                                className="text-xs font-semibold text-slate-800 truncate cursor-pointer hover:text-accent transition-colors"
+                                                className="text-xs font-semibold text-slate-800 dark:text-slate-100 truncate cursor-pointer hover:text-accent transition-colors"
                                                 title={
                                                     doc.title || doc.file_name
                                                 }
@@ -881,14 +905,14 @@ export default function PersonnelDocuments() {
             </div>
             {showUploadModal && !isTerminated && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 overflow-y-auto">
-                    <div className="bg-white rounded-lg p-5 sm:p-6 max-w-md w-full shadow-xl border border-slate-200 space-y-5 my-auto max-h-[90vh] overflow-y-auto">
-                        <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+                    <div className="bg-white dark:bg-slate-900 rounded-lg p-5 sm:p-6 max-w-md w-full shadow-xl border border-slate-200 dark:border-slate-800 space-y-5 my-auto max-h-[90vh] overflow-y-auto">
+                        <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
                             <div>
-                                <h3 className="font-bold text-slate-900 text-sm sm:text-base">
+                                <h3 className="font-bold text-slate-900 dark:text-slate-100 text-sm sm:text-base">
                                         Upload Document
                                     </h3>
 
-                                    <p className="text-[11px] text-slate-500">
+                                    <p className="text-[11px] text-slate-500 dark:text-slate-400">
                                         Attach file to your permanent HR record
                                     </p>
                                 </div>
@@ -902,7 +926,7 @@ export default function PersonnelDocuments() {
                                     }
                                 }}
                                 disabled={isUploading}
-                                className="h-7 w-7 rounded-md bg-slate-100 hover:bg-slate-200 text-slate-600 flex items-center justify-center transition-colors duration-100 shrink-0 cursor-pointer"
+                                className="h-7 w-7 rounded-md bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 flex items-center justify-center transition-colors duration-100 shrink-0 cursor-pointer"
                             >
                                 <i className="ti ti-x text-xs" />
                             </button>
@@ -932,7 +956,7 @@ export default function PersonnelDocuments() {
                             )}
 
                             <div>
-                                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
                                     Document Type
                                 </label>
 
@@ -943,7 +967,7 @@ export default function PersonnelDocuments() {
                                             e.target.value
                                         )
                                     }
-                                    className="w-full h-9 px-3 rounded-md border border-slate-200 text-xs font-medium text-slate-800 focus:border-slate-400 focus:outline-none cursor-pointer bg-white"
+                                    className="w-full h-9 px-3 rounded-md border border-slate-200 dark:border-slate-700 text-xs font-medium text-slate-800 dark:text-slate-200 focus:border-slate-400 focus:outline-none cursor-pointer bg-white dark:bg-slate-800"
                                 >
                                     {DOCUMENT_CATEGORIES.map((cat) => {
                                         const types = DOCUMENT_TYPES.filter(
@@ -988,7 +1012,7 @@ export default function PersonnelDocuments() {
                                 <div className="flex items-center justify-between mb-1">
                                     <label
                                         htmlFor="upload-document-title"
-                                        className="block text-xs font-semibold text-slate-700"
+                                        className="block text-xs font-semibold text-slate-700 dark:text-slate-300"
                                     >
                                         Document Title
                                     </label>
@@ -1018,14 +1042,14 @@ export default function PersonnelDocuments() {
                                             ),
                                         })
                                     }
-                                    className="w-full h-9 px-3 rounded-md border border-slate-200 text-xs font-medium text-slate-800 focus:border-slate-400 focus:outline-none"
+                                    className="w-full h-9 px-3 rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs font-medium text-slate-800 dark:text-slate-200 focus:border-slate-400 focus:outline-none"
                                     required
                                 />
                             </div>
 
                             <div className="grid grid-cols-2 gap-3">
                                 <div>
-                                    <label className="block text-xs font-semibold text-slate-700 mb-1">
+                                    <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
                                         Category
                                     </label>
 
@@ -1033,12 +1057,12 @@ export default function PersonnelDocuments() {
                                         type="text"
                                         value={uploadForm.category}
                                         readOnly
-                                        className="w-full h-9 px-3 rounded-md border border-slate-200 text-xs font-medium text-slate-500 bg-slate-50 cursor-not-allowed"
+                                        className="w-full h-9 px-3 rounded-md border border-slate-200 dark:border-slate-700 text-xs font-medium text-slate-500 dark:text-slate-400 bg-slate-50 dark:bg-slate-800/60 cursor-not-allowed"
                                     />
                                 </div>
 
                                 <div>
-                                    <label className="block text-xs font-semibold text-slate-700 mb-1">
+                                    <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
                                         Expiry Date{' '}
                                         {(() => {
                                             const currentMeta =
@@ -1067,17 +1091,17 @@ export default function PersonnelDocuments() {
                                                 expiryDate: e.target.value,
                                             })
                                         }
-                                        className="w-full h-9 px-3 rounded-md border border-slate-200 text-xs font-medium text-slate-800 focus:border-slate-400 focus:outline-none"
+                                        className="w-full h-9 px-3 rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs font-medium text-slate-800 dark:text-slate-200 focus:border-slate-400 focus:outline-none"
                                     />
                                 </div>
                             </div>
 
                             <div>
-                                <label className="block text-xs font-medium text-slate-700 mb-1">
+                                <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
                                     Select File
                                 </label>
 
-                                <div className="relative border-2 border-dashed border-slate-200 rounded-md p-4 text-center hover:bg-slate-50 hover:border-slate-300 transition-colors duration-100 cursor-pointer overflow-hidden min-h-[110px] flex items-center justify-center">
+                                <div className="relative border-2 border-dashed border-slate-200 dark:border-slate-700 rounded-md p-4 text-center hover:bg-slate-50 dark:hover:bg-slate-800/50 hover:border-slate-300 dark:hover:border-slate-600 transition-colors duration-100 cursor-pointer overflow-hidden min-h-[110px] flex items-center justify-center">
                                     <input
                                         ref={fileInputRef}
                                         type="file"
@@ -1227,7 +1251,7 @@ export default function PersonnelDocuments() {
                                 </div>
                             </div>
 
-                            <div className="pt-3 flex items-center justify-end gap-2 border-t border-slate-100">
+                            <div className="pt-3 flex items-center justify-end gap-2 border-t border-slate-100 dark:border-slate-800">
                                 <button
                                     type="button"
                                     onClick={() => {
@@ -1235,7 +1259,7 @@ export default function PersonnelDocuments() {
                                         resetUploadForm();
                                     }}
                                     disabled={isUploading}
-                                    className="h-9 px-4 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-md text-xs font-medium transition-colors duration-100 disabled:opacity-50 cursor-pointer"
+                                    className="h-9 px-4 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-md text-xs font-medium transition-colors duration-100 disabled:opacity-50 cursor-pointer"
                                 >
                                     Cancel
                                 </button>
@@ -1261,6 +1285,26 @@ export default function PersonnelDocuments() {
                         </form>
                     </div>
                 </div>
+            )}
+            {/* Mobile StickyActionBar in bottom thumb zone (< lg) */}
+            {!isAdminAccount && (
+                <StickyActionBar
+                    primaryAction={
+                        <button
+                            type="button"
+                            disabled={
+                                isTerminated ||
+                                documentQuery.isPending ||
+                                documentQuery.isError
+                            }
+                            onClick={() => openUploadModal()}
+                            className="w-full h-11 px-4 bg-accent hover:bg-accent-hover active:scale-[0.99] text-white font-semibold text-sm rounded-xl transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                            <i className="ti ti-cloud-upload text-base" />
+                            <span>Upload Document</span>
+                        </button>
+                    }
+                />
             )}
             <DocumentPreviewModal
                 isOpen={Boolean(activePreviewDoc)}
