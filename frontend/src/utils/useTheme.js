@@ -92,11 +92,11 @@ export function transitionTheme(applyFn, direction = 'from-right') {
  */
 export function useTheme() {
   const [theme, setThemeState] = useState(() => {
-    if (typeof window === 'undefined') return 'system';
+    if (typeof window === 'undefined') return 'light';
     try {
-      return localStorage.getItem(THEME_STORAGE_KEY) || 'system';
+      return localStorage.getItem(THEME_STORAGE_KEY) || 'light';
     } catch {
-      return 'system';
+      return 'light';
     }
   });
 
@@ -106,10 +106,10 @@ export function useTheme() {
   });
 
   const setTheme = useCallback((newTheme, eventOrDirection = null) => {
-    const validTheme = ['system', 'dark', 'light'].includes(newTheme) ? newTheme : 'system';
+    const validTheme = ['light', 'dark', 'system'].includes(newTheme) ? newTheme : 'light';
 
     // Determine fluid sliding direction
-    let direction = 'from-right';
+    let direction;
     if (typeof eventOrDirection === 'string' && (eventOrDirection === 'from-left' || eventOrDirection === 'from-right')) {
       direction = eventOrDirection;
     } else {
@@ -144,10 +144,28 @@ export function useTheme() {
     } catch (err) {
       console.warn('[Theme] Storage/Broadcast unavailable:', err);
     }
+
+    // 4. Asynchronous Cloud Account Sync (Enterprise Roaming)
+    // Non-blocking background sync; preserves sub-millisecond local execution
+    try {
+      if (typeof window !== 'undefined') {
+        import('../supabaseClient')
+          .then(({ supabase }) => {
+            supabase.auth.getSession().then(({ data: { session } }) => {
+              if (session?.user?.id) {
+                supabase.auth.updateUser({
+                  data: { theme_preference: validTheme }
+                }).catch(() => { /* Silent failure during offline / network timeout */ });
+              }
+            }).catch(() => {});
+          })
+          .catch(() => {});
+      }
+    } catch { /* Background dual-write is best-effort */ }
   }, [theme]);
 
   const cycleTheme = useCallback((eventOrDirection = null) => {
-    const nextTheme = theme === 'system' ? 'dark' : theme === 'dark' ? 'light' : 'system';
+    const nextTheme = theme === 'light' ? 'dark' : theme === 'dark' ? 'system' : 'light';
     const direction = nextTheme === 'light' ? 'from-left' : 'from-right';
     setTheme(nextTheme, typeof eventOrDirection === 'string' ? eventOrDirection : direction);
   }, [theme, setTheme]);
@@ -210,6 +228,35 @@ export function useTheme() {
       if (mql) mql.removeEventListener('change', handleSystemChange);
     };
   }, [theme]);
+
+  // 4. Initial cloud metadata reconciliation for authenticated sessions
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      import('../supabaseClient')
+        .then(({ supabase }) => {
+          supabase.auth.getSession().then(({ data: { session } }) => {
+            const cloudTheme = session?.user?.user_metadata?.theme_preference;
+            if (cloudTheme && ['system', 'dark', 'light'].includes(cloudTheme)) {
+              const localTheme = localStorage.getItem(THEME_STORAGE_KEY);
+              if (localTheme !== cloudTheme) {
+                setThemeState(cloudTheme);
+                const activeDark = applyThemeToDOM(cloudTheme);
+                setIsDark(activeDark);
+                try {
+                  localStorage.setItem(THEME_STORAGE_KEY, cloudTheme);
+                } catch {
+                  /* ignore storage error */
+                }
+              }
+            }
+          }).catch(() => {});
+        })
+        .catch(() => {});
+    } catch {
+      /* ignore sync error */
+    }
+  }, []);
 
   return { theme, isDark, setTheme, cycleTheme };
 }

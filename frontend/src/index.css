@@ -1063,6 +1063,12 @@ html.theme-transition *::after {
   }
 }
 
+@keyframes shimmer {
+  100% {
+    transform: translateX(100%);
+  }
+}
+
 .theme-icon-ios {
   display: inline-block;
   animation: ios-icon-morph 500ms cubic-bezier(0.34, 1.56, 0.64, 1) both;

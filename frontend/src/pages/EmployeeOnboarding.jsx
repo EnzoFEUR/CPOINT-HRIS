@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, lazy, Suspense } from 'react';
 import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { fetchWithAuth } from '../utils/api';
@@ -7,9 +7,10 @@ import { isMedicalExempt } from '../routes/guards';
 import { needsProfileCompletion } from '../utils/userAccess.mjs';
 import { getStoredUser } from '../utils/storedUser.mjs';
 import { performLogout, broadcastAuthChange } from '../utils/authSession';
-import PhilippineAddressSelector from '../components/PhilippineAddressSelector';
 import { sanitizePersonnelText, isValidPersonnelText, MAX_EMERGENCY_CONTACT_NAME_LENGTH, getResidentialAddressError } from '../../../shared/personnelInput.mjs';
 import { HUMAN_TEXT_LIMITS, hasUnsafeDisplayCharacters } from '../../../shared/inputLimits.mjs';
+
+const PhilippineAddressSelector = lazy(() => import('../components/PhilippineAddressSelector'));
 
 const SEX_OPTIONS = ['Male', 'Female'];
 const RELATIONSHIP_OPTIONS = [
@@ -452,12 +453,28 @@ export default function EmployeeOnboarding() {
         {/* STEP 2: Residential Address (Philippine PSGC Cascading Selector) */}
         {step === 2 && (
           <form onSubmit={handleNextStep2} className="space-y-3.5">
-            <PhilippineAddressSelector
-              value={address}
-              onChange={(nextAddress) => setAddress(nextAddress)}
-              required
-              idPrefix="onboarding_address"
-            />
+            <Suspense
+              fallback={
+                <div className="space-y-3 p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50 animate-pulse">
+                  <div className="h-4 w-36 bg-slate-200 dark:bg-slate-700 rounded" />
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div className="h-10 bg-slate-200 dark:bg-slate-700 rounded-lg" />
+                    <div className="h-10 bg-slate-200 dark:bg-slate-700 rounded-lg" />
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div className="h-10 bg-slate-200 dark:bg-slate-700 rounded-lg" />
+                    <div className="h-10 bg-slate-200 dark:bg-slate-700 rounded-lg" />
+                  </div>
+                </div>
+              }
+            >
+              <PhilippineAddressSelector
+                value={address}
+                onChange={(nextAddress) => setAddress(nextAddress)}
+                required
+                idPrefix="onboarding_address"
+              />
+            </Suspense>
 
             <div className="flex items-center gap-2 pt-2">
               <button

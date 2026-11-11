@@ -71,7 +71,6 @@ export const Sidebar = ({ user, handleLogout }) => {
 
   const isApprovalsActive = isLeavesPath && (!rawTab || currentTab === 'requests');
   const isCashoutsActive = isLeavesPath && (currentTab === 'cashouts' || currentTab === 'cashout');
-  const isPolicyActive = isSilRoute;
 
   // Enterprise real-time count badges (<5ms head count, zero payload)
   const { data: leaveCounts = { pendingLeaves: 0, pendingCash: 0 } } = useQuery({

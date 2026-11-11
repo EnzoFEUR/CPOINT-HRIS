@@ -33,7 +33,7 @@ export const performLogout = async (redirectUrl = '/login') => {
       console.warn('[AUTH] Supabase signOut warning:', err);
     }
 
-    // 3. Purge user state and scoped caches
+    // 3. Purge user state and scoped caches (preserve cpoint_theme as sticky device appearance)
     localStorage.removeItem('user');
     try {
       Object.keys(sessionStorage).forEach((key) => {

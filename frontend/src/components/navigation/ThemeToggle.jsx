@@ -7,7 +7,7 @@ import { useTheme } from '../../utils/useTheme';
  * aligned with C-Point HRIS design tokens and Tabler icons.
  */
 export const ThemeToggle = ({ variant = 'compact', className = '' }) => {
-  const { theme, setTheme, cycleTheme, isDark } = useTheme();
+  const { theme, setTheme, cycleTheme } = useTheme();
 
   if (variant === 'segmented') {
     const options = [
