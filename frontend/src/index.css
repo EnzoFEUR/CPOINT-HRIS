@@ -829,3 +829,76 @@ img,
   color: #0f172a !important;
   border-radius: 4px !important;
 }
+
+/* ==========================================================================
+   ENTERPRISE VIEW TRANSITION & FLUID THEME SYSTEM
+   Ultra-smooth 60fps radial ripple, crossfade, and motion governance
+   ========================================================================== */
+
+/* 1. Global View Transition Crossfade (when no coordinates / keyboard / cross-tab sync) */
+::view-transition-old(root) {
+  animation: 280ms cubic-bezier(0.16, 1, 0.3, 1) both theme-fade-out;
+}
+::view-transition-new(root) {
+  animation: 280ms cubic-bezier(0.16, 1, 0.3, 1) both theme-fade-in;
+}
+
+@keyframes theme-fade-out {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes theme-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* 2. Fluid Radial Ripple (when clicked directly on toggle button or segmented control) */
+html.theme-ripple-transition::view-transition-old(root),
+html.theme-ripple-transition::view-transition-new(root) {
+  animation: none !important;
+  mix-blend-mode: normal !important;
+}
+
+html.theme-ripple-transition::view-transition-old(root) {
+  z-index: 1;
+}
+
+html.theme-ripple-transition::view-transition-new(root) {
+  z-index: 9999;
+}
+
+/* 3. Scoped CSS Crossfade Fallback (Browsers without View Transitions API) */
+html.theme-transition,
+html.theme-transition *,
+html.theme-transition *::before,
+html.theme-transition *::after {
+  transition: background-color 320ms cubic-bezier(0.16, 1, 0.3, 1),
+              border-color 320ms cubic-bezier(0.16, 1, 0.3, 1),
+              color 280ms cubic-bezier(0.16, 1, 0.3, 1),
+              fill 280ms cubic-bezier(0.16, 1, 0.3, 1),
+              stroke 280ms cubic-bezier(0.16, 1, 0.3, 1),
+              box-shadow 320ms cubic-bezier(0.16, 1, 0.3, 1) !important;
+  transition-delay: 0s !important;
+}
+
+/* 4. Accessibility: Instant transition for reduced motion users */
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-old(root),
+  ::view-transition-new(root) {
+    animation: none !important;
+  }
+  html.theme-transition,
+  html.theme-transition * {
+    transition: none !important;
+  }
+}
+

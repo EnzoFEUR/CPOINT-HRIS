@@ -32,9 +32,107 @@ export function applyThemeToDOM(mode) {
 }
 
 /**
+ * Enterprise Fluid Transition Orchestrator
+ * Progressive enhancement:
+ * 1. View Transitions API (Chrome 111+, Edge 111+, Safari 18+) with radial ripple when click origin exists.
+ * 2. Silky global crossfade when triggered via shortcut or cross-tab sync.
+ * 3. Scoped 320ms CSS transition fallback for older browser engines.
+ * 4. Zero animation if user has prefers-reduced-motion enabled.
+ */
+export function transitionTheme(applyFn, origin = null) {
+  if (typeof document === 'undefined') {
+    applyFn();
+    return;
+  }
+
+  const root = document.documentElement;
+  const prefersReducedMotion = Boolean(
+    typeof window !== 'undefined' &&
+    window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches
+  );
+
+  // If user requests reduced motion, apply synchronously with 0ms transition
+  if (prefersReducedMotion) {
+    applyFn();
+    return;
+  }
+
+  // 1. View Transitions API
+  if (typeof document.startViewTransition === 'function') {
+    if (origin && typeof origin.x === 'number' && typeof origin.y === 'number') {
+      root.classList.add('theme-ripple-transition');
+      const { x, y } = origin;
+      const endRadius = Math.hypot(
+        Math.max(x, window.innerWidth - x),
+        Math.max(y, window.innerHeight - y)
+      );
+
+      try {
+        const transition = document.startViewTransition(() => {
+          applyFn();
+        });
+
+        transition.ready.then(() => {
+          try {
+            const animation = root.animate(
+              {
+                clipPath: [
+                  `circle(0px at ${x}px ${y}px)`,
+                  `circle(${endRadius}px at ${x}px ${y}px)`,
+                ],
+              },
+              {
+                duration: 400,
+                easing: 'cubic-bezier(0.16, 1, 0.3, 1)',
+                pseudoElement: '::view-transition-new(root)',
+              }
+            );
+
+            animation.onfinish = () => {
+              root.classList.remove('theme-ripple-transition');
+            };
+            animation.oncancel = () => {
+              root.classList.remove('theme-ripple-transition');
+            };
+          } catch {
+            root.classList.remove('theme-ripple-transition');
+          }
+        }).catch(() => {
+          root.classList.remove('theme-ripple-transition');
+        });
+
+        transition.finished.finally(() => {
+          root.classList.remove('theme-ripple-transition');
+        });
+        return;
+      } catch {
+        root.classList.remove('theme-ripple-transition');
+      }
+    } else {
+      // Crossfade transition when origin is not available
+      try {
+        document.startViewTransition(() => {
+          applyFn();
+        });
+        return;
+      } catch {
+        // Fall through to CSS fallback
+      }
+    }
+  }
+
+  // 2. Scoped CSS transition fallback (Firefox / older engines)
+  root.classList.add('theme-transition');
+  applyFn();
+  window.setTimeout(() => {
+    root.classList.remove('theme-transition');
+  }, 350);
+}
+
+/**
  * Enterprise Real-Time Theme Hook
  * Provides sub-millisecond local execution, zero-FOUC persistence,
- * and instant cross-tab synchronization via BroadcastChannel.
+ * fluid View Transitions, and instant cross-tab synchronization.
  */
 export function useTheme() {
   const [theme, setThemeState] = useState(() => {
@@ -51,11 +149,35 @@ export function useTheme() {
     return document.documentElement.classList.contains('dark');
   });
 
-  const setTheme = useCallback((newTheme) => {
+  const setTheme = useCallback((newTheme, eventOrOrigin = null) => {
     const validTheme = ['system', 'dark', 'light'].includes(newTheme) ? newTheme : 'system';
-    setThemeState(validTheme);
-    const activeDark = applyThemeToDOM(validTheme);
-    setIsDark(activeDark);
+
+    // Resolve click/touch origin coordinates if available
+    let origin = null;
+    if (eventOrOrigin) {
+      if (
+        typeof eventOrOrigin.clientX === 'number' &&
+        typeof eventOrOrigin.clientY === 'number' &&
+        (eventOrOrigin.clientX !== 0 || eventOrOrigin.clientY !== 0)
+      ) {
+        origin = { x: eventOrOrigin.clientX, y: eventOrOrigin.clientY };
+      } else if (typeof eventOrOrigin.x === 'number' && typeof eventOrOrigin.y === 'number') {
+        origin = { x: eventOrOrigin.x, y: eventOrOrigin.y };
+      } else if (eventOrOrigin.currentTarget?.getBoundingClientRect) {
+        const rect = eventOrOrigin.currentTarget.getBoundingClientRect();
+        origin = { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+      } else if (eventOrOrigin.target?.getBoundingClientRect) {
+        const rect = eventOrOrigin.target.getBoundingClientRect();
+        origin = { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+      }
+    }
+
+    let activeDark = false;
+    transitionTheme(() => {
+      setThemeState(validTheme);
+      activeDark = applyThemeToDOM(validTheme);
+      setIsDark(activeDark);
+    }, origin);
 
     try {
       localStorage.setItem(THEME_STORAGE_KEY, validTheme);
@@ -71,13 +193,10 @@ export function useTheme() {
     }
   }, []);
 
-  const cycleTheme = useCallback(() => {
-    setTheme(current => {
-      if (current === 'system') return 'dark';
-      if (current === 'dark') return 'light';
-      return 'system';
-    });
-  }, [setTheme]);
+  const cycleTheme = useCallback((eventOrOrigin = null) => {
+    const nextTheme = theme === 'system' ? 'dark' : theme === 'dark' ? 'light' : 'system';
+    setTheme(nextTheme, eventOrOrigin);
+  }, [theme, setTheme]);
 
   // Synchronize across tabs and listen for OS system preference changes
   useEffect(() => {
@@ -90,9 +209,11 @@ export function useTheme() {
         bc = new BroadcastChannel(THEME_BROADCAST_CHANNEL);
         bc.onmessage = (event) => {
           if (event.data?.theme) {
-            setThemeState(event.data.theme);
-            const activeDark = applyThemeToDOM(event.data.theme);
-            setIsDark(activeDark);
+            transitionTheme(() => {
+              setThemeState(event.data.theme);
+              const activeDark = applyThemeToDOM(event.data.theme);
+              setIsDark(activeDark);
+            });
           }
         };
       } catch (e) {
@@ -104,9 +225,11 @@ export function useTheme() {
     const handleStorage = (event) => {
       if (event.key === THEME_STORAGE_KEY && event.newValue) {
         const next = event.newValue;
-        setThemeState(next);
-        const activeDark = applyThemeToDOM(next);
-        setIsDark(activeDark);
+        transitionTheme(() => {
+          setThemeState(next);
+          const activeDark = applyThemeToDOM(next);
+          setIsDark(activeDark);
+        });
       }
     };
     window.addEventListener('storage', handleStorage);
@@ -115,8 +238,10 @@ export function useTheme() {
     let mql = null;
     const handleSystemChange = () => {
       if (theme === 'system') {
-        const activeDark = applyThemeToDOM('system');
-        setIsDark(activeDark);
+        transitionTheme(() => {
+          const activeDark = applyThemeToDOM('system');
+          setIsDark(activeDark);
+        });
       }
     };
 
