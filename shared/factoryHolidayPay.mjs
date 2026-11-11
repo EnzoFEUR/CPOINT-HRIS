@@ -1,11 +1,12 @@
 // Holiday pay for piece-rate (factory) workers, per DOLE rules for workers paid by results:
-//  - Their holiday credit is the Average Daily Output Wage (ADOW): the average daily earnings over their last
-//    7 ACTUAL working days before the holiday (days they clocked in and out).
+//  - The required regular-holiday basis is the average daily earnings over the last 7 actual workdays.
 //  - The credit may never be lower than the regional daily minimum wage.
 // Production is saved per cutoff, not per day, so each saved payslip's piece pay is spread evenly over the days
-// the worker clocked in during that payslip's period. The current cutoff uses its own (unsaved) piece pay.
+// the worker clocked in during that payslip's period. This is an estimate, not actual daily earnings evidence.
+// The current cutoff uses its own (unsaved) piece pay; retain this existing valuation pending policy review.
 // Shared by the server (payroll.js) only, so the preview and the saved payroll cannot disagree.
-import { MULTIPLIERS } from './holidayMultipliers.mjs';
+import { HOLIDAY_TYPES, MULTIPLIERS } from './holidayMultipliers.mjs';
+import { resolveHolidays } from './holidayCalendar.mjs';
 
 export const FACTORY_ADOW_DAYS = 7;
 // How far back attendance and saved payslips are loaded to find 7 actual working days.
@@ -22,6 +23,7 @@ const shiftDate = (dateStr, days) => {
     return d.toISOString().substring(0, 10);
 };
 const weekday = (dateStr) => new Date(`${dateStr}T00:00:00Z`).getUTCDay();
+const evidenceNote = 'Estimated cutoff allocation: piece pay is spread over attended days, not verified actual daily earnings. The wage floor still applies; valuation requires payroll policy review.';
 
 export function computeFactoryHolidayPayAdow({
     holidays = [],
@@ -32,9 +34,11 @@ export function computeFactoryHolidayPayAdow({
     piecePay = 0,
     priorPayslips = [],
     minimumDailyWage = DEFAULT_MINIMUM_DAILY_WAGE,
+    paidLeaveDates = [],
 }) {
     const floor = Number(minimumDailyWage) > 0 ? Number(minimumDailyWage) : DEFAULT_MINIMUM_DAILY_WAGE;
     const workedDates = new Set((logs || []).filter(l => l && l.time_in && l.time_out).map(logDate).filter(Boolean));
+    const paidLeaveDateSet = new Set([...paidLeaveDates].map(ymd));
 
     // Daily output wage for every worked day we have pay for.
     const wageByDate = new Map();
@@ -47,17 +51,16 @@ export function computeFactoryHolidayPayAdow({
     (priorPayslips || []).forEach(p => spread(ymd(p.period_start), ymd(p.period_end), Number(p.basic_pay) || 0));
     spread(ymd(periodStart), ymd(periodEnd), Number(piecePay) || 0);
 
-    const holidayByDate = new Map();
-    for (const h of holidays || []) {
-        const date = ymd(h?.date);
-        if (date && !holidayByDate.has(date)) holidayByDate.set(date, h);
-    }
+    const holidayByDate = new Map(resolveHolidays(holidays).map(h => [h.date, h]));
 
     // Eligibility for an unworked regular holiday: present on the last working day before it.
     const presentWorkdayBefore = (date) => {
         let d = shiftDate(date, -1);
-        for (let i = 0; i < 7; i++) {
-            if (!restDays.includes(weekday(d)) && !holidayByDate.has(d)) return workedDates.has(d);
+        for (let i = 0; i < FACTORY_ADOW_LOOKBACK_DAYS; i++) {
+            if (workedDates.has(d) || paidLeaveDateSet.has(d)) return true;
+            const priorHoliday = holidayByDate.get(d);
+            const nonWorkingHoliday = priorHoliday && priorHoliday.type !== HOLIDAY_TYPES.SPECIAL_WORKING;
+            if (!restDays.includes(weekday(d)) && !nonWorkingHoliday) return false;
             d = shiftDate(d, -1);
         }
         return false;
@@ -66,8 +69,8 @@ export function computeFactoryHolidayPayAdow({
     const items = [];
     let total = 0;
     for (const [date, h] of [...holidayByDate].sort((a, b) => a[0].localeCompare(b[0]))) {
+        if (date < ymd(periodStart) || date > ymd(periodEnd)) continue;
         const table = MULTIPLIERS[h.type];
-        if (!table) continue;
 
         const worked = workedDates.has(date);
         const onRestDay = restDays.includes(weekday(date));
@@ -92,14 +95,17 @@ export function computeFactoryHolidayPayAdow({
             date,
             holidayName: h.name || null,
             holidayType: h.type,
+            sources: h.sources || [h],
             worked,
             multiplier: worked ? multiplier : table.unworked,
             adow: round2(adow),
             dailyRate: round2(credit),
             minimumApplied: adow < floor,
             daysUsed: previous.length,
+            evidence_basis: 'estimated_cutoff_allocation',
+            note: evidenceNote,
             pay,
         });
     }
-    return { total: round2(total), items, missingRate: false };
+    return { total: round2(total), items, missingRate: false, evidence_basis: 'estimated_cutoff_allocation', note: evidenceNote };
 }

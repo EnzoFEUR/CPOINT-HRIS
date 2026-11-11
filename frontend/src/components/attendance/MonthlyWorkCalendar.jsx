@@ -156,7 +156,7 @@ function EmployeeMonthlyWorkCalendar({ employeeId, className = '', isEmployeeVie
                 supabase.from('employees').select('*').eq('id', activeEmpId).abortSignal(signal).maybeSingle(),
                 supabase.from('attendances').select('*', { count: 'exact' }).eq('employee_id', activeEmpId).gte('date', startDate).lte('date', endDate).order('time_in', { ascending: true }).abortSignal(signal),
                 supabase.from('leave_requests').select('*', { count: 'exact' }).eq('employee_id', activeEmpId).eq('status', 'Approved').lte('start_date', endDate).gte('end_date', startDate).abortSignal(signal),
-                supabase.from('holidays').select('*', { count: 'exact' }).gte('date', startDate).lte('date', endDate).abortSignal(signal),
+                fetchWithAuth(`/api/holidays/applicable?employee_id=${activeEmpId}&start=${startDate}&end=${endDate}`, { signal }).then(async response => { if (!response.ok) throw new Error('Holiday calendar cannot be verified.'); const body = await response.json(); if (!Array.isArray(body.items)) throw new Error('Holiday calendar is incomplete.'); return { data: body.items, count: body.items.length }; }),
                 fetchWithAuth(`/api/attendance?employee_id=${activeEmpId}&limit=1&payroll_preview=true`, { signal }).then(async response => response.ok ? (await response.json()).meta?.workPolicy : null).catch(() => null),
             ]);
             signal.throwIfAborted();
@@ -196,7 +196,6 @@ function EmployeeMonthlyWorkCalendar({ employeeId, className = '', isEmployeeVie
             .on('postgres_changes', { event: '*', schema: 'public', table: 'attendances', filter: `employee_id=eq.${activeEmpId}` }, handleSync)
             .on('postgres_changes', { event: '*', schema: 'public', table: 'leave_requests', filter: `employee_id=eq.${activeEmpId}` }, handleSync)
             .on('postgres_changes', { event: '*', schema: 'public', table: 'employees', filter: `id=eq.${activeEmpId}` }, handleSync)
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'holidays' }, handleSync)
             .subscribe(status => { if (status === 'SUBSCRIBED') handleSync(); });
         return () => {
             clearTimeout(refreshTimer);

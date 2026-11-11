@@ -36,6 +36,7 @@ import { STATUTORY_INPUT_LIMITS, getStatutorySettingsError } from '../../shared/
 import { getFactoryRowsError } from '../../shared/inputLimits.mjs';
 import { fetchPayrollAttendance } from '../utils/payrollAttendance.js';
 import { getOfflinePayrollVersions } from '../utils/offlinePayrollVersion.js';
+import { readHolidayCalendar, applicableHolidays, publicHolidayItems, assertHolidayVersion } from '../services/holidayCalendar.js';
 
 const router = express.Router();
 router.param('id', validateRecordId);
@@ -185,19 +186,22 @@ const insertPayrollRow = async (payload, cash, actorId, frequency = 'weekly') =>
     if (cash?.available || cash?.statutory?.available) {
         // Legacy RPCs require the Paid input; payroll_starts_pending stores it as Pending.
         const statutory = cash?.statutory?.available && (cash.statutory.signature.lines.length > 0 || cash.statutory.signature.coverage.length > 0);
-        const result = await supabase.rpc(statutory ? 'post_payroll_with_statutory_leave' : 'post_payroll_with_sil', {
+        const versioned = payload.holiday_calendar_version != null;
+        const result = await supabase.rpc(versioned ? 'post_payroll_with_holiday_calendar' : statutory ? 'post_payroll_with_statutory_leave' : 'post_payroll_with_sil', {
             p_actor_id: actorId,
             p_employee_id: payload.employee_id,
             p_payroll: payload,
             p_payout_ids: cash.payout_ids || [],
             p_frequency: frequency,
             p_leave_signature: cash.leave_signature || [],
-            ...(statutory ? { p_statutory_signature: cash.statutory.signature } : {})
+            ...(statutory || versioned ? { p_statutory_signature: statutory ? cash.statutory.signature : null } : {})
         });
         if (result.error?.code === 'PGRST202') {
             result.error = { ...result.error, status: 503, message: statutory ? 'Install the statutory leave payroll migration before posting this payslip.' : 'Install the SIL payroll migration before posting this payslip.' };
         }
         const conflicts = {
+            HOLIDAY_CALENDAR_CHANGED: 'The holiday calendar changed. Refresh the preview before saving.',
+            HOLIDAY_PAID_PAYROLL_LOCKED: 'A paid payslip cannot be recalculated. Record a reviewed adjustment.',
             STATUTORY_PAYROLL_CHANGED: 'Statutory leave payments changed. Refresh the preview before saving.',
             STATUTORY_REVIEW_REQUIRED: 'Install and complete the statutory leave benefit review before posting this payslip.',
             PAYROLL_ALREADY_EXISTS: 'A payslip already exists for this employee and period.',
@@ -216,6 +220,7 @@ const insertPayrollRow = async (payload, cash, actorId, frequency = 'weekly') =>
     for (let attempt = 0; attempt <= OPTIONAL_PAYROLL_COLUMNS.length; attempt++) {
         const { data, error } = await supabase.from('payrolls').insert(row).select('id').maybeSingle();
         if (!error) return { data, error: null };
+        if (['HOLIDAY_CALENDAR_CHANGED', 'HOLIDAY_PAID_PAYROLL_LOCKED'].includes(error.message)) return { data: null, error: { ...error, status: 409, message: 'The holiday calendar or paid payroll changed. Refresh the preview before saving.' } };
         if (error.message === 'PAYROLL_ATTENDANCE_CHANGED') return { data: null, error: { ...error, status: 409, message: 'Attendance changed during calculation. Refresh and calculate payroll again.' } };
         const missing = OPTIONAL_PAYROLL_COLUMNS.find((col) => col in row && error.message?.includes(col));
         if (!missing) return { data: null, error };
@@ -316,7 +321,7 @@ const getContractualDailyRate = (employee) => {
 //    variants from MULTIPLIERS.workedRestDay).
 // Production is saved per cutoff, so earlier days use each saved payslip's piece pay spread over the days
 // clocked in; the current cutoff uses its own piece pay (piecePay). See shared/factoryHolidayPay.mjs.
-const computeFactoryHolidayPay = ({ employee, ctx, holidays = [], periodStart, periodEnd, piecePay = 0, minimumDailyWage }) =>
+const computeFactoryHolidayPay = ({ employee, ctx, holidays = [], periodStart, periodEnd, piecePay = 0, minimumDailyWage, paidLeaveDates }) =>
     computeFactoryHolidayPayAdow({
         holidays,
         logs: ctx?.logsByEmployee?.get(String(employee?.id)) || [],
@@ -325,16 +330,17 @@ const computeFactoryHolidayPay = ({ employee, ctx, holidays = [], periodStart, p
         periodEnd,
         piecePay,
         priorPayslips: ctx?.payslipsByEmployee?.get(String(employee?.id)) || [],
+        paidLeaveDates: paidLeaveDates || getPaidLeaveDates(ctx?.leavesByEmployee?.get(String(employee?.id)) || [], shiftDateStr(periodStart, -FACTORY_ADOW_LOOKBACK_DAYS), periodEnd),
         minimumDailyWage,
     });
 
 // Attendance and saved payslips needed to find a worker's last 7 actual working days before a holiday.
 const fetchFactoryHolidayContext = async (employeeIds, pStart, pEnd) => {
     const ids = [...new Set((employeeIds || []).filter(Boolean).map(String))];
-    const ctx = { logsByEmployee: new Map(), payslipsByEmployee: new Map() };
+    const ctx = { logsByEmployee: new Map(), payslipsByEmployee: new Map(), leavesByEmployee: new Map() };
     if (ids.length === 0) return ctx;
     const from = shiftDateStr(pStart, -FACTORY_ADOW_LOOKBACK_DAYS);
-    const [logs, payslips] = await Promise.all([
+    const [logs, payslips, leaveResult] = await Promise.all([
         fetchPayrollAttendance(supabase, ids, from, pEnd),
         (async () => {
             const rows = [];
@@ -348,7 +354,15 @@ const fetchFactoryHolidayContext = async (employeeIds, pStart, pEnd) => {
                 if (data.length < 1000) return rows;
             }
         })(),
+        supabase.from('leave_requests').select('*', { count: 'exact' }).in('employee_id', ids).eq('status', 'Approved').lte('start_date', pEnd).gte('end_date', from),
     ]);
+    if (leaveResult.error) throw leaveResult.error;
+    if (!Array.isArray(leaveResult.data) || leaveResult.count !== leaveResult.data.length) throw new Error('Factory paid-leave evidence is incomplete.');
+    for (const leave of leaveResult.data) {
+        const key = String(leave.employee_id);
+        if (!ctx.leavesByEmployee.has(key)) ctx.leavesByEmployee.set(key, []);
+        ctx.leavesByEmployee.get(key).push({ ...leave, is_paid: leave.requested_pay_type !== 'without_pay' && !/\[PAY_TYPE:WITHOUT_PAY\]|\[UNPAID\]/i.test(leave.notes || '') });
+    }
     for (const log of logs || []) {
         const key = String(log.employee_id);
         if (!ctx.logsByEmployee.has(key)) ctx.logsByEmployee.set(key, []);
@@ -597,15 +611,15 @@ router.post('/factory-holiday-preview', requirePayrollManager, async (req, res) 
         res.setHeader('Cache-Control', 'no-store');
         if (ids.length === 0) return res.json({ success: true, holidays: {}, thirteenth: {} });
 
-        await ensureHolidaysGeneratedForRange(pStart, pEnd);
-        const [{ data: holidays, error: holidayError }, { data: empList, error: employeeError }, ctx, settings, statutoryPreview] = await Promise.all([
-            supabase.from('holidays').select('*').gte('date', pStart).lte('date', pEnd),
+
+        const [holidayCalendar, { data: empList, error: employeeError }, ctx, settings, statutoryPreview] = await Promise.all([
+            readHolidayCalendar(supabase, shiftDateStr(pStart, -FACTORY_ADOW_LOOKBACK_DAYS), pEnd),
             supabase.from('employees').select('*').in('id', ids),
             fetchFactoryHolidayContext(ids, pStart, pEnd),
             getStatutorySettings(),
             fetchStatutoryLeavePayroll(supabase, ids, pStart, pEnd),
         ]);
-        if (holidayError || employeeError) throw holidayError || employeeError;
+        if (employeeError) throw employeeError;
 
         const empMap = new Map((empList || []).map(e => [String(e.id), e]));
         const result = {};
@@ -622,7 +636,7 @@ router.post('/factory-holiday-preview', requirePayrollManager, async (req, res) 
             const holiday = computeFactoryHolidayPay({
                 employee,
                 ctx,
-                holidays: (holidays || []).filter(holiday => !isMaternityCoveredDate(holiday.date, statutoryPreview.data[employee.id]?.coverage)),
+                holidays: applicableHolidays(holidayCalendar, employee.id).filter(holiday => !isMaternityCoveredDate(holiday.date, statutoryPreview.data[employee.id]?.coverage)),
                 periodStart: pStart,
                 periodEnd: pEnd,
                 piecePay,
@@ -630,7 +644,7 @@ router.post('/factory-holiday-preview', requirePayrollManager, async (req, res) 
             });
             if (holiday.items.length > 0) result[String(employee.id)] = { total: holiday.total, items: holiday.items, missingRate: false };
         }
-        res.json({ success: true, holidays: result, thirteenth });
+        res.json({ success: true, holidays: result, thirteenth, holiday_calendar_version: holidayCalendar.version });
     } catch (error) { res.status(503).json({ error: error.message }); }
 });
 
@@ -646,7 +660,7 @@ router.get('/statutory-settings', cacheResponse(20), async (req, res) => {
         if (error) throw error;
         res.json(data || {});
     } catch (err) {
-        res.status(500).json({ error: err.message });
+        res.status(err.status || 500).json({ error: err.message });
     }
 });
 
@@ -697,311 +711,30 @@ router.put('/statutory-settings', requirePayrollManager, async (req, res) => {
         broadcastPayrollUpdate('STATUTORY_SETTINGS_UPDATED', { admin_id, settings: resultData || cleanSettings });
         res.json({ success: true, message: 'Statutory settings updated successfully.', data: resultData || cleanSettings });
     } catch (err) {
-        res.status(500).json({ error: err.message });
+        res.status(err.status || 500).json({ error: err.message });
     }
 });
 
-// 2. Holidays
-router.get('/holidays', cacheResponse(60), async (req, res) => {
+// Legacy read alias; management uses the audited calendar router.
+router.get('/holidays', async (req, res) => {
     try {
-        let query = supabase.from('holidays').select('*').order('date', { ascending: true });
-
-        const rawStart = req.query.start || req.query.start_date;
-        const rawEnd = req.query.end || req.query.end_date;
-
-        if (rawStart && rawEnd) {
-            const { start, end } = normalizeDateRange(rawStart, rawEnd);
-            query = query.gte('date', start).lte('date', end);
-        } else if (rawStart) {
-            query = query.gte('date', rawStart);
-        } else if (rawEnd) {
-            query = query.lte('date', rawEnd);
-        }
-
-        const { data, error } = await query;
-        if (error) throw error;
-        res.json(data || []);
-    } catch (err) {
-        res.status(500).json({ error: err.message });
-    }
+        const start = req.query.start || req.query.start_date || '1990-01-01';
+        const end = req.query.end || req.query.end_date || '2100-12-31';
+        const calendar = await readHolidayCalendar(supabase, start, end);
+        res.json(publicHolidayItems(hasVerifiedManagerRole(req.user) ? calendar.items : applicableHolidays(calendar, req.user.id)));
+    } catch (error) { res.status(error.status || 503).json({ error: error.message }); }
 });
-
-router.post('/holidays', requirePayrollManager, async (req, res) => {
-    try {
-        const { name, date, type } = req.body;
-        if (!name || !date || !type) {
-            return res.status(400).json({ error: 'name, date, and type are required.' });
-        }
-
-        const { data, error } = await supabase
-            .from('holidays')
-            .insert([{ name, date, type }])
-            .select()
-            .single();
-
-        if (error) throw error;
-
-        invalidateCache(['/api/payroll/holidays']);
-        res.status(201).json(data);
-    } catch (err) {
-        res.status(500).json({ error: err.message });
-    }
-});
-
-router.delete('/holidays/:id', requirePayrollManager, async (req, res) => {
-    try {
-        const { id } = req.params;
-        const isNumericId = !isNaN(Number(id));
-        const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
-
-        if (!isNumericId && !isUUID) {
-            return res.status(400).json({ error: 'Invalid holiday ID format.' });
-        }
-
-        const { error } = await supabase.from('holidays').delete().eq('id', id);
-        if (error) throw error;
-
-        invalidateCache(['/api/payroll/holidays']);
-        res.json({ success: true });
-    } catch (err) {
-        res.status(500).json({ error: err.message });
-    }
-});
-
-// ==============================================================================
-// 2b. Auto-Generate Deterministic Holidays for a Given Year
-//     (fixed-date holidays, National Heroes Day rule, Easter-based Holy Week,
-//     and looked-up Chinese New Year. Eidul Fitr / Eidul Adha are intentionally
-//     excluded - those are set by NCMF proclamation via moon sighting, not a
-//     fixed calendar rule, and must still be added manually each year.)
-// ==============================================================================
-
-// Meeus/Jones/Butcher algorithm - computes Easter Sunday for a Gregorian year
-function getEasterSunday(year) {
-    const a = year % 19;
-    const b = Math.floor(year / 100);
-    const c = year % 100;
-    const d = Math.floor(b / 4);
-    const e = b % 4;
-    const f = Math.floor((b + 8) / 25);
-    const g = Math.floor((b - f + 1) / 3);
-    const h = (19 * a + b - d - g + 15) % 30;
-    const i = Math.floor(c / 4);
-    const k = c % 4;
-    const l = (32 + 2 * e + 2 * i - h - k) % 7;
-    const m = Math.floor((a + 11 * h + 22 * l) / 451);
-    const month = Math.floor((h + l - 7 * m + 114) / 31); // 3 = March, 4 = April
-    const day = ((h + l - 7 * m + 114) % 31) + 1;
-    return new Date(Date.UTC(year, month - 1, day));
-}
-
-function addDays(date, days) {
-    const d = new Date(date);
-    d.setUTCDate(d.getUTCDate() + days);
-    return d;
-}
-
-function toDateStr(d) {
-    return d.toISOString().substring(0, 10);
-}
-
-function getLastMondayOfAugust(year) {
-    const lastDayOfAug = new Date(Date.UTC(year, 8, 0)); // day 0 of Sept = last day of Aug
-    const dow = lastDayOfAug.getUTCDay(); // 0 = Sun ... 6 = Sat
-    const diffToMonday = (dow + 6) % 7;
-    return addDays(lastDayOfAug, -diffToMonday);
-}
-
-// Published Chinese New Year (Spring Festival) dates. These follow the lunisolar
-// calendar and cannot be derived by formula, but the dates are published by
-// astronomical almanacs years in advance, so a lookup table is reliable.
-const CHINESE_NEW_YEAR_DATES = {
-    2025: '2025-01-29', 2026: '2026-02-17', 2027: '2027-02-06', 2028: '2028-01-26',
-    2029: '2029-02-13', 2030: '2030-02-03', 2031: '2031-01-23', 2032: '2032-02-11',
-    2033: '2033-01-31', 2034: '2034-02-19', 2035: '2035-02-08', 2036: '2036-01-28'
-};
-
-function generateDeterministicHolidays(year) {
-    const easter = getEasterSunday(year);
-    const maundyThursday = toDateStr(addDays(easter, -3));
-    const goodFriday = toDateStr(addDays(easter, -2));
-    const blackSaturday = toDateStr(addDays(easter, -1));
-
-    const holidays = [
-        // A. Regular Holidays
-        { name: "New Year's Day", date: `${year}-01-01`, type: 'regular' },
-        { name: 'Maundy Thursday', date: maundyThursday, type: 'regular' },
-        { name: 'Good Friday', date: goodFriday, type: 'regular' },
-        { name: 'Araw ng Kagitingan', date: `${year}-04-09`, type: 'regular' },
-        { name: 'Labor Day', date: `${year}-05-01`, type: 'regular' },
-        { name: 'Independence Day', date: `${year}-06-12`, type: 'regular' },
-        { name: 'National Heroes Day', date: toDateStr(getLastMondayOfAugust(year)), type: 'regular' },
-        { name: 'Bonifacio Day', date: `${year}-11-30`, type: 'regular' },
-        { name: 'Christmas Day', date: `${year}-12-25`, type: 'regular' },
-        { name: 'Rizal Day', date: `${year}-12-30`, type: 'regular' },
-
-        // B. Special (Non-Working) Days
-        { name: 'Ninoy Aquino Day', date: `${year}-08-21`, type: 'special_non_working' },
-        { name: "All Saints' Day", date: `${year}-11-01`, type: 'special_non_working' },
-        { name: 'Feast of the Immaculate Conception of Mary', date: `${year}-12-08`, type: 'special_non_working' },
-        { name: 'Last Day of the Year', date: `${year}-12-31`, type: 'special_non_working' },
-        { name: 'Black Saturday', date: blackSaturday, type: 'special_non_working' },
-        { name: "All Souls' Day", date: `${year}-11-02`, type: 'special_non_working' },
-        { name: 'Christmas Eve', date: `${year}-12-24`, type: 'special_non_working' },
-
-        // C. Special (Working) Day
-        { name: 'EDSA People Power Revolution Anniversary', date: `${year}-02-25`, type: 'special_working' }
-    ];
-
-    if (CHINESE_NEW_YEAR_DATES[year]) {
-        holidays.push({ name: 'Chinese New Year', date: CHINESE_NEW_YEAR_DATES[year], type: 'special_non_working' });
-    }
-
-    return holidays;
-}
-
-// Read-only status check — deliberately does NOT call ensureHolidaysGeneratedForRange.
-// The frontend uses this to show HR an explicit "Generate Holidays" reminder the first
-// time a year is touched, before the silent auto-generation safety net (wired into
-// /preview, GET /holidays, and POST /) has a chance to fill it in behind the scenes.
 router.get('/holidays/status', async (req, res) => {
     try {
-        const year = parseInt(req.query.year, 10);
-        if (!year || year < 2020 || year > 2100) {
-            return res.status(400).json({ error: 'A valid year is required.' });
-        }
-
-        const { count, error } = await supabase
-            .from('holidays')
-            .select('id', { count: 'exact', head: true })
-            .gte('date', `${year}-01-01`)
-            .lte('date', `${year}-12-31`);
-
-        if (error) throw error;
-
-        res.json({ year, generated: (count || 0) > 0, count: count || 0 });
-    } catch (err) {
-        res.status(500).json({ error: err.message });
-    }
+        const year = Number(req.query.year);
+        if (!Number.isInteger(year) || year < 1990 || year > 2100) return res.status(400).json({ error: 'Choose a valid year.' });
+        const calendar = await readHolidayCalendar(supabase, `${year}-01-01`, `${year}-12-31`);
+        res.json({ year, count: calendar.items.length, generated: calendar.items.length > 0, verified: calendar.items.length > 0 && calendar.items.every(row => row.source_verified), version: calendar.version });
+    } catch (error) { res.status(503).json({ error: error.message }); }
 });
-
-// ==============================================================================
-// 2c. Last-resort auto-generation
-//     This ONLY runs at the moment a payroll is actually saved (POST /), not
-//     while browsing, previewing, or loading the calendar. Those read paths
-//     used to also silently trigger this, but that caused a real bug: two
-//     concurrent requests (the holiday-rate preview and the explicit status
-//     check) could race each other, with the status check reading the table
-//     a moment before the preview's silent insert committed — showing HR a
-//     "not generated yet" banner and an "Active +X% rate" banner at the same
-//     time, for the same year. Now the ONLY ways a year's holidays get
-//     created are: (1) HR explicitly clicking "Generate Holidays", or (2)
-//     this function, as a final safety net so payroll math is never silently
-//     wrong even if that click was skipped somehow.
-//
-//     Uses an in-flight promise per year (not just a "done" flag) so that if
-//     two payroll saves for the same never-generated year land at nearly the
-//     same instant, the second one awaits the first's actual insert instead
-//     of racing it and creating a duplicate set of holiday rows.
-// ==============================================================================
-const yearGenerationState = new Map(); // year -> 'done' | Promise
-
-async function ensureHolidaysGeneratedForRange(startDateStr, endDateStr) {
-    if (!startDateStr || !endDateStr) return;
-
-    const startYear = parseInt(String(startDateStr).substring(0, 4), 10);
-    const endYear = parseInt(String(endDateStr).substring(0, 4), 10);
-    if (!startYear || !endYear) return;
-
-    for (let year = startYear; year <= endYear; year++) {
-        if (year < 2020 || year > 2100) continue;
-
-        const existingState = yearGenerationState.get(year);
-        if (existingState === 'done') continue;
-        if (existingState instanceof Promise) {
-            await existingState; // another concurrent call is already generating this year - wait for it, don't race it
-            continue;
-        }
-
-        const generationPromise = (async () => {
-            try {
-                const { data: existingRows, error: checkError } = await supabase
-                    .from('holidays')
-                    .select('date')
-                    .gte('date', `${year}-01-01`)
-                    .lte('date', `${year}-12-31`)
-                    .limit(1);
-
-                if (checkError) throw checkError;
-
-                if (existingRows && existingRows.length > 0) {
-                    yearGenerationState.set(year, 'done');
-                    return;
-                }
-
-                const candidates = generateDeterministicHolidays(year);
-                const { error: insertError } = await supabase.from('holidays').insert(candidates);
-                if (insertError) throw insertError;
-
-                yearGenerationState.set(year, 'done');
-                invalidateCache(['/api/payroll/holidays']);
-                console.log(`[Holidays] Auto-generated ${candidates.length} DOLE holidays for ${year} (payroll save safety net).`);
-            } catch (err) {
-                // Never let this break the payroll save it's supporting - worst case,
-                // that save just proceeds with whatever holidays already exist.
-                yearGenerationState.delete(year); // allow a future attempt to retry, instead of getting stuck
-                console.error(`[Holidays] Auto-generation failed for ${year}:`, err.message);
-            }
-        })();
-
-        yearGenerationState.set(year, generationPromise);
-        await generationPromise;
-    }
-}
-
-router.post('/holidays/generate', requirePayrollManager, async (req, res) => {
-    try {
-        const year = parseInt(req.body.year, 10);
-        if (!year || year < 2020 || year > 2100) {
-            return res.status(400).json({ error: 'A valid year is required.' });
-        }
-
-        const candidates = generateDeterministicHolidays(year);
-        const cnyMissing = !CHINESE_NEW_YEAR_DATES[year];
-
-        const { data: existingRows } = await supabase
-            .from('holidays')
-            .select('date, name')
-            .gte('date', `${year}-01-01`)
-            .lte('date', `${year}-12-31`);
-
-        const existingSet = new Set((existingRows || []).map(r => `${r.date}__${r.name}`));
-        const toInsert = candidates.filter(h => !existingSet.has(`${h.date}__${h.name}`));
-
-        let inserted = [];
-        if (toInsert.length > 0) {
-            const { data, error } = await supabase.from('holidays').insert(toInsert).select();
-            if (error) throw error;
-            inserted = data;
-        }
-
-        invalidateCache(['/api/payroll/holidays']);
-
-        res.json({
-            success: true,
-            year,
-            inserted_count: inserted.length,
-            inserted,
-            skipped_existing: candidates.length - toInsert.length,
-            chinese_new_year_generated: !cnyMissing,
-            reminder: cnyMissing
-                ? `Chinese New Year was NOT generated - ${year} isn't in the lookup table (only 2025-2036 are covered). Add it manually once you have the published date, and add it to CHINESE_NEW_YEAR_DATES for next time. Eidul Fitr and Eidul Adha were also NOT generated - those are set by NCMF proclamation based on moon sighting, not a fixed formula.`
-                : 'Eidul Fitr and Eidul Adha were NOT generated - those are set by NCMF proclamation based on moon sighting, not a fixed formula. Add them manually once the annual proclamation confirms the date.'
-        });
-    } catch (err) {
-        res.status(500).json({ error: err.message });
-    }
-});
+router.post('/holidays/generate', requirePayrollManager, (_req, res) => res.status(409).json({ error: 'Use Holidays & Work Calendar to review official declarations. Automatic publication is disabled.' }));
+router.post('/holidays', requirePayrollManager, (_req, res) => res.status(409).json({ error: 'Use the audited holiday calendar command endpoint.' }));
+router.delete('/holidays/:id', requirePayrollManager, (_req, res) => res.status(409).json({ error: 'Cancel a holiday through Holidays & Work Calendar to preserve its history.' }));
 
 // 13th month report: every employee with payslips in the year, who has been paid, and who has not.
 router.get('/13th-month-report', requirePayrollManager, async (req, res) => {
@@ -1103,7 +836,7 @@ router.get('/13th-month/:employee_id', async (req, res) => {
         const result = aggregate13thMonthPay(records || []);
         res.json({ employee_id, year, ...result });
     } catch (err) {
-        res.status(500).json({ error: err.message });
+        res.status(err.status || 500).json({ error: err.message });
     }
 });
 
@@ -1118,12 +851,8 @@ router.post('/preview', async (req, res) => {
         const { start: pStart, end: pEnd } = normalizeDateRange(period_start, period_end);
 
         // Fetch holiday calendar for the period
-        const { data: holidayList } = await supabase
-            .from('holidays')
-            .select('*')
-            .gte('date', pStart)
-            .lte('date', pEnd)
-            .order('date', { ascending: true });
+        const holidayCalendar = await readHolidayCalendar(supabase, shiftDateStr(pStart, -FACTORY_ADOW_LOOKBACK_DAYS), pEnd, employee_id || null);
+        const holidayList = (employee_id ? applicableHolidays(holidayCalendar, employee_id) : holidayCalendar.items).filter(h => h.date >= pStart);
 
         // If no employee_id provided (e.g. batch mode or initial page load), return holiday calendar
         if (!employee_id) {
@@ -1134,7 +863,7 @@ router.post('/preview', async (req, res) => {
                 pay: 0
             }));
             return res.json({
-                items: genericItems,
+                items: genericItems, holiday_calendar_version: holidayCalendar.version,
                 totalHolidayPay: 0,
                 approvedPaidLeaveDays: 0,
                 paidLeaveRecords: [],
@@ -1157,7 +886,7 @@ router.post('/preview', async (req, res) => {
                 pay: 0
             }));
             return res.json({
-                items: genericItems,
+                items: genericItems, holiday_calendar_version: holidayCalendar.version,
                 totalHolidayPay: 0,
                 approvedPaidLeaveDays: 0,
                 paidLeaveRecords: [],
@@ -1176,7 +905,7 @@ router.post('/preview', async (req, res) => {
                 pay: 0
             }));
             return res.json({
-                items: genericItems,
+                items: genericItems, holiday_calendar_version: holidayCalendar.version,
                 totalHolidayPay: 0,
                 approvedPaidLeaveDays: 0,
                 paidLeaveRecords: [],
@@ -1190,13 +919,13 @@ router.post('/preview', async (req, res) => {
             allAttendanceLogs,
             paidLeaveInfo,
             lookbackLeaveInfo,
-            { data: lookbackHolidays },
+            lookbackCalendar,
             statutoryPreview
         ] = await Promise.all([
             fetchPayrollAttendance(supabase, [employee_id], lookbackStart, pEnd),
             fetchApprovedPaidLeaves(employee_id, pStart, pEnd),
             fetchApprovedPaidLeaves(employee_id, lookbackStart, pEnd),
-            supabase.from('holidays').select('*').gte('date', lookbackStart).lte('date', pEnd),
+            Promise.resolve(holidayCalendar),
             fetchStatutoryLeavePayroll(supabase, [employee_id], pStart, pEnd)
         ]);
         // Period-only view for display; the wider lookback set is used for holiday eligibility only.
@@ -1220,7 +949,8 @@ router.post('/preview', async (req, res) => {
             const factoryHoliday = computeFactoryHolidayPay({
                 employee,
                 ctx: factoryCtx,
-                holidays: payableHolidays,
+                holidays: applicableHolidays(lookbackCalendar, employee_id).filter(h => !isMaternityCoveredDate(h.date, statutory.signature.coverage)),
+                paidLeaveDates,
                 periodStart: pStart,
                 periodEnd: pEnd,
                 piecePay: toSafeNumber(req.body?.piece_pay),
@@ -1236,7 +966,7 @@ router.post('/preview', async (req, res) => {
                 periodStart: pStart,
                 periodEnd: pEnd,
                 monthlySalary: effectiveMonthlySalary,
-                holidayList: (lookbackHolidays || holidayList || []).filter(holiday => !isMaternityCoveredDate(holiday.date, statutory.signature.coverage)),
+                holidayList: applicableHolidays(lookbackCalendar, employee_id).filter(holiday => !isMaternityCoveredDate(holiday.date, statutory.signature.coverage)),
                 attendanceLogs: allAttendanceLogs || [],
                 paidLeaveDates,
                 restDays,
@@ -1266,7 +996,7 @@ router.post('/preview', async (req, res) => {
             : baseEligibility.reason;
 
         res.json({
-            ...preview,
+            ...preview, holiday_calendar_version: lookbackCalendar.version,
             statutory,
             tardiness: calculateTardiness(attendanceLogs, activeWorkPolicy, restDays),
             workPolicy: activeWorkPolicy,
@@ -1456,16 +1186,16 @@ router.post('/', requirePayrollManager, async (req, res) => {
 
         // Fetch Holidays, Attendances, HR-Approved Paid Leaves, and Suspensions in parallel
         const lookbackStart = shiftDateStr(pStart, -HOLIDAY_LOOKBACK_DAYS);
-        await ensureHolidaysGeneratedForRange(lookbackStart, pEnd);
+
         const [
-            { data: allHolidays },
+            postingCalendar,
             allAttendanceLogs,
             paidLeaveInfo,
             lookbackLeaveInfo,
             { data: suspensionLogs },
             statutoryPreview
         ] = await Promise.all([
-            supabase.from('holidays').select('*').gte('date', lookbackStart).lte('date', pEnd),
+            readHolidayCalendar(supabase, shiftDateStr(pStart, -FACTORY_ADOW_LOOKBACK_DAYS), pEnd, employee_id),
             fetchPayrollAttendance(supabase, [employee_id], lookbackStart, pEnd),
             fetchApprovedPaidLeaves(employee_id, pStart, pEnd),
             fetchApprovedPaidLeaves(employee_id, lookbackStart, pEnd),
@@ -1481,6 +1211,8 @@ router.post('/', requirePayrollManager, async (req, res) => {
         // (allHolidays / allAttendanceLogs / paidLeaveDates) is only used for holiday eligibility.
         const statutory = statutoryPayForEmployee(statutoryPreview, employee_id, { factory: isFactory, dailyRate });
         assertStatutoryPreview(req.body.expected_statutory_signature, statutory);
+        assertHolidayVersion(req.body.holiday_calendar_version, postingCalendar);
+        const allHolidays = applicableHolidays(postingCalendar, employee_id);
         const holidayList = (allHolidays || []).filter(h => h?.date && String(h.date).substring(0, 10) >= pStart && !isMaternityCoveredDate(String(h.date).slice(0, 10), statutory.signature.coverage));
         const attendanceLogs = (allAttendanceLogs || []).filter(l => getRecordDateKey(l) >= pStart);
         const creditAttendanceConflicts = getCreditAttendanceConflicts(lookbackLeaveInfo?.leaveRecords, allAttendanceLogs || []);
@@ -1508,7 +1240,8 @@ router.post('/', requirePayrollManager, async (req, res) => {
             const factoryHoliday = computeFactoryHolidayPay({
                 employee,
                 ctx: factoryCtx,
-                holidays: holidayList || [],
+                holidays: allHolidays.filter(h => !isMaternityCoveredDate(h.date, statutory.signature.coverage)),
+                paidLeaveDates,
                 periodStart: pStart,
                 periodEnd: pEnd,
                 piecePay: basicPay,
@@ -1562,10 +1295,10 @@ router.post('/', requirePayrollManager, async (req, res) => {
             // Declared Special Non-Working Days and Regular Holidays are non-working by law; unworked days are not absences
             const forfeitedHolidayDates = new Set(
                 (holidayBreakdown || [])
-                    .filter(i => i.holidayType === 'regular' && !i.worked && !i.eligible && !i.isRestDay)
+                    .filter(i => ['regular', 'double_regular'].includes(i.holidayType) && !i.worked && !i.eligible && !i.isRestDay)
                     .map(i => i.date)
             );
-            const isNonWorkingHolidayType = (t) => t === 'regular' || t === 'special_non_working';
+            const isNonWorkingHolidayType = t => ['regular', 'double_regular', 'special_non_working', 'double_special_non_working'].includes(t);
             const nonWorkingHolidayDates = new Set(
                 (holidayList || [])
                     .filter(h => h && h.date && isNonWorkingHolidayType(h.type))
@@ -1579,7 +1312,7 @@ router.post('/', requirePayrollManager, async (req, res) => {
                 if (!completedAttendanceDates.has(hDate)) {
                     unworkedHolidays++;
                     const isSpecial = (holidayList || []).some(
-                        h => h && String(h.date).substring(0, 10) === hDate && h.type === 'special_non_working'
+                        h => h && String(h.date).substring(0, 10) === hDate && ['special_non_working', 'double_special_non_working'].includes(h.type)
                     );
                     if (isSpecial) unworkedSpecialNonWorking++;
                 }
@@ -1795,6 +1528,7 @@ router.post('/', requirePayrollManager, async (req, res) => {
             status: 'Paid'
         };
 
+        if (postingCalendar.configured) insertPayload.holiday_calendar_version = postingCalendar.version;
         if (offlineVersions.has(String(employee_id))) insertPayload.offline_attendance_version = offlineVersions.get(String(employee_id));
         const { data: insertedRecord, error: insertError } = await insertPayrollRow(insertPayload, cash, req.user.id, pay_frequency);
 
@@ -1913,9 +1647,9 @@ router.post('/batch', requirePayrollManager, async (req, res) => {
 
         // Holiday pay is recomputed here from the holiday calendar and the worker's own clock-ins,
         // never trusted from the browser (same approach as tardiness).
-        await ensureHolidaysGeneratedForRange(pStart, pEnd);
-        const { data: batchHolidays, error: holidayError } = await supabase.from('holidays').select('*').gte('date', pStart).lte('date', pEnd);
-        if (holidayError) throw holidayError;
+
+        const batchCalendar = await readHolidayCalendar(supabase, shiftDateStr(pStart, -FACTORY_ADOW_LOOKBACK_DAYS), pEnd);
+        assertHolidayVersion(req.body.holiday_calendar_version, batchCalendar);
 
         const attendanceByEmployee = new Map();
         for (const log of attendanceLogs) {
@@ -1978,7 +1712,7 @@ router.post('/batch', requirePayrollManager, async (req, res) => {
             const holiday = computeFactoryHolidayPay({
                 employee: empMap.get(String(employee_id)),
                 ctx: batchFactoryCtx,
-                holidays: (batchHolidays || []).filter(holiday => !isMaternityCoveredDate(holiday.date, cash.statutory.signature.coverage)),
+                holidays: applicableHolidays(batchCalendar, employee_id).filter(holiday => !isMaternityCoveredDate(holiday.date, cash.statutory.signature.coverage)),
                 periodStart: pStart,
                 periodEnd: pEnd,
                 piecePay: basicPay,
@@ -2069,6 +1803,7 @@ router.post('/batch', requirePayrollManager, async (req, res) => {
                 status: 'Paid'
             };
 
+            if (batchCalendar.configured) insertPayload.holiday_calendar_version = batchCalendar.version;
             if (offlineVersions.has(String(employee_id))) insertPayload.offline_attendance_version = offlineVersions.get(String(employee_id));
             const { data: insertedRec, error: insertError } = await insertPayrollRow(insertPayload, cash, req.user.id, frequency);
 
@@ -2187,7 +1922,7 @@ router.get('/factory-logs', requirePayrollManager, async (req, res) => {
         res.json({ success: true, data: rows });
     } catch (err) {
         console.error('Error fetching factory production logs:', err);
-        res.status(500).json({ error: err.message });
+        res.status(err.status || 500).json({ error: err.message });
     }
 });
 
@@ -2299,7 +2034,7 @@ router.post('/factory-logs', requirePayrollManager, async (req, res) => {
         res.status(200).json({ success: true, count: data.length, data: formattedRows });
     } catch (err) {
         console.error('Error saving factory production logs:', err);
-        res.status(500).json({ error: err.message });
+        res.status(err.status || 500).json({ error: err.message });
     }
 });
 
@@ -2352,7 +2087,7 @@ router.put('/factory-logs/:id', requirePayrollManager, async (req, res) => {
         });
     } catch (err) {
         console.error('Error updating single factory production log:', err);
-        res.status(500).json({ error: err.message });
+        res.status(err.status || 500).json({ error: err.message });
     }
 });
 
@@ -2375,7 +2110,7 @@ router.get('/:id', async (req, res) => {
 
         res.json(data);
     } catch (err) {
-        res.status(500).json({ error: err.message });
+        res.status(err.status || 500).json({ error: err.message });
     }
 });
 

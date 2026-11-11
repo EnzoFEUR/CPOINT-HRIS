@@ -1,3 +1,4 @@
+import { HOLIDAY_TYPE_LABELS } from './holidayMultipliers.mjs';
 import { getActiveMedicalGrace } from './medicalGrace.mjs';
 import { getEmployeeRestDays, getChargeableLateMinutes, getManilaWorkDate } from './workPolicy.mjs';
 import { getLeaveOverlapDays, isLeaveDate } from './leaveCredits.mjs';
@@ -93,7 +94,7 @@ export function reconcileMonthlyAttendance({ employee, attendances = [], leaves 
             reason = leave.notes || `Approved ${leave.type}`;
         } else if (nonWorkingHoliday) {
             status = isFuture ? 'FUTURE_HOLIDAY' : 'HOLIDAY';
-            statusLabel = `${holiday.name} (${holiday.type === 'regular' ? 'Regular Holiday' : 'Special Non-Working Day'})`;
+            statusLabel = `${holiday.name} (${HOLIDAY_TYPE_LABELS[holiday.type] || 'Holiday'})`;
             reason = holiday.name;
         } else if (isRestDay) {
             status = isFuture ? 'FUTURE_REST_DAY' : 'REST_DAY';

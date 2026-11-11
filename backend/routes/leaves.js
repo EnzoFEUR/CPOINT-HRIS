@@ -1,3 +1,4 @@
+import { readHolidayCalendar, applicableHolidays, publicHolidayItems } from '../services/holidayCalendar.js';
 import express from 'express';
 import { validateRecordId, validateUuidParam } from '../middleware/requestValidation.js';
 import { supabase } from '../supabaseClient.js';
@@ -529,16 +530,13 @@ export function createLeavesRouter(client = supabase, notify = createNotificatio
             const validDates = (data || []).flatMap(leave => [leave.start_date, leave.end_date]).filter(isLeaveDate).sort();
             let holidays = [];
             if (validDates.length) {
-                const result = await client.from('holidays').select('date, type', { count: 'exact' })
-                    .gte('date', validDates[0]).lte('date', validDates[validDates.length - 1]);
-                if (result.error) throw result.error;
-                if (!Array.isArray(result.data) || result.count !== result.data.length) throw new Error('The holiday calendar could not be loaded completely. Retry before reviewing leave.');
-                holidays = result.data;
+                const result = await readHolidayCalendar(client, validDates[0], validDates[validDates.length - 1]);
+                holidays = result.items;
             }
             const leaves = (data || []).map(leave => {
                 let reviewDates = null;
                 let scheduleError = null;
-                try { reviewDates = getLeaveReviewDates(leave, holidays); }
+                try { reviewDates = getLeaveReviewDates(leave, applicableHolidays({ items: holidays }, leave.employee_id)); }
                 catch (err) { scheduleError = err.message; }
 
                 const rawNotes = leave.notes || '';
@@ -577,18 +575,15 @@ export function createLeavesRouter(client = supabase, notify = createNotificatio
     });
 
     async function readSchedule(employee, start_date, end_date) {
-        const holidays = await client.from('holidays').select('date, type', { count: 'exact' }).gte('date', start_date).lte('date', end_date);
-        if (holidays.error) throw holidays.error;
-        if (!Array.isArray(holidays.data) || holidays.count !== holidays.data.length) throw new Error('The holiday calendar could not be loaded completely. Please retry.');
-        return getLeaveReviewDates({ start_date, end_date, employees: employee }, holidays.data);
+        const holidays = await readHolidayCalendar(client, start_date, end_date, employee.id);
+        return getLeaveReviewDates({ start_date, end_date, employees: employee }, applicableHolidays(holidays, employee.id));
     }
 
     router.get('/holidays', async (req, res) => {
-        res.setHeader('Cache-Control', 'public, max-age=300');
+        res.setHeader('Cache-Control', 'private, no-store');
         try {
-            const { data, error } = await client.from('holidays').select('id, date, name, type').order('date');
-            if (error) throw error;
-            res.json({ success: true, data: data || [] });
+            const calendar = await readHolidayCalendar(client, '1990-01-01', '2100-12-31', req.user.id);
+            res.json({ success: true, data: publicHolidayItems(applicableHolidays(calendar, req.user.id)), calendar_version: calendar.version });
         } catch (error) { res.status(error.status || 500).json({ error: error.message }); }
     });
 
@@ -599,7 +594,7 @@ export function createLeavesRouter(client = supabase, notify = createNotificatio
             if (!isCreditUuid(employee_id)) return res.status(400).json({ error: 'A valid employee ID is required.' });
             const [employee, holidays] = await Promise.all([
                 client.from('employees').select('*').eq('id', employee_id).maybeSingle(),
-                client.from('holidays').select('id, date, name, type').order('date')
+                readHolidayCalendar(client, '1990-01-01', '2100-12-31', employee_id)
             ]);
             if (employee.error) throw employee.error;
             if (!employee.data) return res.status(404).json({ error: 'Employee record not found.' });
@@ -608,7 +603,7 @@ export function createLeavesRouter(client = supabase, notify = createNotificatio
                 data: {
                     rest_days: getEmployeeRestDays(employee.data),
                     date_hired: isLeaveDate(employee.data.date_hired) ? employee.data.date_hired : null,
-                    holidays: holidays.data || []
+                    holidays: publicHolidayItems(applicableHolidays(holidays, employee_id))
                 }
             });
         } catch (error) { res.status(error.status || 500).json({ error: error.message }); }
@@ -835,10 +830,10 @@ export function createLeavesRouter(client = supabase, notify = createNotificatio
                 } else {
                 const [employee, holidays] = await Promise.all([
                     client.from('employees').select('id, rest_days, date_hired').eq('id', currentLeave.employee_id).single(),
-                    client.from('holidays').select('date, type').gte('date', currentLeave.start_date).lte('date', currentLeave.end_date)
+                    readHolidayCalendar(client, currentLeave.start_date, currentLeave.end_date, currentLeave.employee_id)
                 ]);
-                if (employee.error || holidays.error || !employee.data || !Array.isArray(holidays.data)) return res.status(503).json({ error: 'The statutory work schedule could not be verified.' });
-                statutoryReview = validateStatutoryReview({ ...currentLeave, employees: employee.data }, req.body.statutory_review, { holidays: holidays.data });
+                if (employee.error || !employee.data || !Array.isArray(holidays.items)) return res.status(503).json({ error: 'The statutory work schedule could not be verified.' });
+                statutoryReview = validateStatutoryReview({ ...currentLeave, employees: employee.data }, req.body.statutory_review, { holidays: applicableHolidays(holidays, currentLeave.employee_id) });
                 }
             }
             const transaction = await client.rpc(statutory ? 'review_statutory_leave' : reviewed ? 'set_leave_status_with_credits_reviewed' : 'set_leave_status_with_credits', {

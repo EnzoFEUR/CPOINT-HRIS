@@ -1,4 +1,5 @@
 import { supabase } from '../supabaseClient.js';
+import { readHolidayCalendar, applicableHolidays } from '../services/holidayCalendar.js';
 import { getWorkPolicy, getManilaWorkDate } from '../../shared/workPolicy.mjs';
 import { getAttendanceMonthRange, reconcileMonthlyAttendance } from '../../shared/monthlyAttendance.mjs';
 
@@ -28,7 +29,7 @@ export async function getEmployeeMonthlyAttendance({ employeeId, month }) {
     const resolvedEmployeeId = employee.id;
 
     // Parallel batch query for attendance, leaves, and holidays
-    const [attRes, leavesRes, holidaysRes] = await Promise.all([
+    const [attRes, leavesRes] = await Promise.all([
         supabase
             .from('attendances')
             .select('*', { count: 'exact' })
@@ -43,22 +44,17 @@ export async function getEmployeeMonthlyAttendance({ employeeId, month }) {
             .eq('status', 'Approved')
             .lte('start_date', endDate)
             .gte('end_date', startDate),
-        supabase
-            .from('holidays')
-            .select('id, date, name, type', { count: 'exact' })
-            .gte('date', startDate)
-            .lte('date', endDate)
+        readHolidayCalendar(supabase, startDate, endDate, resolvedEmployeeId)
     ]);
 
     if (attRes.error) throw new Error(`Database error fetching attendances: ${attRes.error.message}`);
     if (leavesRes.error) throw new Error(`Database error fetching leaves: ${leavesRes.error.message}`);
-    if (holidaysRes.error) throw new Error(`Database error fetching holidays: ${holidaysRes.error.message}`);
 
-    for (const result of [attRes, leavesRes, holidaysRes]) {
+    for (const result of [attRes, leavesRes]) {
         if (!Array.isArray(result.data) || result.count !== result.data.length) throw new Error('Monthly attendance records are incomplete. Retry after HR reconciles the data.');
     }
     return reconcileMonthlyAttendance({
         employee, month: targetMonth, workPolicy: WORK_POLICY,
-        attendances: attRes.data, leaves: leavesRes.data, holidays: holidaysRes.data,
+        attendances: attRes.data, leaves: leavesRes.data, holidays: applicableHolidays(holidaysRes, resolvedEmployeeId),
     });
 }

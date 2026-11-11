@@ -9,6 +9,18 @@
     "backend"
   ],
   "scripts": {
+    "backup:tools": "powershell.exe -NoProfile -File scripts/backup/install-tools.ps1",
+    "backup:init": "node scripts/backup.mjs init",
+    "backup:preflight": "node scripts/backup.mjs preflight",
+    "backup:create": "node scripts/backup.mjs create",
+    "backup:check": "node scripts/backup.mjs check",
+    "backup:list": "node scripts/backup.mjs snapshots",
+    "backup:restore-files": "node scripts/backup.mjs restore-files",
+    "backup:worker": "node scripts/backup/worker.mjs",
+    "backup:cloud:init": "node scripts/backup.mjs cloud-init",
+    "backup:cloud:copy": "node scripts/backup.mjs cloud-copy",
+    "backup:cloud:check": "node scripts/backup.mjs cloud-check",
+    "backup:cloud:status": "node scripts/backup.mjs cloud-status",
     "test:documents": "node --test tests/document*.test.mjs",
     "test:offline": "node --test tests/offline*.test.mjs",
     "install:all": "npm install",

@@ -1,5 +1,7 @@
 export const HOLIDAY_LABELS = {
     regular: 'Regular Holiday',
+    double_regular: 'Double Regular Holiday',
+    double_special_non_working: 'Double Special Non-Working Day',
     special_non_working: 'Special Non-Working Day',
 };
 

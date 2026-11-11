@@ -116,8 +116,10 @@ export const Sidebar = ({ user, handleLogout }) => {
   ];
 
   const bottomAdminNavItems = [
+    { route: '/admin/holidays', icon: 'ti-calendar-event', label: 'Holidays' },
     { route: '/admin/disciplinary', icon: 'ti-gavel', label: 'Disciplinary' },
     { route: '/admin/audit-logs', icon: 'ti-history', label: 'Audit Trail' },
+    ...(user?.role === 'admin' ? [{ route: '/admin/backups', icon: 'ti-database-export', label: 'Backups' }] : []),
   ];
 
   return (

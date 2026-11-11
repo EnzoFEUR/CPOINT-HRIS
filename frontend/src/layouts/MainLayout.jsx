@@ -4,6 +4,7 @@ import toast from 'react-hot-toast';
 import Sidebar from './Sidebar';
 import Header from './Header';
 import AttendanceActivity from '../components/AttendanceActivity';
+import HolidayCalendarSync from '../components/HolidayCalendarSync';
 import MobileNav from './MobileNav';
 import PwaInstallModal from '../components/pwa/PwaInstallModal';
 import { getUser, isAdmin, isSecurity } from '../routes/guards';
@@ -158,6 +159,7 @@ export const MainLayout = ({ children }) => {
           {/* Header */}
           <Header user={user} />
           <AttendanceActivity user={user} />
+          <HolidayCalendarSync user={user} />
 
           {/* Page Content */}
           <main className="flex-1 p-3.5 sm:p-6 lg:p-8 mt-1 sm:mt-2 w-full relative pb-28 lg:pb-8 print:p-0 print:m-0 print:pb-0">

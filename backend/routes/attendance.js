@@ -9,6 +9,8 @@ import { checkRole, checkVerifiedManagerOrOwnership, hasVerifiedManagerRole, inv
 import { cacheResponse, invalidateCache } from '../middleware/cacheMiddleware.js';
 import { isAttendanceExempt, isWorkforceEmployee, applyAttendanceWorkforceFilters } from '../utils/workforce.js';
 import { getEmployeeMonthlyAttendance } from '../utils/attendanceReconciliation.js';
+import { readHolidayCalendar } from '../services/holidayCalendar.js';
+import { holidayApplies } from '../../shared/holidayCalendar.mjs';
 import { disciplinaryService } from '../services/disciplinaryService.js';
 import { publishCommittedDisciplinary } from '../services/disciplinaryEvents.js';
 
@@ -378,7 +380,7 @@ router.get(
     // Daily workforce roster mode (when date is specified or roster=true without date range)
     if ((date || roster === 'true') && !start_date && !end_date) {
       const targetDate = date || getTodayString();
-      const [allEmpsRes, dailyLogsRes, dailyLeavesRes] = await Promise.all([
+      const [allEmpsRes, dailyLogsRes, dailyLeavesRes, holidayCalendar] = await Promise.all([
         supabase
           .from('employees')
           .select('id, company_id, first_name, last_name, role, department, job_title, status, date_hired, timekeeping_effective_date, created_at'),
@@ -391,11 +393,13 @@ router.get(
           .select('id, employee_id, start_date, end_date, type, status, notes, credit_pool, requested_pay_type, employees:employee_id(*)')
           .eq('status', 'Approved')
           .lte('start_date', targetDate)
-          .gte('end_date', targetDate)
+          .gte('end_date', targetDate),
+        readHolidayCalendar(supabase, targetDate, targetDate)
       ]);
 
       if (allEmpsRes.error) throw new AppError(`Database error: ${allEmpsRes.error.message}`, 500, 'DB_ERROR');
       if (dailyLogsRes.error) throw new AppError(`Database error: ${dailyLogsRes.error.message}`, 500, 'DB_ERROR');
+      if (dailyLeavesRes.error) throw new AppError(`Database error: ${dailyLeavesRes.error.message}`, 500, 'DB_ERROR');
 
       let activeWorkforce = (allEmpsRes.data || []).filter(e => isWorkforceEmployee(e));
       if (department && department.toLowerCase() !== 'all') {
@@ -495,6 +499,13 @@ router.get(
             notes: 'Prior to digital timekeeping cutover',
             created_at: new Date().toISOString()
           };
+        }
+
+        const holiday = holidayCalendar.items.find(item => item.type !== 'special_working' && holidayApplies(item, emp.id));
+        if (holiday) {
+          return { id: `holiday-${emp.id}-${targetDate}`, employee_id: emp.id, date: targetDate,
+            time_in: null, time_out: null, status: 'Holiday', is_absent: false, is_awaiting: false,
+            holiday_name: holiday.name, holiday_type: holiday.type, employees: emp };
         }
 
         return {

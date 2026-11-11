@@ -1,3 +1,5 @@
+import { readHolidayCalendar } from '../services/holidayCalendar.js';
+import { holidayApplies } from '../../shared/holidayCalendar.mjs';
 import { DEFAULT_REST_DAYS, getEmployeeRestDays, getWorkPolicy, getChargeableLateMinutes } from '../../shared/workPolicy.mjs';
 import express from 'express';
 import { validateUuidParam } from '../middleware/requestValidation.js';
@@ -26,6 +28,18 @@ const isPresentAttendance = (att) => {
     if (status === 'on leave' || status === 'absent') return false;
     return Boolean(att.time_in) || ['present', 'late', 'half day', 'overtime'].includes(status);
 };
+
+function countMissingWorkforce(employees, attendances, leaves, holidays, date) {
+    const present = new Set(attendances.filter(record => record.date === date && isPresentAttendance(record)).map(record => record.employee_id));
+    const onLeave = new Set(leaves.filter(leave => leave.status === 'Approved' && leave.start_date <= date && leave.end_date >= date).map(leave => leave.employee_id));
+    const weekday = new Date(`${date}T00:00:00Z`).getUTCDay();
+    return employees.filter(employee => {
+        const trackingStart = String(employee.timekeeping_effective_date || employee.created_at || employee.date_hired || '').slice(0, 10);
+        return !isAttendanceExempt(employee) && !beforeHire(employee, date) && (!trackingStart || date >= trackingStart)
+            && !getEmployeeRestDays(employee).includes(weekday) && !present.has(employee.id) && !onLeave.has(employee.id)
+            && !holidays.some(holiday => holiday.date === date && holiday.type !== 'special_working' && holidayApplies(holiday, employee.id));
+    }).length;
+}
 
 /** Get Manila timezone date and scheduled shift context */
 const getManilaScheduleContext = () => {
@@ -229,7 +243,7 @@ function computeDoleComplianceFromRecords(records, empMap = new Map(), holidayDa
 
     // Holiday work: attendance rows tagged as a holiday
     const holidayByEmployee = {};
-    const isHolidayWork = (r) => holidayDates.has(r.date) || (r.status || '').toLowerCase().includes('holiday');
+    const isHolidayWork = (r) => (holidayDates instanceof Map ? holidayDates.get(r.employee_id)?.has(r.date) : holidayDates.has(r.date)) || (r.status || '').toLowerCase().includes('holiday');
     filteredRecords
         .filter(isHolidayWork)
         .forEach(r => {
@@ -260,7 +274,7 @@ function computeDoleComplianceFromRecords(records, empMap = new Map(), holidayDa
             violations: restDayViolations
         },
         holidayMultiplier: {
-            label: 'Regular Holiday Multipliers (200%)',
+            label: 'Holiday work records',
             recordsFound: filteredRecords.filter(isHolidayWork).length,
             status: holidayEmployees.length > 0 ? `${holidayEmployees.length} Worked Holiday` : 'No holiday shifts logged',
             employees: holidayEmployees
@@ -344,6 +358,7 @@ function computeWorkforceRiskFlags(attendances, leaves, empMap, holidayDates = n
         //    work day (not a rest day, not a holiday) with no punch and no approved leave.
         //    Everyone works Monday to Friday, so Saturday and Sunday are rest days.
         const restDays = getEmployeeRestDays(emp);
+        const employeeHolidays = holidayDates instanceof Map ? holidayDates.get(emp.id) || new Set() : holidayDates;
         const leaveSet = leaveDays.get(emp.id) || new Set();
         const trackingStart = String(emp.timekeeping_effective_date || emp.created_at || emp.date_hired || sorted[0]).slice(0, 10);
         const startNum = Math.max(dayNum(trackingStart), dayNum(hireDateOf(emp) || windowStart), dayNum(windowStart));
@@ -352,7 +367,7 @@ function computeWorkforceRiskFlags(attendances, leaves, empMap, holidayDates = n
             const dow = new Date(d * DAY_MS).getUTCDay();
             if (restDays.includes(dow)) continue;
             const ds = toDateStr(new Date(d * DAY_MS));
-            if (holidayDates.has(ds) || dates.has(ds) || leaveSet.has(d)) continue;
+            if (employeeHolidays.has(ds) || dates.has(ds) || leaveSet.has(d)) continue;
             absentDates.push(ds);
         }
         if (absentDates.length >= 2) {
@@ -487,17 +502,17 @@ export function computePayrollForecastFromData(employees, attendances) {
         insight = 'No active workforce payroll projected for this cutoff.';
     } else if (deptBreakdown.length === 1) {
         const topDept = deptBreakdown[0];
-        insight = `${topDept.name} accounts for 100% of projected cutoff costs at ₱${topDept.projected.toLocaleString()}.`;
+        insight = `${topDept.name} accounts for 100% of projected cutoff costs at Ã¢â€šÂ±${topDept.projected.toLocaleString()}.`;
     } else if (deptBreakdown.length > 1) {
         const topDept = deptBreakdown[0];
         const pct = Math.round((topDept.projected / projectedCutoffTotal) * 100);
         if (pct >= 80) {
-            insight = `${topDept.name} accounts for ${pct}% of projected cutoff costs at ₱${topDept.projected.toLocaleString()}.`;
+            insight = `${topDept.name} accounts for ${pct}% of projected cutoff costs at Ã¢â€šÂ±${topDept.projected.toLocaleString()}.`;
         } else {
-            insight = `Projected cutoff payroll is ₱${projectedCutoffTotal.toLocaleString()}, led by ${topDept.name} (₱${topDept.projected.toLocaleString()}).`;
+            insight = `Projected cutoff payroll is Ã¢â€šÂ±${projectedCutoffTotal.toLocaleString()}, led by ${topDept.name} (Ã¢â€šÂ±${topDept.projected.toLocaleString()}).`;
         }
     } else {
-        insight = `Projected cutoff payroll is ₱${projectedCutoffTotal.toLocaleString()}.`;
+        insight = `Projected cutoff payroll is Ã¢â€šÂ±${projectedCutoffTotal.toLocaleString()}.`;
     }
 
     return {
@@ -560,7 +575,7 @@ router.get('/overview', checkRole('admin', 'hr'), cacheResponse(15), async (req,
             { data: rawEmployees, error: empErr },
             { data: rawAttendances, error: attErr },
             { data: rawLeaves, error: leaveErr },
-            { data: rawHolidays }
+            holidayCalendar
         ] = await Promise.all([
             applyWorkforceFilter(
                 supabase
@@ -576,19 +591,19 @@ router.get('/overview', checkRole('admin', 'hr'), cacheResponse(15), async (req,
                 .from('leave_requests')
                 .select('employee_id, status, start_date, end_date')
                 .or(`status.eq.New,end_date.gte.${thirtyFiveDaysAgo}`),
-            Promise.resolve(supabase.from('holidays').select('date').gte('date', thirtyFiveDaysAgo))
-                .catch(() => ({ data: [] }))
+            readHolidayCalendar(supabase, thirtyFiveDaysAgo, todayStr).catch(() => ({ items: [], unavailable: true }))
         ]);
 
         if (empErr) throw empErr;
         if (attErr) throw attErr;
         if (leaveErr) throw leaveErr;
 
-        const holidayDates = new Set((rawHolidays || []).map(h => h.date));
+        const rawHolidays = holidayCalendar.items;
 
         // Strictly workforce employees: excludes Admins, HR, and Security Guards
         const employees = (rawEmployees || []).filter(isWorkforceEmployee);
         const empMap = new Map(employees.map(e => [e.id, e]));
+        const holidayDates = new Map(employees.map(employee => [employee.id, new Set(rawHolidays.filter(h => holidayApplies(h, employee.id) && h.type !== 'special_working').map(h => h.date))]));
 
         // Filter attendances strictly to active workforce personnel
         const attendances = (rawAttendances || []).filter(att => empMap.has(att.employee_id));
@@ -647,13 +662,16 @@ router.get('/overview', checkRole('admin', 'hr'), cacheResponse(15), async (req,
         const monthlyTrends = computeMonthlyTrendsFromRecords(attendances, employees.length);
         const deptPunctuality = computeDepartmentPunctualityFromRecords(attendances, empMap);
         const doleCompliance = computeDoleComplianceFromRecords(attendances, empMap, holidayDates);
+        if (holidayCalendar.unavailable) doleCompliance.holidayMultiplier = { status: 'Holiday calendar unavailable', recordsFound: null, employees: [] };
 
         // 3. Anomaly Signals & Health Assessment (Deterministic in-memory with empMap resolution)
         const signals = computeAttendanceSignals(attendances, empMap);
-        const risk_flags = computeWorkforceRiskFlags(attendances, leaves, empMap, holidayDates);
+        const risk_flags = computeWorkforceRiskFlags(attendances, leaves, empMap, holidayDates).filter(flag => !holidayCalendar.unavailable || flag.type !== 'absent');
         const riskWindowStart = toDateStr(new Date(Date.now() - 29 * DAY_MS));
         const hasObservedAttendance = attendances.some(record => record.time_in && record.date >= riskWindowStart && record.date <= todayStr);
-        const general_health_assessment = !hasObservedAttendance
+        const general_health_assessment = holidayCalendar.unavailable
+            ? 'Holiday calendar unavailable. Absence assessment is paused until the calendar can be verified.'
+            : !hasObservedAttendance
             ? 'No attendance records are available to assess in this 30-day window.'
             : risk_flags.length === 0
             ? `No configured attendance-risk thresholds were exceeded among ${empMap.size} monitored active employees in the last 30 days.`
@@ -668,7 +686,7 @@ router.get('/overview', checkRole('admin', 'hr'), cacheResponse(15), async (req,
             presentCount: presentTodayCount,
             lateCount: lateTodayCount,
             onLeaveCount,
-            absentCount: scheduleCtx.isRestDay ? 0 : Math.max(0, employees.length - presentTodayCount - onLeaveCount),
+            absentCount: holidayCalendar.unavailable ? 0 : countMissingWorkforce(employees, attendances, leaves, rawHolidays, todayStr),
             attendanceRate: employees.length > 0 ? Math.round((presentTodayCount / employees.length) * 100) : 0,
             isRestDay: scheduleCtx.isRestDay,
             isPreShift: scheduleCtx.isPreShift,
@@ -716,6 +734,7 @@ router.get('/overview', checkRole('admin', 'hr'), cacheResponse(15), async (req,
                     window_start: riskWindowStart,
                     window_end: todayStr,
                     grace_period_minutes: WORK_POLICY.gracePeriodMinutes,
+                    holiday_calendar_available: !holidayCalendar.unavailable,
                     risk_flags,
                     general_health_assessment
                 }
@@ -739,12 +758,13 @@ router.get('/ai-briefing', checkRole('admin', 'hr'), cacheResponse(30), async (r
         const [
             { data: rawEmployees, error: employeeError },
             { data: rawAttendances, error: attendanceError },
-            { data: rawLeaves, error: leaveError }
+            { data: rawLeaves, error: leaveError },
+            holidayCalendar
         ] = await Promise.all([
             applyWorkforceFilter(
                 supabase
                     .from('employees')
-                    .select('id, company_id, department, role, status, job_title, first_name, last_name, shift')
+                    .select('*')
             ),
             supabase
                 .from('attendances')
@@ -752,7 +772,8 @@ router.get('/ai-briefing', checkRole('admin', 'hr'), cacheResponse(30), async (r
                 .eq('date', todayStr),
             supabase
                 .from('leave_requests')
-                .select('status, start_date, end_date')
+                .select('employee_id, status, start_date, end_date'),
+            readHolidayCalendar(supabase, todayStr, todayStr)
         ]);
         if (employeeError || attendanceError || leaveError) throw new Error('Dashboard signals could not be loaded.');
 
@@ -790,7 +811,7 @@ router.get('/ai-briefing', checkRole('admin', 'hr'), cacheResponse(30), async (r
 
         const scheduleCtx = getManilaScheduleContext();
         const totalEmployees = employees.length;
-        const absentCount = scheduleCtx.isRestDay ? 0 : Math.max(0, totalEmployees - presentTodayCount - onLeaveCount);
+        const absentCount = countMissingWorkforce(employees, attendances, leaves, holidayCalendar.items, todayStr);
         const attendanceRate = totalEmployees > 0 ? Math.round((presentTodayCount / totalEmployees) * 100) : 0;
 
         const briefingData = {
@@ -982,6 +1003,7 @@ router.get('/attendance-today', checkRole('admin', 'hr'), cacheResponse(15), asy
 
         const employees = (rawEmployees || []).filter(isWorkforceEmployee);
         const empMap = new Map(employees.map(e => [e.id, e]));
+        const holidayDates = new Map(employees.map(employee => [employee.id, new Set(rawHolidays.filter(h => holidayApplies(h, employee.id) && h.type !== 'special_working').map(h => h.date))]));
 
         const present = [];
         const late = [];
@@ -1071,6 +1093,7 @@ router.get('/admin', checkRole('admin', 'hr'), cacheResponse(15), async (req, re
         // Strictly workforce employees: excludes Admins, HR, and Security Guards
         const employees = (rawEmployees || []).filter(isWorkforceEmployee);
         const empMap = new Map(employees.map(e => [e.id, e]));
+        const holidayDates = new Map(employees.map(employee => [employee.id, new Set(rawHolidays.filter(h => holidayApplies(h, employee.id) && h.type !== 'special_working').map(h => h.date))]));
 
         // Filter attendances strictly to workforce personnel
         const attendances = (rawAttendances || []).filter(att => empMap.has(att.employee_id));

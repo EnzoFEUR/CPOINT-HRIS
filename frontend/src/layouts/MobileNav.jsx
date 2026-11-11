@@ -212,6 +212,10 @@ export const MobileNav = ({
             <div className="grid grid-cols-2 gap-2.5 mb-5">
               {isAdmin(user) ? (
                 <>
+                  <Link to="/admin/holidays" onClick={() => setSidebarOpen(false)} className="p-3 bg-slate-900 hover:bg-slate-800 rounded-md border border-slate-800 flex items-center gap-2.5 transition-colors duration-100 cursor-pointer">
+                    <div className="w-8 h-8 rounded-md bg-accent-subtle text-accent flex items-center justify-center shrink-0"><i className="ti ti-calendar-event text-lg" aria-hidden="true" /></div>
+                    <div className="min-w-0"><p className="text-xs font-semibold text-white truncate">Holidays</p><p className="text-[9px] text-slate-400 truncate">Declarations & coverage</p></div>
+                  </Link>
                   <Link
                     to="/admin/payroll/statutory-settings"
                     onClick={() => setSidebarOpen(false)}
@@ -253,6 +257,22 @@ export const MobileNav = ({
                       <p className="text-[9px] text-slate-400 truncate">Security history</p>
                     </div>
                   </Link>
+
+                  {user?.role === 'admin' && (
+                    <Link
+                      to="/admin/backups"
+                      onClick={() => setSidebarOpen(false)}
+                      className="p-3 bg-slate-900 hover:bg-slate-800 rounded-md border border-slate-800 flex items-center gap-2.5 transition-colors duration-100 cursor-pointer"
+                    >
+                      <div className="w-8 h-8 rounded-md bg-slate-700/40 text-slate-300 flex items-center justify-center shrink-0">
+                        <i className="ti ti-database-export text-lg" aria-hidden="true" />
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-xs font-semibold text-white truncate">Backups</p>
+                        <p className="text-[9px] text-slate-400 truncate">Recovery & protection</p>
+                      </div>
+                    </Link>
+                  )}
 
                   <Link
                     to="/admin/attendance/calendar"

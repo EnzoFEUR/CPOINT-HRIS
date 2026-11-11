@@ -4,6 +4,13 @@ backend/node_modules/
 frontend/node_modules/
 
 # Environment Variables & Secrets (Ignored from Git)
+# Recovery data must never enter Git or a frontend deployment.
+*.restic
+*.dump
+*.backup
+bundle.tar
+/backups/
+/backup-output/
 .env
 .env.*
 *.env

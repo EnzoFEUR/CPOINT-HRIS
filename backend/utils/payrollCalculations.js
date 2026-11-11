@@ -1,5 +1,6 @@
 import { DEFAULT_REST_DAYS } from '../../shared/workPolicy.mjs';
 import { HOLIDAY_TYPES, HOLIDAY_TYPE_LABELS, MULTIPLIERS } from '../../shared/holidayMultipliers.mjs';
+import { resolveHolidays } from '../../shared/holidayCalendar.mjs';
 import { sumCashAmounts } from '../../shared/leavePolicy.js';
 import { summarizeApprovedLeaves } from './leaveUtils.js';
 import { fetchStatutoryLeavePayroll, statutoryPayForEmployee } from './statutoryLeavePayroll.js';
@@ -103,11 +104,7 @@ function formatDate(d) {
 }
 
 export function indexHolidays(holidayList = []) {
-    const map = new Map();
-    for (const h of holidayList) {
-        if (h?.date) map.set(h.date, h);
-    }
-    return map;
+    return new Map(resolveHolidays(holidayList).map(holiday => [holiday.date, holiday]));
 }
 
 export function isRestDay(dateStr, restDays = DEFAULT_REST_DAYS) {
@@ -127,16 +124,15 @@ export function wasPresentDayBefore(
     if (isNaN(d.getTime())) return true;
 
     const prev = new Date(d);
-    let guard = 0;
-    do {
+    for (let guard = 0; guard < 14; guard++) {
         prev.setDate(prev.getDate() - 1);
-        guard++;
-    } while (guard < 14 && (restDays.includes(prev.getDay()) || nonWorkingDates.has(formatDate(prev))));
-
-    const prevKey = formatDate(prev);
-    if (paidLeaveDates.has(prevKey)) return true;
-    const logs = attendanceByDate.get(prevKey) || [];
-    return logs.some((l) => l && l.time_out);
+        const prevKey = formatDate(prev);
+        const logs = attendanceByDate.get(prevKey) || [];
+        // Working the first of successive holidays restores eligibility for the next.
+        if (paidLeaveDates.has(prevKey) || logs.some(l => l && l.time_in && l.time_out)) return true;
+        if (!restDays.includes(prev.getDay()) && !nonWorkingDates.has(prevKey)) return false;
+    }
+    return false;
 }
 
 // ---------------------------------------------------------------
@@ -172,12 +168,12 @@ export function computeDayPay({
     const overtimeHours = canOvertime ? Math.max(safeHoursWorked - STANDARD_SHIFT_HOURS, 0) : 0;
     const table = MULTIPLIERS[holiday.type];
 
-    if (!table) {
+    if (!Object.hasOwn(MULTIPLIERS, holiday.type)) {
         throw new Error(`Unknown holiday type "${holiday.type}" for ${dateStr}`);
     }
 
     if (!worked) {
-        if (holiday.type === HOLIDAY_TYPES.SPECIAL_NON_WORKING || holiday.type === HOLIDAY_TYPES.SPECIAL_WORKING) {
+        if (table.unworked === 0) {
             const note = holiday.type === HOLIDAY_TYPES.SPECIAL_WORKING
                 ? 'Special Working Day is treated as an ordinary working day — no work, no pay, no holiday premium.'
                 : 'No work, no pay (DOLE: special non-working day, unless a company policy or CBA grants pay).';
@@ -185,6 +181,7 @@ export function computeDayPay({
                 date: dateStr,
                 holidayType: holiday.type,
                 holidayName: holiday.name || HOLIDAY_TYPE_LABELS[holiday.type],
+                sources: holiday.sources || [holiday],
                 worked: false,
                 isRestDay: restDayToday,
                 eligible: false,
@@ -199,32 +196,37 @@ export function computeDayPay({
         // Other regular / special non-working holidays right before this one are not workdays either.
         const nonWorkingDates = new Set();
         for (const [date, h] of holidaysByDate) {
-            if (h && (h.type === HOLIDAY_TYPES.REGULAR || h.type === HOLIDAY_TYPES.SPECIAL_NON_WORKING)) {
+            if (h && h.type !== HOLIDAY_TYPES.SPECIAL_WORKING) {
                 nonWorkingDates.add(date);
             }
         }
         const eligible = wasPresentDayBefore(dateStr, attendanceByDate, restDays, { nonWorkingDates, paidLeaveDates });
-        const alreadyInSalary = salaryCoversDate && eligible;
-        const pay = eligible && !alreadyInSalary ? round2(dailyRate) : 0;
+        const salaryCredit = salaryCoversDate ? 1 : 0;
+        const payableMultiplier = eligible ? Math.max(0, table.unworked - salaryCredit) : 0;
+        const alreadyInSalary = eligible && salaryCoversDate && payableMultiplier === 0;
+        const pay = round2(toSafeNumber(dailyRate) * payableMultiplier);
         return {
             date: dateStr,
             holidayType: holiday.type,
             holidayName: holiday.name || 'Regular Holiday',
+            sources: holiday.sources || [holiday],
             worked: false,
             isRestDay: restDayToday,
             eligible,
             regularHours: 0,
             overtimeHours: 0,
-            multiplier: eligible && !alreadyInSalary ? table.unworked : 0,
+            multiplier: payableMultiplier,
             pay,
             breakdown: {
                 basicHolidayPay: pay,
                 overtimePay: 0,
                 note: alreadyInSalary
                     ? 'Already included in the fixed salary — no additional holiday pay (prevents paying the day twice).'
-                    : eligible
-                        ? 'Full holiday pay — present/on paid leave the workday before.'
-                        : 'Forfeited — absent without pay the workday before the holiday.',
+                    : eligible && salaryCredit > 0
+                        ? 'Additional holiday entitlement; the first 100% is already included in the fixed salary.'
+                        : eligible
+                            ? 'Full holiday pay — present/on paid leave the workday before.'
+                            : 'Forfeited — absent without pay the workday before the holiday.',
             },
         };
     }
@@ -239,13 +241,15 @@ export function computeDayPay({
     const salaryCredit = salaryCoversDate ? 1 : 0;
     const basicHolidayPay = toSafeNumber(hourlyRate) * (multiplier - salaryCredit) * regularHours;
     const holidayHourlyRate = toSafeNumber(hourlyRate) * multiplier;
-    const otHourlyRate = holidayHourlyRate * (1 + HOLIDAY_OT_PREMIUM);
+    const overtimePremium = holiday.type === HOLIDAY_TYPES.SPECIAL_WORKING && !restDayToday ? 0.25 : HOLIDAY_OT_PREMIUM;
+    const otHourlyRate = holidayHourlyRate * (1 + overtimePremium);
     const overtimePay = otHourlyRate * overtimeHours;
 
     return {
         date: dateStr,
         holidayType: holiday.type,
         holidayName: holiday.name || HOLIDAY_TYPE_LABELS[holiday.type],
+        sources: holiday.sources || [holiday],
         worked: true,
         isRestDay: restDayToday,
         eligible: true,

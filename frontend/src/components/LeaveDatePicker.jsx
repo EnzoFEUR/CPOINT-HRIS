@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { getManilaWorkDate } from '../../../shared/workPolicy.mjs';
 import { isLeaveRestDay } from '../../../shared/leavePolicy.js';
 import { fetchWithAuth } from '../utils/api';
+import { HOLIDAY_TYPE_LABELS } from '../../../shared/holidayMultipliers.mjs';
 
 export default function LeaveDatePicker({
     label,
@@ -231,7 +232,7 @@ export default function LeaveDatePicker({
                             const isSelected = date === value;
 
                             const tooltipText = available ? `${date}: ${hasRecord ? availabilityLabel : 'No available record'}` : isHoliday
-                                ? `${holiday.name} (${holiday.type === 'regular' ? 'Regular Holiday' : 'Special Non-Working Holiday'})${rest ? ' • Rest Day' : ''}`
+                                ? `${holiday.name} (${HOLIDAY_TYPE_LABELS[holiday.type] || 'Holiday'})${rest ? ' • Rest Day' : ''}`
                                 : rest
                                 ? 'Rest day — non-working'
                                 : isToday

@@ -29,6 +29,8 @@ import authSecurityRoutes from './routes/authSecurity.js';
 import productionGroupRoutes from './routes/productionGroups.js';
 import documentRouter from './routes/document.js';
 import storageRoutes from './routes/storage.js';
+import { createBackupControlRouter } from './routes/backupControl.js';
+import { createHolidayRouter } from './routes/holidays.js';
 import { mountOfflineAttendance } from './routes/mountOfflineAttendance.js';
 
 // Middleware & Utilities
@@ -87,6 +89,8 @@ const verifyToken = [verifyIdentityToken, verifiedUserLimiter, express.json({ li
 await mountOfflineAttendance(app, verifyToken);
 app.use('/api/documents', verifyToken, documentRouter);
 app.use('/api/storage', verifyToken, storageRoutes);
+app.use('/api/backups', verifyToken, createBackupControlRouter(supabase));
+app.use('/api/holidays', verifyIdentityToken, verifiedUserLimiter, express.json({ limit: '32kb' }), createHolidayRouter(supabase));
 app.use('/api/employees', verifyToken, checkVerifiedManagerOrOwnership, employeeRoutes);
 app.use('/api/attendance', verifyToken, attendanceRoutes);
 // Payment commands enforce persisted payroll ownership instead of treating a payroll ID as an employee ID.
