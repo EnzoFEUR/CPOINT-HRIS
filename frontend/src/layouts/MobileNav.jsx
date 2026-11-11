@@ -13,6 +13,16 @@ export const MobileNav = ({
   handleLogout
 }) => {
   const location = useLocation();
+  const searchParams = new URLSearchParams(location.search);
+  const rawTab = searchParams.get('tab');
+
+  const isSettingsActive =
+    location.pathname.startsWith('/admin/settings') ||
+    location.pathname.startsWith('/admin/payroll/statutory-settings') ||
+    location.pathname === '/admin/holidays' ||
+    location.pathname === '/admin/backups' ||
+    location.pathname.startsWith('/admin/audit-logs') ||
+    (location.pathname === '/admin/leaves' && rawTab === 'sil-policy');
 
   const adminTabs = [
     { to: '/', label: 'Home', icon: 'ti-smart-home', exact: true },
@@ -34,9 +44,16 @@ export const MobileNav = ({
           {isAdmin(user) ? (
             <>
               {adminTabs.map(tab => {
-                const isActive = tab.exact
-                  ? location.pathname === tab.to
-                  : location.pathname.startsWith(tab.to);
+                let isActive = false;
+                if (tab.to === '/admin/payroll') {
+                  isActive = location.pathname.startsWith('/admin/payroll') && !location.pathname.startsWith('/admin/payroll/statutory-settings');
+                } else if (tab.to === '/admin/leaves') {
+                  isActive = location.pathname.startsWith('/admin/leaves') && rawTab !== 'sil-policy';
+                } else if (tab.exact) {
+                  isActive = location.pathname === tab.to;
+                } else {
+                  isActive = location.pathname.startsWith(tab.to);
+                }
 
                 return (
                   <Link
@@ -62,11 +79,11 @@ export const MobileNav = ({
               <button
                 onClick={() => setSidebarOpen(!sidebarOpen)}
                 className={`relative flex-1 min-w-0 py-1.5 px-0.5 flex flex-col items-center justify-center rounded-md select-none transition-colors duration-100 cursor-pointer ${
-                  sidebarOpen ? 'text-white font-bold' : 'text-slate-400 hover:text-slate-200'
+                  sidebarOpen || isSettingsActive ? 'text-white font-bold' : 'text-slate-400 hover:text-slate-200'
                 }`}
                 title="More Apps"
               >
-                {sidebarOpen && (
+                {(sidebarOpen || isSettingsActive) && (
                   <div className="absolute inset-0 bg-accent rounded-md shadow-2xs" />
                 )}
                 <i className={`ti ti-grid-dots text-lg relative z-10`} />

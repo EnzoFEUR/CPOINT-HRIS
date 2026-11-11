@@ -14,10 +14,45 @@ export const Sidebar = ({ user, handleLogout }) => {
   const queryClient = useQueryClient();
   const offlineAvailability = useOfflineAvailability(Boolean(isAdmin(user)));
 
+  const searchParams = new URLSearchParams(location.search);
+  const rawTab = searchParams.get('tab');
+  const currentTab = rawTab || 'requests';
+
+  const isStatutoryRoute =
+    location.pathname.startsWith('/admin/payroll/statutory-settings') ||
+    (location.pathname === '/admin/settings' && rawTab === 'statutory');
+
+  const isHolidaysRoute =
+    location.pathname === '/admin/holidays' ||
+    (location.pathname === '/admin/settings' && rawTab === 'holidays');
+
+  const isSilRoute =
+    (location.pathname === '/admin/leaves' && rawTab === 'sil-policy') ||
+    (location.pathname === '/admin/settings' && rawTab === 'sil');
+
+  const isAuditRoute =
+    location.pathname.startsWith('/admin/audit-logs') ||
+    (location.pathname === '/admin/settings' && rawTab === 'audit');
+
+  const isBackupsRoute =
+    location.pathname === '/admin/backups' ||
+    (location.pathname === '/admin/settings' && rawTab === 'backups');
+
+  const isSettingsHubRoute =
+    location.pathname === '/admin/settings' && (!rawTab || rawTab === 'overview');
+
+  const isSettingsPath =
+    location.pathname.startsWith('/admin/settings') ||
+    isStatutoryRoute ||
+    isHolidaysRoute ||
+    isSilRoute ||
+    isAuditRoute ||
+    isBackupsRoute;
+
   const isAttendanceActive = location.pathname.includes('/admin/attendance');
   const [attendanceDropdownOpen, setAttendanceDropdownOpen] = useState(isAttendanceActive);
 
-  const isLeavesPath = location.pathname.startsWith('/admin/leaves');
+  const isLeavesPath = location.pathname.startsWith('/admin/leaves') && rawTab !== 'sil-policy';
   const [leavesDropdownOpen, setLeavesDropdownOpen] = useState(isLeavesPath);
 
   const [previousLeavesPath, setPreviousLeavesPath] = useState(isLeavesPath);
@@ -26,7 +61,6 @@ export const Sidebar = ({ user, handleLogout }) => {
     if (isLeavesPath) setLeavesDropdownOpen(true);
   }
 
-  const isSettingsPath = location.pathname.startsWith('/admin/settings') || location.pathname === '/admin/payroll/statutory-settings' || location.pathname === '/admin/holidays' || location.pathname === '/admin/backups' || location.pathname === '/admin/audit-logs';
   const [settingsDropdownOpen, setSettingsDropdownOpen] = useState(isSettingsPath);
 
   const [previousSettingsPath, setPreviousSettingsPath] = useState(isSettingsPath);
@@ -35,11 +69,9 @@ export const Sidebar = ({ user, handleLogout }) => {
     if (isSettingsPath) setSettingsDropdownOpen(true);
   }
 
-  const searchParams = new URLSearchParams(location.search);
-  const currentTab = searchParams.get('tab') || 'requests';
-  const isApprovalsActive = isLeavesPath && (!searchParams.get('tab') || currentTab === 'requests');
+  const isApprovalsActive = isLeavesPath && (!rawTab || currentTab === 'requests');
   const isCashoutsActive = isLeavesPath && (currentTab === 'cashouts' || currentTab === 'cashout');
-  const isPolicyActive = isLeavesPath && currentTab === 'sil-policy';
+  const isPolicyActive = isSilRoute;
 
   // Enterprise real-time count badges (<5ms head count, zero payload)
   const { data: leaveCounts = { pendingLeaves: 0, pendingCash: 0 } } = useQuery({
@@ -297,20 +329,26 @@ export const Sidebar = ({ user, handleLogout }) => {
             </div>
 
             {/* Top workspace items: Employees, Payroll Ledger */}
-            {topAdminNavItems.map(item => (
-              <Link
-                key={item.label}
-                to={item.route}
-                className={`flex items-center px-4 py-3.5 rounded-2xl mt-1 ${
-                  location.pathname.startsWith(item.route)
-                    ? 'bg-accent text-white shadow-lg shadow-accent/20 font-bold'
-                    : 'text-slate-400 hover:text-white hover:bg-slate-800/30'
-                }`}
-              >
-                <i className={`ti ${item.icon} text-xl`}></i>
-                <span className="ml-3 font-medium tracking-wide">{item.label}</span>
-              </Link>
-            ))}
+            {topAdminNavItems.map(item => {
+              const isItemActive = item.route === '/admin/payroll'
+                ? location.pathname.startsWith('/admin/payroll') && !location.pathname.startsWith('/admin/payroll/statutory-settings')
+                : location.pathname.startsWith(item.route);
+
+              return (
+                <Link
+                  key={item.label}
+                  to={item.route}
+                  className={`flex items-center px-4 py-3.5 rounded-2xl mt-1 ${
+                    isItemActive
+                      ? 'bg-accent text-white shadow-lg shadow-accent/20 font-bold'
+                      : 'text-slate-400 hover:text-white hover:bg-slate-800/30'
+                  }`}
+                >
+                  <i className={`ti ${item.icon} text-xl`}></i>
+                  <span className="ml-3 font-medium tracking-wide">{item.label}</span>
+                </Link>
+              );
+            })}
 
             {/* Leave Requests Submenu Dropdown */}
             <div className="space-y-1 mt-1">
@@ -425,7 +463,7 @@ export const Sidebar = ({ user, handleLogout }) => {
                   <Link
                     to="/admin/settings"
                     className={`flex items-center px-4 py-2.5 rounded-xl transition-colors ${
-                      location.pathname === '/admin/settings'
+                      isSettingsHubRoute
                         ? 'bg-accent text-white shadow-md font-bold'
                         : 'text-slate-400 hover:text-white hover:bg-white/5'
                     }`}
@@ -437,7 +475,7 @@ export const Sidebar = ({ user, handleLogout }) => {
                   <Link
                     to="/admin/payroll/statutory-settings"
                     className={`flex items-center px-4 py-2.5 rounded-xl transition-colors ${
-                      location.pathname === '/admin/payroll/statutory-settings'
+                      isStatutoryRoute
                         ? 'bg-accent text-white shadow-md font-bold'
                         : 'text-slate-400 hover:text-white hover:bg-white/5'
                     }`}
@@ -449,7 +487,7 @@ export const Sidebar = ({ user, handleLogout }) => {
                   <Link
                     to="/admin/holidays"
                     className={`flex items-center px-4 py-2.5 rounded-xl transition-colors ${
-                      location.pathname === '/admin/holidays'
+                      isHolidaysRoute
                         ? 'bg-accent text-white shadow-md font-bold'
                         : 'text-slate-400 hover:text-white hover:bg-white/5'
                     }`}
@@ -461,7 +499,7 @@ export const Sidebar = ({ user, handleLogout }) => {
                   <Link
                     to="/admin/leaves?tab=sil-policy"
                     className={`flex items-center px-4 py-2.5 rounded-xl transition-colors ${
-                      location.pathname === '/admin/leaves' && currentTab === 'sil-policy'
+                      isSilRoute
                         ? 'bg-accent text-white shadow-md font-bold'
                         : 'text-slate-400 hover:text-white hover:bg-white/5'
                     }`}
@@ -473,7 +511,7 @@ export const Sidebar = ({ user, handleLogout }) => {
                   <Link
                     to="/admin/audit-logs"
                     className={`flex items-center px-4 py-2.5 rounded-xl transition-colors ${
-                      location.pathname === '/admin/audit-logs'
+                      isAuditRoute
                         ? 'bg-accent text-white shadow-md font-bold'
                         : 'text-slate-400 hover:text-white hover:bg-white/5'
                     }`}
@@ -486,7 +524,7 @@ export const Sidebar = ({ user, handleLogout }) => {
                     <Link
                       to="/admin/backups"
                       className={`flex items-center px-4 py-2.5 rounded-xl transition-colors ${
-                        location.pathname === '/admin/backups'
+                        isBackupsRoute
                           ? 'bg-accent text-white shadow-md font-bold'
                           : 'text-slate-400 hover:text-white hover:bg-white/5'
                       }`}
