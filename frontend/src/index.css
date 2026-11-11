@@ -1,20 +1,23 @@
 @import "tailwindcss";
 
+/* Enterprise selector-based dark variant for Tailwind v4 */
+@custom-variant dark (&:where(.dark, .dark *));
+
 @theme {
   --font-sans: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
 
-  /* Surfaces */
-  --color-canvas: #f8fafc;
-  --color-surface: #ffffff;
-  --color-surface-muted: #f1f5f9;
-  --color-line: #e2e8f0;
-  --color-line-strong: #cbd5e1;
+  /* Surfaces & Canvas (Dynamic CSS variable bindings) */
+  --color-canvas: var(--bg-app);
+  --color-surface: var(--surface);
+  --color-surface-muted: var(--surface-subtle);
+  --color-line: var(--border);
+  --color-line-strong: var(--border-strong);
 
-  /* Text */
-  --color-ink: #0f172a;
-  --color-ink-muted: #475569;
-  --color-ink-subtle: #64748b;
+  /* Text & Ink */
+  --color-ink: var(--text-primary);
+  --color-ink-muted: var(--text-secondary);
+  --color-ink-subtle: var(--text-muted);
 
   /* Accent: actions, selection, focus, links */
   --color-accent: #2563eb;
@@ -32,14 +35,14 @@
   --color-success-ink: #15803d;
   --color-success-subtle: #f0fdf4;
 
-  --color-surface-canvas: #f8fafc;
-  --color-surface-card: #ffffff;
-  --color-surface-subtle: #f1f5f9;
+  --color-surface-canvas: var(--bg-app);
+  --color-surface-card: var(--surface);
+  --color-surface-subtle: var(--surface-subtle);
   --color-surface-dark: #0f172a;
   --color-surface-dark-card: #1e293b;
 
-  --color-border-subtle: #e2e8f0;
-  --color-border-default: #cbd5e1;
+  --color-border-subtle: var(--border);
+  --color-border-default: var(--border-strong);
   --color-border-strong: #94a3b8;
   --color-border-dark: #1e293b;
 
@@ -70,6 +73,23 @@
   --sidebar-text-hover: #ffffff;
 }
 
+.dark {
+  --bg-app: #090d16;
+  --surface: #0f172a;
+  --surface-subtle: #1e293b;
+  --border: #1e293b;
+  --border-strong: #334155;
+  --text-primary: #f8fafc;
+  --text-secondary: #94a3b8;
+  --text-muted: #64748b;
+
+  --sidebar-bg: #0f172a;
+  --sidebar-border: #1e293b;
+  --sidebar-active: #1e40af;
+  --sidebar-text: #94a3b8;
+  --sidebar-text-hover: #ffffff;
+}
+
 html {
   -webkit-tap-highlight-color: transparent;
   scroll-behavior: smooth;
@@ -82,8 +102,8 @@ html {
 
 body {
   font-family: var(--font-sans), 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  background-color: #f8fafc;
-  color: #0f172a;
+  background-color: var(--bg-app, #f8fafc);
+  color: var(--text-primary, #0f172a);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   overflow-x: hidden;
@@ -208,6 +228,12 @@ img,
   box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.04);
 }
 
+.dark .enterprise-header,
+.dark .glass-header {
+  background: rgba(15, 23, 42, 0.92) !important;
+  border-bottom: 1px solid #1e293b !important;
+}
+
 .enterprise-bottom-nav,
 .glass-bottom-nav {
   background: #0f172a;
@@ -230,6 +256,12 @@ img,
   box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.04);
 }
 
+.dark .enterprise-card,
+.dark .ios-pro-card {
+  background-color: #0f172a !important;
+  border: 1px solid #1e293b !important;
+}
+
 .dark-surface {
   background-color: #0f172a;
   border: 1px solid #1e293b;
@@ -248,14 +280,22 @@ img,
     print-color-adjust: exact !important;
   }
 
-  html, body {
+  html, html.dark, body, #root {
     background: #ffffff !important;
     color: #0f172a !important;
+    color-scheme: light !important;
     height: auto !important;
     min-height: auto !important;
     overflow: visible !important;
     margin: 0 !important;
     padding: 0 !important;
+  }
+
+  .dark * {
+    background-color: transparent !important;
+    color: #0f172a !important;
+    border-color: #e2e8f0 !important;
+    box-shadow: none !important;
   }
 
   #root {

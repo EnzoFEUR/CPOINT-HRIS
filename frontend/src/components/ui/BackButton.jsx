@@ -64,16 +64,16 @@ export const BackButton = ({
     }, [enableShortcut, handleNavigate]);
 
     const variantStyles = {
-        default: 'bg-white hover:bg-slate-50 active:bg-slate-100 text-slate-700 hover:text-slate-900 border-slate-200 shadow-2xs',
+        default: 'bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 active:bg-slate-100 dark:active:bg-slate-700/80 text-slate-700 dark:text-slate-200 hover:text-slate-900 dark:hover:text-white border-slate-200 dark:border-slate-700 shadow-2xs',
         dark: 'bg-slate-900/90 hover:bg-slate-800 text-white/90 hover:text-white border-slate-700/80 shadow-md backdrop-blur-md',
-        ghost: 'bg-transparent hover:bg-slate-100 text-slate-600 hover:text-slate-900 border-transparent',
-    }[variant] || 'bg-white hover:bg-slate-50 active:bg-slate-100 text-slate-700 hover:text-slate-900 border-slate-200 shadow-2xs';
+        ghost: 'bg-transparent hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 border-transparent',
+    }[variant] || 'bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border-slate-200 dark:border-slate-700 shadow-2xs';
 
     const iconVariantStyles = {
-        default: 'text-slate-500 group-hover:text-slate-800',
+        default: 'text-slate-500 dark:text-slate-400 group-hover:text-slate-800 dark:group-hover:text-slate-200',
         dark: 'text-white/80 group-hover:text-white',
-        ghost: 'text-slate-500 group-hover:text-slate-800',
-    }[variant] || 'text-slate-500 group-hover:text-slate-800';
+        ghost: 'text-slate-500 dark:text-slate-400 group-hover:text-slate-800 dark:group-hover:text-slate-200',
+    }[variant] || 'text-slate-500 dark:text-slate-400 group-hover:text-slate-800 dark:group-hover:text-slate-200';
 
     return (
         <button

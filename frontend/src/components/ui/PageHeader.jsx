@@ -17,7 +17,7 @@ export const PageHeader = ({
     className = ''
 }) => {
     return (
-        <div className={`bg-white border border-slate-200 rounded-lg p-4 sm:p-5 mb-6 shadow-2xs ${className}`}>
+        <div className={`bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg p-4 sm:p-5 mb-6 shadow-2xs ${className}`}>
             <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
                 <div className={`flex items-start sm:items-center min-w-0 flex-1 ${showBack ? 'gap-2.5 sm:gap-3' : ''}`}>
                     {showBack && (
@@ -27,11 +27,11 @@ export const PageHeader = ({
                     )}
                     <div className="min-w-0 flex-1">
                         {breadcrumbs.length > 0 && (
-                            <nav aria-label="Breadcrumb" className={`flex items-center gap-1.5 text-xs font-semibold text-slate-500 overflow-x-auto no-scrollbar ${title ? 'mb-1.5' : ''}`}>
+                            <nav aria-label="Breadcrumb" className={`flex items-center gap-1.5 text-xs font-semibold text-slate-500 dark:text-slate-400 overflow-x-auto no-scrollbar ${title ? 'mb-1.5' : ''}`}>
                                 {breadcrumbs.map((crumb, idx) => (
                                     <React.Fragment key={idx}>
-                                        {idx > 0 && <span className="text-slate-300 font-normal">/</span>}
-                                        <span className={idx === breadcrumbs.length - 1 ? 'text-slate-900 font-bold whitespace-nowrap' : 'text-slate-500 hover:text-slate-700 transition-colors whitespace-nowrap'}>
+                                        {idx > 0 && <span className="text-slate-300 dark:text-slate-700 font-normal">/</span>}
+                                        <span className={idx === breadcrumbs.length - 1 ? 'text-slate-900 dark:text-slate-100 font-bold whitespace-nowrap' : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 transition-colors whitespace-nowrap'}>
                                             {crumb}
                                         </span>
                                     </React.Fragment>
@@ -39,12 +39,12 @@ export const PageHeader = ({
                             </nav>
                         )}
                         {title && (
-                            <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-slate-900 break-words">
+                            <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-50 break-words">
                                 {title}
                             </h1>
                         )}
                         {description && (
-                            <p className="mt-1 text-xs sm:text-sm text-slate-600 max-w-3xl leading-relaxed">
+                            <p className="mt-1 text-xs sm:text-sm text-slate-600 dark:text-slate-400 max-w-3xl leading-relaxed">
                                 {description}
                             </p>
                         )}

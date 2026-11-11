@@ -147,7 +147,7 @@ export const MainLayout = ({ children }) => {
   }, [location.pathname, navigate, handleLogout]);
 
   return (
-    <div className="font-sans antialiased bg-slate-50 text-slate-800 selection:bg-accent selection:text-white relative overflow-x-hidden min-h-screen print:overflow-x-visible print:overflow-visible print:min-h-0 print:h-auto">
+    <div className="font-sans antialiased bg-slate-50 dark:bg-[#090d16] text-slate-800 dark:text-slate-100 selection:bg-accent selection:text-white relative overflow-x-hidden min-h-screen print:overflow-x-visible print:overflow-visible print:min-h-0 print:h-auto">
       {/* Desktop Sidebar */}
       <div className="print:hidden">
         <Sidebar user={user} handleLogout={handleLogout} />
@@ -166,7 +166,7 @@ export const MainLayout = ({ children }) => {
             <Suspense
               fallback={
                 <div className="flex items-center justify-center min-h-[50vh] w-full">
-                  <div className="w-8 h-8 rounded-full border-2 border-slate-200 border-t-accent animate-spin" />
+                  <div className="w-8 h-8 rounded-full border-2 border-slate-200 dark:border-slate-800 border-t-accent animate-spin" />
                 </div>
               }
             >

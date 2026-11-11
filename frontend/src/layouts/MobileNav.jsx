@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { Link, useLocation } from 'react-router-dom';
 import { isAdmin, isSecurity, isMedicalExempt } from '../routes/guards';
 import { isOfflineFeatureActive } from '../routes/OfflineRouteGate.js';
+import ThemeToggle from '../components/navigation/ThemeToggle';
 
 export const MobileNav = ({
   user,
@@ -188,13 +189,16 @@ export const MobileNav = ({
                 <h3 className="text-sm font-bold tracking-tight text-white">System Tools & Modules</h3>
                 <p className="text-[10px] text-slate-400 font-semibold uppercase tracking-wider">All Modules</p>
               </div>
-              <button
-                onClick={() => setSidebarOpen(false)}
-                className="w-8 h-8 rounded-md bg-white/10 flex items-center justify-center text-slate-400 hover:text-white transition-colors duration-100 cursor-pointer"
-                aria-label="Close Sheet"
-              >
-                <i className="ti ti-x text-sm" />
-              </button>
+              <div className="flex items-center gap-2">
+                <ThemeToggle variant="compact" />
+                <button
+                  onClick={() => setSidebarOpen(false)}
+                  className="w-8 h-8 rounded-md bg-white/10 flex items-center justify-center text-slate-400 hover:text-white transition-colors duration-100 cursor-pointer"
+                  aria-label="Close Sheet"
+                >
+                  <i className="ti ti-x text-sm" />
+                </button>
+              </div>
             </div>
 
             {/* PWA Install Banner */}
