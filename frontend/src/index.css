@@ -210,19 +210,57 @@ img,
   -webkit-touch-callout: none;
 }
 
-/* Custom scrollbar for sidebar/panels */
+/* Custom scrollbar for sidebar and panels (Consistent in both light and dark mode) */
+.custom-scrollbar {
+  scrollbar-width: thin !important;
+  scrollbar-color: #334155 transparent !important;
+}
+
 .custom-scrollbar::-webkit-scrollbar {
-  width: 5px;
+  width: 5px !important;
+  height: 5px !important;
 }
+
 .custom-scrollbar::-webkit-scrollbar-track {
-  background: transparent;
+  background: transparent !important;
 }
+
 .custom-scrollbar::-webkit-scrollbar-thumb {
-  background: #334155;
-  border-radius: 999px;
+  background-color: #334155 !important;
+  border-radius: 9999px !important;
 }
+
 .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-  background: #475569;
+  background-color: #475569 !important;
+}
+
+/* Explicit override for dark mode to ensure sidebar scrollbar is 100% identical to light mode */
+.dark .custom-scrollbar,
+.dark .custom-scrollbar * {
+  scrollbar-width: thin !important;
+  scrollbar-color: #334155 transparent !important;
+}
+
+.dark .custom-scrollbar::-webkit-scrollbar,
+.dark .custom-scrollbar *::-webkit-scrollbar {
+  width: 5px !important;
+  height: 5px !important;
+}
+
+.dark .custom-scrollbar::-webkit-scrollbar-track,
+.dark .custom-scrollbar *::-webkit-scrollbar-track {
+  background: transparent !important;
+}
+
+.dark .custom-scrollbar::-webkit-scrollbar-thumb,
+.dark .custom-scrollbar *::-webkit-scrollbar-thumb {
+  background-color: #334155 !important;
+  border-radius: 9999px !important;
+}
+
+.dark .custom-scrollbar::-webkit-scrollbar-thumb:hover,
+.dark .custom-scrollbar *::-webkit-scrollbar-thumb:hover {
+  background-color: #475569 !important;
 }
 
 /* Line clamp utilities */
@@ -414,14 +452,14 @@ img,
   background-color: #2c3c5c !important;
 }
 
-/* Primary Action Buttons Glow (Eye Candy) */
+/* Primary Action Buttons */
 .dark .bg-accent {
   background-color: #2563eb !important;
-  box-shadow: 0 1px 3px 0 rgba(37, 99, 235, 0.4), 0 0 14px 0 rgba(37, 99, 235, 0.25) !important;
+  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.35) !important;
 }
 .dark .bg-accent:hover {
   background-color: #1d4ed8 !important;
-  box-shadow: 0 2px 6px 0 rgba(37, 99, 235, 0.5), 0 0 18px 0 rgba(37, 99, 235, 0.35) !important;
+  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.45) !important;
 }
 
 /* 2. Borders, Dividers & Outlines */
@@ -725,10 +763,11 @@ img,
   border-color: rgba(255, 255, 255, 0.1) !important;
 }
 
-/* 7. Dark Theme Scrollbars (Chrome, Safari, Edge, Firefox) */
+/* 7. Dark Theme Scrollbars (Consistent transparent tracks matching light mode) */
 .dark,
 .dark * {
-  scrollbar-color: #27354f #080c14;
+  scrollbar-color: #334155 transparent;
+  scrollbar-width: thin;
 }
 
 .dark::-webkit-scrollbar,
@@ -739,18 +778,18 @@ img,
 
 .dark::-webkit-scrollbar-track,
 .dark *::-webkit-scrollbar-track {
-  background: #080c14;
+  background: transparent !important;
 }
 
 .dark::-webkit-scrollbar-thumb,
 .dark *::-webkit-scrollbar-thumb {
-  background-color: #27354f;
+  background-color: #334155;
   border-radius: 9999px;
 }
 
 .dark::-webkit-scrollbar-thumb:hover,
 .dark *::-webkit-scrollbar-thumb:hover {
-  background-color: #3b4d70;
+  background-color: #475569;
 }
 
 /* 8. Floating Toast Enhancements */

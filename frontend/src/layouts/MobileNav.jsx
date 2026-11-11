@@ -236,7 +236,7 @@ export const MobileNav = ({
                   <Link
                     to="/admin/settings"
                     onClick={() => setSidebarOpen(false)}
-                    className="col-span-2 p-3 bg-slate-900 hover:bg-slate-800 rounded-md border border-accent/40 bg-gradient-to-r from-accent/10 to-transparent flex items-center justify-between transition-colors duration-100 cursor-pointer"
+                    className="col-span-2 p-3 bg-slate-900 hover:bg-slate-800 rounded-md border border-slate-800 flex items-center justify-between transition-colors duration-100 cursor-pointer"
                   >
                     <div className="flex items-center gap-2.5 min-w-0">
                       <div className="w-8 h-8 rounded-md bg-accent text-white flex items-center justify-center shrink-0 shadow-2xs">

@@ -262,7 +262,7 @@ function EmployeeCard({ employee, docPendingCounts, copyToClipboard }) {
                     className={`flex-1 h-9 px-3.5 font-semibold text-xs rounded-md transition-all duration-150 flex items-center justify-center gap-1.5 shadow-2xs cursor-pointer active:scale-[0.98] ${
                         isTerminated
                             ? 'bg-slate-700 hover:bg-slate-800 dark:bg-slate-800 dark:hover:bg-slate-700 text-white dark:text-slate-200 dark:border dark:border-white/10'
-                            : 'bg-slate-900 hover:bg-accent dark:bg-blue-600 dark:hover:bg-blue-500 text-white dark:border dark:border-blue-400/40 dark:shadow-[0_1px_3px_rgba(37,99,235,0.4),0_0_14px_rgba(37,99,235,0.25)]'
+                            : 'bg-slate-900 hover:bg-accent dark:bg-blue-600 dark:hover:bg-blue-500 text-white dark:border dark:border-blue-500/40 shadow-2xs'
                     }`}
                 >
                     <span>{isTerminated ? 'Review Record' : 'View Profile'}</span>
@@ -919,7 +919,7 @@ export default function EmployeesIndex() {
                                                                 className={`h-8 px-3 font-semibold text-xs rounded-md transition-all duration-150 flex items-center gap-1 cursor-pointer active:scale-[0.98] ${
                                                                     isTerminated
                                                                         ? 'bg-slate-700 hover:bg-slate-800 dark:bg-slate-800 dark:hover:bg-slate-700 text-white dark:text-slate-200 dark:border dark:border-white/10'
-                                                                        : 'bg-slate-900 hover:bg-accent dark:bg-blue-600 dark:hover:bg-blue-500 text-white dark:border dark:border-blue-400/40 dark:shadow-[0_0_12px_rgba(37,99,235,0.25)]'
+                                                                        : 'bg-slate-900 hover:bg-accent dark:bg-blue-600 dark:hover:bg-blue-500 text-white dark:border dark:border-blue-500/40 shadow-2xs'
                                                                 }`}
                                                             >
                                                                 <span>{isTerminated ? 'Review' : 'Profile'}</span>

@@ -145,7 +145,7 @@ export default function DocumentThumbnail({
                     <div className="absolute inset-x-0 bottom-0 h-10 bg-gradient-to-t from-slate-950/60 to-transparent pointer-events-none" />
                 </>
             ) : isPdf ? (
-                <div className="w-full h-full bg-gradient-to-br from-rose-50 to-slate-100 flex flex-col items-center justify-center text-rose-600 p-4">
+                <div className="w-full h-full bg-rose-50/70 dark:bg-rose-950/20 flex flex-col items-center justify-center text-rose-600 p-4">
                     <div className="w-12 h-14 bg-white rounded-md border border-rose-200 shadow-2xs flex flex-col items-center justify-center relative">
                         <i className="ti ti-file-type-pdf text-2xl text-rose-600" />
                         <span className="font-mono text-[9px] font-bold text-rose-700 tracking-wider">PDF</span>
@@ -153,7 +153,7 @@ export default function DocumentThumbnail({
                     <span className="text-[11px] font-semibold text-slate-600 mt-2">PDF Document</span>
                 </div>
             ) : ['doc', 'docx'].includes(ext) ? (
-                <div className="w-full h-full bg-gradient-to-br from-blue-50 to-slate-100 flex flex-col items-center justify-center text-blue-600 p-4">
+                <div className="w-full h-full bg-blue-50/70 dark:bg-blue-950/20 flex flex-col items-center justify-center text-blue-600 p-4">
                     <div className="w-12 h-14 bg-white rounded-md border border-blue-200 shadow-2xs flex flex-col items-center justify-center">
                         <i className="ti ti-file-type-docx text-2xl text-blue-600" />
                         <span className="font-mono text-[9px] font-bold text-blue-700 tracking-wider">DOC</span>
@@ -161,7 +161,7 @@ export default function DocumentThumbnail({
                     <span className="text-[11px] font-semibold text-slate-600 mt-2">Word Document</span>
                 </div>
             ) : ['xls', 'xlsx', 'csv'].includes(ext) ? (
-                <div className="w-full h-full bg-gradient-to-br from-emerald-50 to-slate-100 flex flex-col items-center justify-center text-emerald-600 p-4">
+                <div className="w-full h-full bg-emerald-50/70 dark:bg-emerald-950/20 flex flex-col items-center justify-center text-emerald-600 p-4">
                     <div className="w-12 h-14 bg-white rounded-md border border-emerald-200 shadow-2xs flex flex-col items-center justify-center">
                         <i className="ti ti-file-type-xls text-2xl text-emerald-600" />
                         <span className="font-mono text-[9px] font-bold text-emerald-700 tracking-wider">XLS</span>

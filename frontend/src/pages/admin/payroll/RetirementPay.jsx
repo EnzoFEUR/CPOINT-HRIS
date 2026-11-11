@@ -705,7 +705,7 @@ function RetirementPayWorkspace({ exitRequestId, exitLink }) {
                             }}
                         >
                             {/* Selected Employee Summary Card */}
-                            <div className="p-3.5 bg-gradient-to-r from-blue-50/90 via-indigo-50/40 to-blue-50/90 border-2 border-accent/40 rounded-lg shadow-xs flex items-center justify-between gap-3 animate-in fade-in slide-in-from-top-2 duration-200">
+                            <div className="p-3.5 bg-blue-50/70 dark:bg-[#0f1a2e] border border-blue-200 dark:border-blue-500/30 rounded-lg shadow-xs flex items-center justify-between gap-3 animate-in fade-in slide-in-from-top-2 duration-200">
                                 <div className="flex items-center gap-3 min-w-0">
                                     <div className="relative">
                                         <EmployeeAvatar employee={employee} size="h-10 w-10" />
@@ -755,7 +755,7 @@ function RetirementPayWorkspace({ exitRequestId, exitLink }) {
 
 
                             {/* Recorded wage sources require independent HR verification. */}
-                            <div className="p-3.5 bg-gradient-to-r from-slate-50 via-blue-50/25 to-white rounded-lg border border-slate-200/90 shadow-2xs space-y-2.5">
+                            <div className="p-3.5 bg-slate-50/70 dark:bg-[#0e1628] rounded-lg border border-slate-200/90 dark:border-white/10 shadow-2xs space-y-2.5">
                                 <div className="flex items-center justify-between gap-2 flex-wrap">
                                     <div className="flex items-center gap-2.5">
                                         

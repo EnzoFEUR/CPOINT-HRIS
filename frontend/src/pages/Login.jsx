@@ -766,13 +766,8 @@ export default function Login() {
                         className="absolute inset-0 w-full h-full object-cover object-center pointer-events-none select-none"
                     />
 
-                    {/* Blue Gradient Overlays (Multi-layered for deep, rich enterprise blue tone & contrast) */}
-                    <div className="absolute inset-0 bg-gradient-to-t from-slate-950/90 via-slate-900/75 to-slate-900/60 mix-blend-multiply pointer-events-none" />
-                    <div className="absolute inset-0 bg-gradient-to-br from-slate-900/40 via-slate-900/50 to-slate-950/85 pointer-events-none" />
-
-                    {/* Subtle Blue Glow Highlights */}
-                    <div className="absolute -top-20 -right-20 w-72 h-72 bg-accent/20 rounded-full blur-3xl pointer-events-none" />
-                    <div className="absolute top-1/2 -left-20 w-64 h-64 bg-accent/15 rounded-full blur-3xl pointer-events-none" />
+                    {/* Clean enterprise photo contrast overlay */}
+                    <div className="absolute inset-0 bg-slate-950/80 pointer-events-none" />
 
                     {/* Center Title and Description */}
                     <div className="relative z-10 w-full max-w-[320px] flex flex-col items-center">

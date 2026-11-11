@@ -1704,7 +1704,7 @@ const EmployeeDashboard = () => {
                                 <button
                                     type="button"
                                     onClick={() => setShowLeaveModal(true)}
-                                    className="px-2.5 py-1 sm:py-1.5 text-xs font-semibold text-white bg-slate-900 hover:bg-slate-800 dark:bg-blue-600 dark:hover:bg-blue-500 dark:border-blue-400/40 dark:shadow-[0_0_10px_rgba(37,99,235,0.25)] rounded-md border border-slate-900 transition-all inline-flex items-center gap-1 cursor-pointer shadow-2xs active:scale-[0.98]"
+                                    className="px-2.5 py-1 sm:py-1.5 text-xs font-semibold text-white bg-slate-900 hover:bg-slate-800 dark:bg-blue-600 dark:hover:bg-blue-500 dark:border-blue-500/40 rounded-md border border-slate-900 transition-all inline-flex items-center gap-1 cursor-pointer shadow-2xs active:scale-[0.98]"
                                     title="Apply for new leave"
                                 >
                                     <i className="ti ti-plus text-xs" />
