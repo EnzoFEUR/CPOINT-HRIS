@@ -1523,14 +1523,6 @@ export default function PayrollIndex() {
                             <span>Retirement pay</span>
                         </Link>
 
-                        <Link
-                            to="/admin/payroll/statutory-settings"
-                            className="h-9 px-3.5 bg-white hover:bg-slate-50 text-slate-700 rounded-md font-medium text-xs sm:text-sm transition-colors duration-100 flex items-center gap-1.5 border border-slate-200 shadow-2xs"
-                        >
-                            <i className="ti ti-adjustments-horizontal text-base text-slate-500" />
-                            <span>Statutory settings</span>
-                        </Link>
-
                         <button
                             type="button"
                             onClick={() => setIsThirteenthOpen(true)}

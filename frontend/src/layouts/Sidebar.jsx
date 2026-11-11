@@ -383,18 +383,6 @@ export const Sidebar = ({ user, handleLogout }) => {
                       </span>
                     )}
                   </Link>
-
-                  <Link
-                    to="/admin/leaves?tab=sil-policy"
-                    className={`flex items-center px-4 py-2.5 rounded-xl transition-colors ${
-                      isPolicyActive
-                        ? 'bg-accent text-white shadow-md font-bold'
-                        : 'text-slate-400 hover:text-white hover:bg-white/5'
-                    }`}
-                  >
-                    <i className="ti ti-shield-check text-lg shrink-0"></i>
-                    <span className="ml-3 text-sm font-medium truncate">Statutory SIL Policy</span>
-                  </Link>
                 </div>
               )}
             </div>
