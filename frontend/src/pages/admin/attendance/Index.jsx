@@ -1,5 +1,5 @@
 import ProtectedImage from '../../../components/ProtectedImage';
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback, useTransition } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import { supabase } from '../../../supabaseClient';
@@ -20,6 +20,7 @@ const Index = () => {
     }, []);
 
     const [currentPage, setCurrentPage] = useState(1);
+    const [isPending, startTransition] = useTransition();
     const itemsPerPage = 12;
 
     // Proof photo modal state
@@ -537,9 +538,9 @@ const Index = () => {
 
                         <div className="flex items-center gap-2">
                             <button
-                                onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
-                                disabled={safeCurrentPage <= 1}
-                                className="h-8 px-3 rounded-md bg-white border border-slate-200 text-xs font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors duration-100 shadow-2xs flex items-center gap-1.5"
+                                onClick={() => startTransition(() => setCurrentPage(prev => Math.max(prev - 1, 1)))}
+                                disabled={safeCurrentPage <= 1 || isPending}
+                                className="h-8 px-3 rounded-md bg-white border border-slate-200 text-xs font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors duration-100 shadow-2xs flex items-center gap-1.5 cursor-pointer"
                             >
                                 <i className="ti ti-chevron-left text-sm" /> Prev
                             </button>
@@ -549,9 +550,9 @@ const Index = () => {
                             </span>
 
                             <button
-                                onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
-                                disabled={safeCurrentPage >= totalPages}
-                                className="h-8 px-3 rounded-md bg-white border border-slate-200 text-xs font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors duration-100 shadow-2xs flex items-center gap-1.5"
+                                onClick={() => startTransition(() => setCurrentPage(prev => Math.min(prev + 1, totalPages)))}
+                                disabled={safeCurrentPage >= totalPages || isPending}
+                                className="h-8 px-3 rounded-md bg-white border border-slate-200 text-xs font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors duration-100 shadow-2xs flex items-center gap-1.5 cursor-pointer"
                             >
                                 Next <i className="ti ti-chevron-right text-sm" />
                             </button>

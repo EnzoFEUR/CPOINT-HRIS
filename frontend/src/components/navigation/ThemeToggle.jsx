@@ -37,7 +37,11 @@ export const ThemeToggle = ({ variant = 'compact', className = '' }) => {
             <button
               key={opt.id}
               type="button"
-              onClick={(e) => setTheme(opt.id, e)}
+              onClick={(e) => {
+                const rect = e.currentTarget?.getBoundingClientRect?.();
+                const coords = rect ? { x: Math.round(rect.left + rect.width / 2), y: Math.round(rect.top + rect.height / 2) } : e;
+                setTheme(opt.id, coords);
+              }}
               className={`relative z-10 flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors duration-200 cursor-pointer select-none active:scale-[0.93] ${
                 active
                   ? 'text-slate-900 dark:text-slate-100 font-bold'
@@ -67,7 +71,11 @@ export const ThemeToggle = ({ variant = 'compact', className = '' }) => {
   return (
     <button
       type="button"
-      onClick={(e) => cycleTheme(e)}
+      onClick={(e) => {
+        const rect = e.currentTarget?.getBoundingClientRect?.();
+        const coords = rect ? { x: Math.round(rect.left + rect.width / 2), y: Math.round(rect.top + rect.height / 2) } : e;
+        cycleTheme(coords);
+      }}
       aria-label={`Current appearance: ${currentConfig.label}. Click to toggle theme.`}
       title={`Appearance: ${currentConfig.label} (Click to toggle)`}
       className={`group relative inline-flex items-center justify-center h-8 sm:h-9 px-2 sm:px-2.5 rounded-xl border border-slate-200 dark:border-white/10 bg-white dark:bg-[#172033] text-slate-700 dark:text-slate-200 shadow-2xs hover:bg-slate-50 dark:hover:bg-[#1f2c47] active:scale-[0.93] transition-all duration-150 cursor-pointer select-none gap-1.5 shrink-0 overflow-hidden ${className}`}

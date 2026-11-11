@@ -156,6 +156,17 @@ const EmployeeDashboard = () => {
     const enabled = Boolean(storedUser.id) && !isSecurity(storedUser) && !isAdmin(storedUser);
     const { dashboard, history, refresh } = useEmployeeDashboard(storedUser.id, enabled);
     const data = dashboard.data;
+
+    // Performance telemetry: mark when full employee dashboard data is populated and visible
+    useEffect(() => {
+        if (data && typeof performance !== 'undefined' && performance.mark) {
+            try {
+                if (performance.getEntriesByName('data-visible').length === 0) {
+                    performance.mark('data-visible');
+                }
+            } catch { /* Telemetry is non-blocking */ }
+        }
+    }, [data]);
     const payHistoryData = history.data;
     const isPayHistoryLoading = history.isLoading;
     const liveEmployee = data?.employee || data?.shiftData?.[0] || null;

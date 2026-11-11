@@ -11,7 +11,7 @@ export const StickyActionBar = ({
 }) => {
   return (
     <div
-      className={`lg:hidden fixed bottom-0 inset-x-0 z-30 bg-white/90 dark:bg-slate-900/90 backdrop-blur-xl border-t border-slate-200/80 dark:border-slate-800/80 px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] shadow-xl ${className}`}
+      className={`lg:hidden fixed bottom-0 inset-x-0 z-[45] bg-white/90 dark:bg-slate-900/90 backdrop-blur-xl border-t border-slate-200/80 dark:border-slate-800/80 px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] shadow-xl ${className}`}
     >
       <div className="max-w-md mx-auto w-full">
         {children ? (

@@ -886,6 +886,23 @@ img,
   animation: 350ms cubic-bezier(0.32, 0.72, 0, 1) both theme-fade-in;
 }
 
+/* Circular Reveal Isolation: disables competing animations to prevent interruption */
+:root.theme-circular-reveal::view-transition-old(root),
+:root.theme-circular-reveal::view-transition-new(root),
+html.theme-circular-reveal::view-transition-old(root),
+html.theme-circular-reveal::view-transition-new(root) {
+  animation: none !important;
+  mix-blend-mode: normal !important;
+}
+:root.theme-circular-reveal::view-transition-old(root),
+html.theme-circular-reveal::view-transition-old(root) {
+  z-index: 1;
+}
+:root.theme-circular-reveal::view-transition-new(root),
+html.theme-circular-reveal::view-transition-new(root) {
+  z-index: 9999;
+}
+
 @keyframes theme-fade-out {
   from {
     opacity: 1;

@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 
 export const THEME_STORAGE_KEY = 'cpoint_theme';
 export const THEME_BROADCAST_CHANNEL = 'cpoint_theme_sync';
+const CLIENT_INSTANCE_ID = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substring(2);
 
 /**
  * Enterprise Theme Applier
@@ -32,15 +33,14 @@ export function applyThemeToDOM(mode) {
 }
 
 /**
- * Enterprise Fluid Transition Orchestrator (iOS Spring Sliding Physics)
+ * Enterprise Fluid Transition Orchestrator (Circular Reveal & Slide Fallback)
  * Progressive enhancement:
- * 1. View Transitions API (Chrome 111+, Edge 111+, Safari 18+) with native GPU-accelerated
- *    bouncy sliding transitions (@keyframes ios-slide-in-from-right / from-left) with spring overshoot.
- * 2. Parallax recession on outgoing snapshot with subtle depth dimming.
- * 3. Scoped 450ms CSS transition fallback with Apple spring easing for older browser engines.
+ * 1. View Transitions API with circular clip-path reveal expanding from toggle coordinates.
+ * 2. Disabled CSS cross-fade on ::view-transition snapshots via html.theme-circular-reveal to prevent interruption.
+ * 3. Scoped 450ms CSS transition fallback for older browser engines.
  * 4. Zero animation if user has prefers-reduced-motion enabled.
  */
-export function transitionTheme(applyFn, direction = 'from-right') {
+export function transitionTheme(applyFn, originOrDirection = null) {
   if (typeof document === 'undefined') {
     applyFn();
     return;
@@ -58,22 +58,98 @@ export function transitionTheme(applyFn, direction = 'from-right') {
     return;
   }
 
-  // 1. View Transitions API with GPU-accelerated iOS spring sliding physics
+  // 1. View Transitions API
   if (typeof document.startViewTransition === 'function') {
-    const slideClass = direction === 'from-left' ? 'theme-slide-from-left' : 'theme-slide-from-right';
-    root.classList.add(slideClass);
+    const isDirectionString = typeof originOrDirection === 'string' && (originOrDirection === 'from-left' || originOrDirection === 'from-right');
 
-    try {
-      const transition = document.startViewTransition(() => {
-        applyFn();
-      });
+    if (!isDirectionString) {
+      // Circular Reveal from click/touch coordinates or element
+      let x = typeof window !== 'undefined' ? Math.round(window.innerWidth / 2) : 195;
+      let y = 0;
 
-      transition.finished.finally(() => {
+      if (originOrDirection) {
+        // 1. Element bounding rect
+        const targetEl = originOrDirection.currentTarget || originOrDirection.target;
+        if (targetEl && typeof targetEl.getBoundingClientRect === 'function') {
+          const rect = targetEl.getBoundingClientRect();
+          if (rect.width > 0 && rect.height > 0) {
+            x = Math.round(rect.left + rect.width / 2);
+            y = Math.round(rect.top + rect.height / 2);
+          }
+        }
+
+        // 2. Direct event or nativeEvent coordinates
+        const clientX = typeof originOrDirection.clientX === 'number'
+          ? originOrDirection.clientX
+          : originOrDirection.nativeEvent?.clientX;
+        const clientY = typeof originOrDirection.clientY === 'number'
+          ? originOrDirection.clientY
+          : originOrDirection.nativeEvent?.clientY;
+
+        if (typeof clientX === 'number' && typeof clientY === 'number' && (clientX !== 0 || clientY !== 0)) {
+          x = Math.round(clientX);
+          y = Math.round(clientY);
+        } else if (typeof originOrDirection.x === 'number' && typeof originOrDirection.y === 'number') {
+          x = Math.round(originOrDirection.x);
+          y = Math.round(originOrDirection.y);
+        }
+      }
+
+      const radius = Math.hypot(
+        Math.max(x, window.innerWidth - x),
+        Math.max(y, window.innerHeight - y)
+      );
+
+      root.classList.add('theme-circular-reveal');
+
+      try {
+        const transition = document.startViewTransition(() => {
+          applyFn();
+        });
+
+        transition.ready.then(() => {
+          try {
+            root.animate(
+              {
+                clipPath: [
+                  `circle(0px at ${x}px ${y}px)`,
+                  `circle(${radius}px at ${x}px ${y}px)`,
+                ],
+              },
+              {
+                duration: 450,
+                easing: 'cubic-bezier(0.32, 0.72, 0, 1)',
+                pseudoElement: '::view-transition-new(root)',
+              }
+            );
+          } catch {
+            // Graceful fallback if pseudoElement animation unsupported
+          }
+        }).catch(() => {});
+
+        transition.finished.finally(() => {
+          root.classList.remove('theme-circular-reveal');
+        });
+        return;
+      } catch {
+        root.classList.remove('theme-circular-reveal');
+      }
+    } else {
+      const slideClass = originOrDirection === 'from-left' ? 'theme-slide-from-left' : 'theme-slide-from-right';
+      root.classList.add(slideClass);
+
+      try {
+        const transition = document.startViewTransition(() => {
+          applyFn();
+        });
+
+        transition.finished.finally(() => {
+          root.classList.remove('theme-slide-from-left', 'theme-slide-from-right');
+        });
+        return;
+      } catch {
         root.classList.remove('theme-slide-from-left', 'theme-slide-from-right');
-      });
-      return;
-    } catch {
-      root.classList.remove('theme-slide-from-left', 'theme-slide-from-right');
+      }
     }
   }
 
@@ -105,32 +181,15 @@ export function useTheme() {
     return document.documentElement.classList.contains('dark');
   });
 
-  const setTheme = useCallback((newTheme, eventOrDirection = null) => {
+  const setTheme = useCallback((newTheme, eventOrOrigin = null) => {
     const validTheme = ['light', 'dark', 'system'].includes(newTheme) ? newTheme : 'light';
-
-    // Determine fluid sliding direction
-    let direction;
-    if (typeof eventOrDirection === 'string' && (eventOrDirection === 'from-left' || eventOrDirection === 'from-right')) {
-      direction = eventOrDirection;
-    } else {
-      const currentDark = typeof document !== 'undefined' && document.documentElement.classList.contains('dark');
-      const targetDark = validTheme === 'dark' || (validTheme === 'system' && Boolean(typeof window !== 'undefined' && window.matchMedia?.('(prefers-color-scheme: dark)')?.matches));
-      if (currentDark !== targetDark) {
-        direction = targetDark ? 'from-right' : 'from-left';
-      } else {
-        const themeOrder = ['light', 'system', 'dark'];
-        const prevIdx = themeOrder.indexOf(theme);
-        const nextIdx = themeOrder.indexOf(validTheme);
-        direction = nextIdx >= prevIdx ? 'from-right' : 'from-left';
-      }
-    }
 
     let activeDark = false;
     transitionTheme(() => {
       setThemeState(validTheme);
       activeDark = applyThemeToDOM(validTheme);
       setIsDark(activeDark);
-    }, direction);
+    }, eventOrOrigin);
 
     try {
       localStorage.setItem(THEME_STORAGE_KEY, validTheme);
@@ -138,7 +197,7 @@ export function useTheme() {
       // Real-time broadcast across all active browser windows and tabs
       if (typeof BroadcastChannel !== 'undefined') {
         const channel = new BroadcastChannel(THEME_BROADCAST_CHANNEL);
-        channel.postMessage({ theme: validTheme, isDark: activeDark, direction });
+        channel.postMessage({ theme: validTheme, isDark: activeDark, senderId: CLIENT_INSTANCE_ID });
         channel.close();
       }
     } catch (err) {
@@ -162,12 +221,11 @@ export function useTheme() {
           .catch(() => {});
       }
     } catch { /* Background dual-write is best-effort */ }
-  }, [theme]);
+  }, []);
 
-  const cycleTheme = useCallback((eventOrDirection = null) => {
+  const cycleTheme = useCallback((eventOrOrigin = null) => {
     const nextTheme = theme === 'light' ? 'dark' : theme === 'dark' ? 'system' : 'light';
-    const direction = nextTheme === 'light' ? 'from-left' : 'from-right';
-    setTheme(nextTheme, typeof eventOrDirection === 'string' ? eventOrDirection : direction);
+    setTheme(nextTheme, eventOrOrigin);
   }, [theme, setTheme]);
 
   // Synchronize across tabs and listen for OS system preference changes
@@ -180,12 +238,10 @@ export function useTheme() {
       try {
         bc = new BroadcastChannel(THEME_BROADCAST_CHANNEL);
         bc.onmessage = (event) => {
-          if (event.data?.theme) {
-            transitionTheme(() => {
-              setThemeState(event.data.theme);
-              const activeDark = applyThemeToDOM(event.data.theme);
-              setIsDark(activeDark);
-            });
+          if (event.data?.theme && event.data?.senderId !== CLIENT_INSTANCE_ID) {
+            setThemeState(event.data.theme);
+            const activeDark = applyThemeToDOM(event.data.theme);
+            setIsDark(activeDark);
           }
         };
       } catch (e) {
@@ -197,11 +253,9 @@ export function useTheme() {
     const handleStorage = (event) => {
       if (event.key === THEME_STORAGE_KEY && event.newValue) {
         const next = event.newValue;
-        transitionTheme(() => {
-          setThemeState(next);
-          const activeDark = applyThemeToDOM(next);
-          setIsDark(activeDark);
-        });
+        setThemeState(next);
+        const activeDark = applyThemeToDOM(next);
+        setIsDark(activeDark);
       }
     };
     window.addEventListener('storage', handleStorage);
