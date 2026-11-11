@@ -3,72 +3,12 @@ import { useTheme } from '../../utils/useTheme';
 
 /**
  * Enterprise Production ThemeToggle
- * Supports:
- * - 'switch' (default): Tactile Sun/Moon spring switch with stretching knob, 360-deg rotating face, stars & clouds.
- * - 'segmented': Segmented 3-state control with spring-sliding pill.
- * - 'compact': Minimal icon button with spring morph.
+ * Supports compact header icon button and segmented control layout,
+ * aligned with C-Point HRIS design tokens and Tabler icons.
  */
-export const ThemeToggle = ({ variant = 'switch', className = '' }) => {
+export const ThemeToggle = ({ variant = 'compact', className = '' }) => {
   const { theme, setTheme, cycleTheme, isDark } = useTheme();
 
-  // 1. Tactile Sun / Moon Spring Switch
-  if (variant === 'switch') {
-    return (
-      <button
-        type="button"
-        role="switch"
-        aria-checked={isDark}
-        aria-label="Toggle dark mode appearance"
-        title={`Appearance: ${isDark ? 'Dark Mode' : 'Light Mode'} (Click to toggle)`}
-        onClick={(e) => {
-          const next = isDark ? 'light' : 'dark';
-          setTheme(next, e.currentTarget);
-        }}
-        className={`theme-switch ${className}`}
-      >
-        {/* Sky Backgrounds */}
-        <span className="sky day" aria-hidden="true" />
-        <span className="sky night" aria-hidden="true" />
-
-        {/* Clouds in Day Sky */}
-        <span className="clouds" aria-hidden="true" />
-
-        {/* Stars in Night Sky */}
-        <span className="stars" aria-hidden="true">
-          <i /><i /><i /><i />
-        </span>
-
-        {/* Elastic Stretching Knob with Rotating Face */}
-        <span className="knob" aria-hidden="true">
-          <span className="face">
-            <svg
-              className="icon-sun w-3.5 h-3.5 text-amber-500 fill-amber-400 stroke-amber-500"
-              viewBox="0 0 24 24"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              aria-hidden="true"
-            >
-              <circle cx="12" cy="12" r="4" />
-              <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41" />
-            </svg>
-            <svg
-              className="icon-moon w-3.5 h-3.5 text-slate-700 dark:text-slate-300 fill-slate-300 dark:fill-slate-300 stroke-slate-700 dark:stroke-slate-300"
-              viewBox="0 0 24 24"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              aria-hidden="true"
-            >
-              <path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z" />
-            </svg>
-          </span>
-        </span>
-      </button>
-    );
-  }
-
-  // 2. Segmented Control with Spring-Sliding Pill
   if (variant === 'segmented') {
     const options = [
       { id: 'light', label: 'Light', icon: 'ti-sun' },
@@ -97,7 +37,7 @@ export const ThemeToggle = ({ variant = 'switch', className = '' }) => {
             <button
               key={opt.id}
               type="button"
-              onClick={(e) => setTheme(opt.id, e.currentTarget)}
+              onClick={(e) => setTheme(opt.id, e)}
               className={`relative z-10 flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors duration-200 cursor-pointer select-none active:scale-[0.93] ${
                 active
                   ? 'text-slate-900 dark:text-slate-100 font-bold'
@@ -117,7 +57,7 @@ export const ThemeToggle = ({ variant = 'switch', className = '' }) => {
     );
   }
 
-  // 3. Compact Header Toggle Button
+  // Compact Header toggle
   const currentConfig = {
     system: { icon: 'ti-device-desktop', label: 'System Theme (Auto)', badge: 'Auto' },
     dark: { icon: 'ti-moon', label: 'Dark Mode', badge: 'Dark' },
@@ -127,7 +67,7 @@ export const ThemeToggle = ({ variant = 'switch', className = '' }) => {
   return (
     <button
       type="button"
-      onClick={(e) => cycleTheme(e.currentTarget)}
+      onClick={(e) => cycleTheme(e)}
       aria-label={`Current appearance: ${currentConfig.label}. Click to toggle theme.`}
       title={`Appearance: ${currentConfig.label} (Click to toggle)`}
       className={`group relative inline-flex items-center justify-center h-8 sm:h-9 px-2 sm:px-2.5 rounded-xl border border-slate-200 dark:border-white/10 bg-white dark:bg-[#172033] text-slate-700 dark:text-slate-200 shadow-2xs hover:bg-slate-50 dark:hover:bg-[#1f2c47] active:scale-[0.93] transition-all duration-150 cursor-pointer select-none gap-1.5 shrink-0 overflow-hidden ${className}`}

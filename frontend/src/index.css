@@ -3,34 +3,6 @@
 /* Enterprise selector-based dark variant for Tailwind v4 */
 @custom-variant dark (&:where(.dark, .dark *));
 
-/* ==========================================================================
-   ENTERPRISE REGISTERED CSS COLOUR TOKENS (@property)
-   Allows browser GPU engines to smoothly interpolate custom properties
-   ========================================================================== */
-@property --bg-app {
-  syntax: '<color>';
-  inherits: true;
-  initial-value: #f8fafc;
-}
-
-@property --surface {
-  syntax: '<color>';
-  inherits: true;
-  initial-value: #ffffff;
-}
-
-@property --text-primary {
-  syntax: '<color>';
-  inherits: true;
-  initial-value: #0f172a;
-}
-
-@property --border {
-  syntax: '<color>';
-  inherits: true;
-  initial-value: #e2e8f0;
-}
-
 @theme {
   --font-sans: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
@@ -898,238 +870,193 @@ img,
 }
 
 /* ==========================================================================
-   ENTERPRISE VIEW TRANSITION & CIRCULAR REVEAL SYSTEM
-   Cinematic radial clip-path reveal driven from click coordinates
+   ENTERPRISE VIEW TRANSITION & FLUID THEME SYSTEM (iOS Spring Sliding Physics)
+   Ultra-low latency GPU-composited bouncy sliding screen transitions
    ========================================================================== */
 
-/* Turn off default cross-fade so Web Animations API can drive the circular reveal smoothly */
-::view-transition-old(root),
+/* 1. Global View Transition Crossfade (when no sliding direction specified) */
+::view-transition-old(root) {
+  animation: 350ms cubic-bezier(0.32, 0.72, 0, 1) both theme-fade-out;
+}
 ::view-transition-new(root) {
-  animation: none;
-  mix-blend-mode: normal;
+  animation: 350ms cubic-bezier(0.32, 0.72, 0, 1) both theme-fade-in;
 }
 
-::view-transition-old(root) {
+@keyframes theme-fade-out {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes theme-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* 2. Fluid Bouncy Sliding Transitions (iOS Spring Physics with Overshoot) */
+
+/* Slide in from RIGHT (entering Dark Mode) */
+@keyframes ios-slide-in-from-right {
+  0% {
+    transform: translate3d(100%, 0, 0);
+  }
+  58% {
+    transform: translate3d(-3%, 0, 0); /* Bouncy spring overshoot */
+  }
+  78% {
+    transform: translate3d(1.2%, 0, 0); /* Soft elastic rebound */
+  }
+  90% {
+    transform: translate3d(-0.3%, 0, 0);
+  }
+  100% {
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+@keyframes ios-slide-out-to-left {
+  0% {
+    transform: translate3d(0, 0, 0);
+    opacity: 1;
+    filter: brightness(1);
+  }
+  100% {
+    transform: translate3d(-22%, 0, 0); /* Parallax friction recession */
+    opacity: 0.35;
+    filter: brightness(0.85);
+  }
+}
+
+/* Slide in from LEFT (entering Light Mode) */
+@keyframes ios-slide-in-from-left {
+  0% {
+    transform: translate3d(-100%, 0, 0);
+  }
+  58% {
+    transform: translate3d(3%, 0, 0); /* Bouncy spring overshoot */
+  }
+  78% {
+    transform: translate3d(-1.2%, 0, 0); /* Soft elastic rebound */
+  }
+  90% {
+    transform: translate3d(0.3%, 0, 0);
+  }
+  100% {
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+@keyframes ios-slide-out-to-right {
+  0% {
+    transform: translate3d(0, 0, 0);
+    opacity: 1;
+    filter: brightness(1);
+  }
+  100% {
+    transform: translate3d(22%, 0, 0); /* Parallax friction recession */
+    opacity: 0.35;
+    filter: brightness(0.85);
+  }
+}
+
+/* Fallback / Radial Ripple keyframe */
+@keyframes ios-theme-ripple {
+  from {
+    clip-path: circle(0px at var(--theme-x, 50%) var(--theme-y, 50%));
+  }
+  to {
+    clip-path: circle(var(--theme-radius, 150vmax) at var(--theme-x, 50%) var(--theme-y, 50%));
+  }
+}
+
+html.theme-slide-from-right::view-transition-old(root) {
+  animation: ios-slide-out-to-left 520ms cubic-bezier(0.25, 1, 0.5, 1) both !important;
+  z-index: 1;
+  mix-blend-mode: normal !important;
+}
+
+html.theme-slide-from-right::view-transition-new(root) {
+  animation: ios-slide-in-from-right 520ms cubic-bezier(0.25, 1, 0.5, 1) both !important;
+  z-index: 9999;
+  mix-blend-mode: normal !important;
+  box-shadow: -16px 0 36px rgba(0, 0, 0, 0.35);
+}
+
+html.theme-slide-from-left::view-transition-old(root) {
+  animation: ios-slide-out-to-right 520ms cubic-bezier(0.25, 1, 0.5, 1) both !important;
+  z-index: 1;
+  mix-blend-mode: normal !important;
+}
+
+html.theme-slide-from-left::view-transition-new(root) {
+  animation: ios-slide-in-from-left 520ms cubic-bezier(0.25, 1, 0.5, 1) both !important;
+  z-index: 9999;
+  mix-blend-mode: normal !important;
+  box-shadow: 16px 0 36px rgba(0, 0, 0, 0.35);
+}
+
+html.theme-ripple-transition::view-transition-old(root) {
+  animation: none !important;
+  mix-blend-mode: normal !important;
   z-index: 1;
 }
 
-::view-transition-new(root) {
+html.theme-ripple-transition::view-transition-new(root) {
+  animation: ios-theme-ripple 550ms cubic-bezier(0.32, 0.72, 0, 1) both !important;
+  mix-blend-mode: normal !important;
   z-index: 9999;
 }
 
-/* Fallback color fade for engines without View Transitions */
-html.theme-fade,
-html.theme-fade body {
-  transition: --bg-app 0.75s ease,
-              --surface 0.75s ease,
-              --text-primary 0.75s ease,
-              --border 0.75s ease,
-              background-color 0.75s ease,
-              color 0.75s ease !important;
-}
-
-/* Backward-compatible classes for tests & CSS fallback */
+/* 3. Scoped CSS Crossfade Fallback (Browsers without View Transitions API) */
 html.theme-transition,
-html.theme-transition * {
+html.theme-transition *,
+html.theme-transition *::before,
+html.theme-transition *::after {
   transition: background-color 450ms cubic-bezier(0.34, 1.25, 0.64, 1),
               border-color 450ms cubic-bezier(0.34, 1.25, 0.64, 1),
-              color 350ms cubic-bezier(0.34, 1.25, 0.64, 1) !important;
+              color 350ms cubic-bezier(0.34, 1.25, 0.64, 1),
+              fill 350ms cubic-bezier(0.34, 1.25, 0.64, 1),
+              stroke 350ms cubic-bezier(0.34, 1.25, 0.64, 1),
+              box-shadow 450ms cubic-bezier(0.34, 1.25, 0.64, 1) !important;
+  transition-delay: 0s !important;
 }
 
-/* ==========================================================================
-   ENTERPRISE TACTILE SUN / MOON SPRING SWITCH
-   Stretching knob, 360-deg rotating face, day/night sky layers, stars & clouds
-   ========================================================================== */
-.theme-switch {
-  --kw: 26px;
-  position: relative;
-  width: 60px;
-  height: 32px;
-  border-radius: 9999px;
-  overflow: hidden;
-  cursor: pointer;
-  user-select: none;
-  border: 1px solid rgba(0, 0, 0, 0.08);
-  background: transparent;
-  padding: 0;
-  outline: none;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
-  transition: border-color 0.3s ease, box-shadow 0.2s ease, transform 0.15s ease;
-  display: inline-flex;
-  align-items: center;
-  flex-shrink: 0;
-}
-
-.dark .theme-switch {
-  border-color: rgba(255, 255, 255, 0.14);
-}
-
-.theme-switch:focus-visible {
-  box-shadow: 0 0 0 2px var(--color-accent, #2563eb);
-}
-
-/* Physical knob stretch when pressed down */
-.theme-switch:active {
-  --kw: 36px;
-}
-
-.theme-switch .sky {
-  position: absolute;
-  inset: 0;
-  transition: opacity 0.65s cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-.theme-switch .sky.day {
-  background: #38bdf8;
-  opacity: 1;
-}
-
-.dark .theme-switch .sky.day {
-  opacity: 0;
-}
-
-.theme-switch .sky.night {
-  background: #0b1120;
-  opacity: 0;
-}
-
-.dark .theme-switch .sky.night {
-  opacity: 1;
-}
-
-/* Clouds in Day Sky */
-.theme-switch .clouds {
-  position: absolute;
-  right: 6px;
-  bottom: -3px;
-  width: 24px;
-  height: 14px;
-  background: rgba(255, 255, 255, 0.88);
-  border-radius: 10px;
-  transition: transform 0.65s cubic-bezier(0.34, 1.45, 0.64, 1), opacity 0.5s ease;
-  pointer-events: none;
-}
-
-.theme-switch .clouds::before {
-  content: '';
-  position: absolute;
-  top: -6px;
-  left: 4px;
-  width: 10px;
-  height: 10px;
-  background: rgba(255, 255, 255, 0.88);
-  border-radius: 50%;
-}
-
-.dark .theme-switch .clouds {
-  transform: translateY(16px) scale(0.6);
-  opacity: 0;
-}
-
-/* Stars in Night Sky */
-.theme-switch .stars {
-  position: absolute;
-  left: 7px;
-  top: 4px;
-  width: 24px;
-  height: 22px;
-  pointer-events: none;
-  transition: transform 0.65s cubic-bezier(0.34, 1.45, 0.64, 1), opacity 0.5s ease;
-  transform: translateY(-12px) scale(0.5);
-  opacity: 0;
-}
-
-.dark .theme-switch .stars {
-  transform: translateY(0) scale(1);
-  opacity: 1;
-}
-
-.theme-switch .stars i {
-  position: absolute;
-  background: #ffffff;
-  border-radius: 50%;
-  display: block;
-}
-
-.theme-switch .stars i:nth-child(1) { width: 3px; height: 3px; top: 2px; left: 4px; opacity: 0.95; }
-.theme-switch .stars i:nth-child(2) { width: 2px; height: 2px; top: 13px; left: 2px; opacity: 0.75; }
-.theme-switch .stars i:nth-child(3) { width: 2.5px; height: 2.5px; top: 6px; left: 15px; opacity: 0.95; }
-.theme-switch .stars i:nth-child(4) { width: 1.5px; height: 1.5px; top: 15px; left: 13px; opacity: 0.85; }
-
-/* Tactile Spring Knob with Stretch */
-.theme-switch .knob {
-  position: absolute;
-  top: 2px;
-  left: 2px;
-  width: var(--kw);
-  height: 26px;
-  border-radius: 9999px;
-  background: #ffffff;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.22), 0 1px 2px rgba(0, 0, 0, 0.12);
-  transition: left 0.65s cubic-bezier(0.34, 1.45, 0.64, 1),
-              width 0.25s cubic-bezier(0.2, 0.8, 0.2, 1),
-              background-color 0.4s ease;
-  z-index: 2;
-  overflow: hidden;
-}
-
-.dark .theme-switch .knob {
-  left: calc(100% - var(--kw) - 2px);
-  background: #f8fafc;
-}
-
-/* 360-Degree Rotating Face */
-.theme-switch .face {
-  position: absolute;
-  inset: 0;
-  border-radius: 9999px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: transform 0.85s cubic-bezier(0.34, 1.3, 0.64, 1);
-}
-
-.dark .theme-switch .face {
-  transform: rotate(360deg);
-}
-
-.theme-switch .face .icon-sun,
-.theme-switch .face .icon-moon {
-  position: absolute;
-  transition: opacity 0.45s ease, transform 0.45s cubic-bezier(0.34, 1.4, 0.64, 1);
-}
-
-.theme-switch .face .icon-sun {
-  opacity: 1;
-  transform: scale(1);
-}
-
-.dark .theme-switch .face .icon-sun {
-  opacity: 0;
-  transform: scale(0.3) rotate(-90deg);
-}
-
-.theme-switch .face .icon-moon {
-  opacity: 0;
-  transform: scale(0.3) rotate(90deg);
-}
-
-.dark .theme-switch .face .icon-moon {
-  opacity: 1;
-  transform: scale(1) rotate(0deg);
-}
-
-/* Micro-animations: Icon Morph & Badge Slide */
+/* 4. iOS Tactile Spring Icon Morph & Badge Slide */
 @keyframes ios-icon-morph {
-  0% { transform: rotate(-75deg) scale(0.6); opacity: 0; }
-  60% { transform: rotate(10deg) scale(1.15); opacity: 1; }
-  100% { transform: rotate(0deg) scale(1); opacity: 1; }
+  0% {
+    transform: rotate(-75deg) scale(0.6);
+    opacity: 0;
+  }
+  60% {
+    transform: rotate(10deg) scale(1.15);
+    opacity: 1;
+  }
+  100% {
+    transform: rotate(0deg) scale(1);
+    opacity: 1;
+  }
 }
 
 @keyframes ios-badge-slide {
-  0% { transform: translateY(7px); opacity: 0; }
-  60% { transform: translateY(-1.5px); opacity: 1; }
-  100% { transform: translateY(0); opacity: 1; }
+  0% {
+    transform: translateY(7px);
+    opacity: 0;
+  }
+  60% {
+    transform: translateY(-1.5px);
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(0);
+    opacity: 1;
+  }
 }
 
 .theme-icon-ios {
@@ -1142,24 +1069,18 @@ html.theme-transition * {
   animation: ios-badge-slide 320ms cubic-bezier(0.34, 1.56, 0.64, 1) both;
 }
 
-/* Accessibility: Reduced Motion */
+/* 5. Accessibility: Instant transition for reduced motion users */
 @media (prefers-reduced-motion: reduce) {
   ::view-transition-old(root),
   ::view-transition-new(root) {
     animation: none !important;
   }
-  html.theme-fade,
-  html.theme-fade *,
   html.theme-transition,
-  html.theme-transition *,
-  .theme-switch .sky,
-  .theme-switch .clouds,
-  .theme-switch .stars,
-  .theme-switch .knob,
-  .theme-switch .face,
+  html.theme-transition * {
+    transition: none !important;
+  }
   .theme-icon-ios,
   .theme-badge-ios {
-    transition: none !important;
     animation: none !important;
   }
 }
