@@ -1677,7 +1677,7 @@ const normalizeJobTitle = (title, isAdmin) => {
 
                         {totpStep === 1 && totpSetupData && (
                             <div className="p-5 sm:p-6 space-y-4">
-                                <div className="flex justify-center p-3 bg-slate-50 border border-slate-200 rounded-lg">
+                                <div data-keep-white className="flex justify-center p-3 bg-white border border-slate-200 rounded-lg">
                                     <QRCode value={totpSetupData.uri} size={160} ariaLabel="Authenticator setup QR code" cache={false} showLogo={false} />
                                 </div>
 

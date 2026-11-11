@@ -77,6 +77,7 @@ export default function QRCode({
                   height: `${logoBoxSize}px`,
                   boxShadow: '0 1px 3px rgba(15, 23, 42, 0.08)'
                 }}
+                data-keep-white
                 className="bg-white rounded-md flex items-center justify-center p-1 border border-slate-200/80"
               >
                 <img 

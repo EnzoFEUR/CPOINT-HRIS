@@ -23,7 +23,7 @@ export default function QrPrint({ employee = {} }) {
                 </div>
 
                 <div className="flex justify-center mb-6">
-                    <div className="p-3 bg-white border border-slate-200 rounded-md shadow-2xs">
+                    <div data-keep-white className="p-3 bg-white border border-slate-200 rounded-md shadow-2xs">
                         <QRCode 
                             value={employee.company_id || (employee.id ? String(employee.id) : 'CP-EMPLOYEE')} 
                             size={240} 

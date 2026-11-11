@@ -1861,7 +1861,7 @@ const EmployeeDashboard = () => {
                                     </div>
                                 )}
 
-                                <div className="my-5 sm:my-6 bg-slate-50 p-5 sm:p-6 rounded-md border border-slate-200 inline-block">
+                                <div data-keep-white className="my-5 sm:my-6 bg-white p-5 sm:p-6 rounded-md border border-slate-200 inline-block">
                                     <QRCode value={user.id || '0'} size={180} fgColor="#1e293b" />
                                 </div>
 

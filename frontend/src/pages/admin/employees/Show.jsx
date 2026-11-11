@@ -1847,7 +1847,7 @@ export default function Show() {
                             </div>
 
                             <div className="flex justify-center mb-5">
-                                <div className="p-4 bg-white border border-slate-200 rounded-md flex items-center justify-center shadow-2xs">
+                                <div data-keep-white className="p-4 bg-white border border-slate-200 rounded-md flex items-center justify-center shadow-2xs">
                                     <QRCode 
                                         value={employee.company_id || (employee.id ? String(employee.id) : 'CP-EMPLOYEE')} 
                                         size={220}
