@@ -256,13 +256,13 @@ function EmployeeCard({ employee, docPendingCounts, copyToClipboard }) {
             </div>
 
             {/* Card Actions Footer */}
-            <div className="pt-3 mt-1 border-t border-slate-200/80 flex items-center justify-between gap-2">
+            <div className="pt-3 mt-1 border-t border-slate-200/80 dark:border-white/10 flex items-center justify-between gap-2">
                 <Link
                     to={`/admin/employees/${employee.id}`}
-                    className={`flex-1 h-9 px-3.5 font-medium text-xs rounded-md transition-colors duration-100 flex items-center justify-center gap-1.5 shadow-2xs cursor-pointer active:scale-[0.98] ${
+                    className={`flex-1 h-9 px-3.5 font-semibold text-xs rounded-md transition-all duration-150 flex items-center justify-center gap-1.5 shadow-2xs cursor-pointer active:scale-[0.98] ${
                         isTerminated
-                            ? 'bg-slate-700 hover:bg-slate-800 text-white'
-                            : 'bg-slate-900 hover:bg-accent text-white'
+                            ? 'bg-slate-700 hover:bg-slate-800 dark:bg-slate-800 dark:hover:bg-slate-700 text-white dark:text-slate-200 dark:border dark:border-white/10'
+                            : 'bg-slate-900 hover:bg-accent dark:bg-blue-600 dark:hover:bg-blue-500 text-white dark:border dark:border-blue-400/40 dark:shadow-[0_1px_3px_rgba(37,99,235,0.4),0_0_14px_rgba(37,99,235,0.25)]'
                     }`}
                 >
                     <span>{isTerminated ? 'Review Record' : 'View Profile'}</span>
@@ -916,10 +916,10 @@ export default function EmployeesIndex() {
                                                         <div className="flex items-center justify-end gap-1.5">
                                                             <Link
                                                                 to={`/admin/employees/${employee.id}`}
-                                                                className={`h-8 px-3 font-medium text-xs rounded-md transition-colors duration-100 flex items-center gap-1 cursor-pointer ${
+                                                                className={`h-8 px-3 font-semibold text-xs rounded-md transition-all duration-150 flex items-center gap-1 cursor-pointer active:scale-[0.98] ${
                                                                     isTerminated
-                                                                        ? 'bg-slate-700 hover:bg-slate-800 text-white'
-                                                                        : 'bg-slate-900 hover:bg-accent text-white'
+                                                                        ? 'bg-slate-700 hover:bg-slate-800 dark:bg-slate-800 dark:hover:bg-slate-700 text-white dark:text-slate-200 dark:border dark:border-white/10'
+                                                                        : 'bg-slate-900 hover:bg-accent dark:bg-blue-600 dark:hover:bg-blue-500 text-white dark:border dark:border-blue-400/40 dark:shadow-[0_0_12px_rgba(37,99,235,0.25)]'
                                                                 }`}
                                                             >
                                                                 <span>{isTerminated ? 'Review' : 'Profile'}</span>

@@ -54,7 +54,7 @@ export default function ActionMenu({
             <button
                 type="button"
                 onClick={toggleOpen}
-                className={`h-8 w-8 p-0 flex items-center justify-center rounded-md border border-slate-200 bg-white text-slate-600 hover:text-slate-950 hover:bg-slate-50 active:bg-slate-100 transition-colors duration-100 cursor-pointer focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-slate-950 disabled:opacity-50 disabled:pointer-events-none ${triggerClassName}`}
+                className={`h-8 w-8 p-0 flex items-center justify-center rounded-md border border-slate-200 dark:border-white/10 bg-white dark:bg-[#172033] text-slate-600 dark:text-slate-300 hover:text-slate-950 dark:hover:text-white hover:bg-slate-50 dark:hover:bg-[#1f2c47] active:bg-slate-100 dark:active:bg-[#151c2c] transition-all duration-100 cursor-pointer shadow-2xs focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-slate-950 dark:focus-visible:ring-blue-500 disabled:opacity-50 disabled:pointer-events-none ${triggerClassName}`}
                 title={title}
                 aria-haspopup="true"
                 aria-expanded={isOpen}
@@ -64,19 +64,19 @@ export default function ActionMenu({
 
             {isOpen && (
                 <div
-                    className={`absolute z-50 ${align === 'right' ? 'right-0' : 'left-0'} mt-1 w-48 rounded-md bg-white border border-slate-200 shadow-md p-1 animate-in fade-in duration-100 ${menuClassName}`}
+                    className={`absolute z-50 ${align === 'right' ? 'right-0' : 'left-0'} mt-1 w-48 rounded-md bg-white dark:bg-[#0e1628] border border-slate-200 dark:border-white/10 shadow-md dark:shadow-[0_10px_25px_-5px_rgba(0,0,0,0.6)] p-1 animate-in fade-in duration-100 ${menuClassName}`}
                     role="menu"
                     aria-orientation="vertical"
                 >
                     {items.map((item, index) => {
                         if (item.divider) {
-                            return <div key={`divider-${index}`} className="my-1 border-t border-slate-100" />;
+                            return <div key={`divider-${index}`} className="my-1 border-t border-slate-100 dark:border-white/10" />;
                         }
 
                         const content = (
                             <>
                                 {item.icon && (
-                                    <i className={`ti ${item.icon} text-sm shrink-0 ${item.destructive ? 'text-danger-ink' : 'text-slate-400 group-hover:text-slate-600'}`} />
+                                    <i className={`ti ${item.icon} text-sm shrink-0 ${item.destructive ? 'text-danger-ink dark:text-rose-400' : 'text-slate-400 dark:text-slate-400 group-hover:text-slate-600 dark:group-hover:text-slate-200'}`} />
                                 )}
                                 <span className="flex-1 truncate">{item.label}</span>
                                 {item.badge && (
@@ -89,8 +89,8 @@ export default function ActionMenu({
 
                         const commonClasses = `h-8 w-full text-left px-2 text-xs font-medium rounded-sm flex items-center gap-2 transition-colors duration-100 group cursor-pointer ${
                             item.destructive
-                                ? 'text-danger-ink hover:bg-danger-subtle hover:text-danger-ink'
-                                : 'text-slate-700 hover:bg-slate-100 hover:text-slate-950'
+                                ? 'text-danger-ink hover:bg-danger-subtle hover:text-danger-ink dark:text-rose-400 dark:hover:bg-rose-500/15 dark:hover:text-rose-300'
+                                : 'text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-blue-600/15 hover:text-slate-950 dark:hover:text-blue-300'
                         }`;
 
                         if (item.to) {

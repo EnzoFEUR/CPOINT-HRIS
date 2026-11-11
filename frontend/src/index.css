@@ -336,22 +336,61 @@ img,
   border-color: rgba(255, 255, 255, 0.1) !important;
 }
 
-/* Secondary Interactive Buttons */
+/* Secondary & Ghost Interactive Buttons (White, Slate-50, Slate-100) */
 .dark button.bg-white:not([data-keep-white]):not([class*="dark:bg-"]),
 .dark a.bg-white:not([data-keep-white]):not([class*="dark:bg-"]),
-.dark [role="button"].bg-white:not([data-keep-white]):not([class*="dark:bg-"]) {
+.dark [role="button"].bg-white:not([data-keep-white]):not([class*="dark:bg-"]),
+.dark button.bg-slate-50:not([data-keep-white]):not([class*="dark:bg-"]),
+.dark a.bg-slate-50:not([data-keep-white]):not([class*="dark:bg-"]),
+.dark button.bg-slate-100:not([data-keep-white]):not([class*="dark:bg-"]),
+.dark a.bg-slate-100:not([data-keep-white]):not([class*="dark:bg-"]),
+.dark [role="button"].bg-slate-100:not([data-keep-white]):not([class*="dark:bg-"]) {
   background-color: #172033 !important;
-  border-color: rgba(255, 255, 255, 0.12) !important;
+  border: 1px solid rgba(255, 255, 255, 0.12) !important;
   color: #f1f5f9 !important;
   box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.25), inset 0 1px 0 0 rgba(255, 255, 255, 0.06) !important;
 }
 
 .dark button.bg-white:hover:not([data-keep-white]):not([class*="dark:hover:bg-"]),
 .dark a.bg-white:hover:not([data-keep-white]):not([class*="dark:hover:bg-"]),
-.dark [role="button"].bg-white:hover:not([data-keep-white]):not([class*="dark:hover:bg-"]) {
+.dark [role="button"].bg-white:hover:not([data-keep-white]):not([class*="dark:hover:bg-"]),
+.dark button.bg-slate-50:hover:not([data-keep-white]):not([class*="dark:hover:bg-"]),
+.dark a.bg-slate-50:hover:not([data-keep-white]):not([class*="dark:hover:bg-"]),
+.dark button.bg-slate-100:hover:not([data-keep-white]):not([class*="dark:hover:bg-"]),
+.dark a.bg-slate-100:hover:not([data-keep-white]):not([class*="dark:hover:bg-"]),
+.dark [role="button"].bg-slate-100:hover:not([data-keep-white]):not([class*="dark:hover:bg-"]) {
   background-color: #1f2c47 !important;
   border-color: rgba(255, 255, 255, 0.22) !important;
   color: #ffffff !important;
+}
+
+/* Solid Dark Action Buttons (Fixes invisible bg-slate-900 / bg-slate-800 buttons on dark cards) */
+.dark button.bg-slate-900:not([data-keep-white]):not([class*="dark:bg-"]),
+.dark a.bg-slate-900:not([data-keep-white]):not([class*="dark:bg-"]),
+.dark [role="button"].bg-slate-900:not([data-keep-white]):not([class*="dark:bg-"]),
+.dark button.bg-slate-800:not([data-keep-white]):not([class*="dark:bg-"]),
+.dark a.bg-slate-800:not([data-keep-white]):not([class*="dark:bg-"]),
+.dark [role="button"].bg-slate-800:not([data-keep-white]):not([class*="dark:bg-"]),
+.dark button.bg-slate-700:not([data-keep-white]):not([class*="dark:bg-"]),
+.dark a.bg-slate-700:not([data-keep-white]):not([class*="dark:bg-"]) {
+  background-color: #1e293b !important;
+  border: 1px solid rgba(255, 255, 255, 0.16) !important;
+  color: #ffffff !important;
+  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.4), inset 0 1px 0 0 rgba(255, 255, 255, 0.1) !important;
+}
+
+.dark button.bg-slate-900:hover:not([data-keep-white]):not([class*="dark:hover:bg-"]),
+.dark a.bg-slate-900:hover:not([data-keep-white]):not([class*="dark:hover:bg-"]),
+.dark [role="button"].bg-slate-900:hover:not([data-keep-white]):not([class*="dark:hover:bg-"]),
+.dark button.bg-slate-800:hover:not([data-keep-white]):not([class*="dark:hover:bg-"]),
+.dark a.bg-slate-800:hover:not([data-keep-white]):not([class*="dark:hover:bg-"]),
+.dark [role="button"].bg-slate-800:hover:not([data-keep-white]):not([class*="dark:hover:bg-"]),
+.dark button.bg-slate-700:hover:not([data-keep-white]):not([class*="dark:hover:bg-"]),
+.dark a.bg-slate-700:hover:not([data-keep-white]):not([class*="dark:hover:bg-"]) {
+  background-color: #2b3b59 !important;
+  border-color: rgba(255, 255, 255, 0.28) !important;
+  color: #ffffff !important;
+  box-shadow: 0 2px 6px 0 rgba(0, 0, 0, 0.5), inset 0 1px 0 0 rgba(255, 255, 255, 0.18) !important;
 }
 
 /* Hover and Active Background Interactions */

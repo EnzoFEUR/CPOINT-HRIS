@@ -735,7 +735,7 @@ export const GlobalSearch = ({ user }) => {
         onClick={() => setIsOpen(true)}
         aria-label="Open search"
         aria-haspopup="dialog"
-        className="grid size-9 place-items-center rounded-md border border-slate-200 bg-white text-slate-600 shadow-2xs transition-all duration-200 hover:border-accent hover:bg-slate-50 hover:text-accent active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/30 md:hidden"
+        className="grid size-9 place-items-center rounded-md border border-slate-200 dark:border-white/10 bg-white dark:bg-[#172033] text-slate-600 dark:text-slate-300 shadow-2xs transition-all duration-200 hover:border-accent hover:bg-slate-50 dark:hover:bg-[#1f2c47] hover:text-accent dark:hover:text-white active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/30 md:hidden"
       >
         <i className="ti ti-search text-base" aria-hidden="true" />
       </button>
@@ -755,11 +755,11 @@ export const GlobalSearch = ({ user }) => {
               aria-label="Search and AI assistant"
               tabIndex={-1}
               onKeyDown={handleKeyDown}
-              className="relative z-10 flex max-h-[min(40rem,calc(100dvh-1.5rem))] w-full max-w-[40rem] flex-col overflow-hidden rounded-xl bg-slate-100 shadow-[0_32px_80px_-16px_rgba(15,23,42,0.35),0_0_0_1px_rgba(15,23,42,0.08)] outline-none transition duration-200 ease-out starting:translate-y-1 starting:scale-[0.985] starting:opacity-0 motion-reduce:transition-none"
+              className="relative z-10 flex max-h-[min(40rem,calc(100dvh-1.5rem))] w-full max-w-[40rem] flex-col overflow-hidden rounded-xl bg-slate-100 dark:bg-[#0e1628] border dark:border-white/10 shadow-[0_32px_80px_-16px_rgba(15,23,42,0.35),0_0_0_1px_rgba(15,23,42,0.08)] dark:shadow-[0_25px_60px_-15px_rgba(0,0,0,0.8)] outline-none transition duration-200 ease-out starting:translate-y-1 starting:scale-[0.985] starting:opacity-0 motion-reduce:transition-none"
             >
               {/* Search field */}
               <div className="flex items-center gap-3 p-3 pb-2 sm:p-4 sm:pb-3">
-                <div className="flex h-12 min-w-0 flex-1 items-center gap-2.5 rounded-lg bg-white pl-4 pr-2 ring-1 ring-slate-900/[0.06] transition-shadow focus-within:ring-2 focus-within:ring-accent/40">
+                <div className="flex h-12 min-w-0 flex-1 items-center gap-2.5 rounded-lg bg-white dark:bg-[#090e1a] pl-4 pr-2 ring-1 ring-slate-900/[0.06] dark:ring-white/10 transition-shadow focus-within:ring-2 focus-within:ring-accent/40">
                   <i className="ti ti-search text-xl text-slate-400" aria-hidden="true" />
                   <input
                     ref={inputRef}
