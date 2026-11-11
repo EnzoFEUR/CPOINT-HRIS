@@ -11,6 +11,7 @@ const StatutorySettings = lazy(() => import('../payroll/StatutorySettings'));
 const Holidays = lazy(() => import('../Holidays'));
 const SilSettings = lazy(() => import('../payroll/components/SilSettings'));
 const Backups = lazy(() => import('../Backups'));
+const AuditLogsIndex = lazy(() => import('../audit-logs/Index'));
 
 function SettingsTabLoading() {
     return (
@@ -58,6 +59,7 @@ export default function SettingsHub() {
             { id: 'statutory', label: 'Statutory & Taxes', icon: 'ti-adjustments-horizontal', count: '2026 DOLE' },
             { id: 'holidays', label: 'Holiday Calendar', icon: 'ti-calendar-event', count: null },
             { id: 'sil', label: 'Leave Policy (SIL)', icon: 'ti-plane-departure', count: '5 Days' },
+            { id: 'audit', label: 'Audit Trail', icon: 'ti-history', count: null },
         ];
         if (adminUser) {
             base.push({
@@ -320,9 +322,45 @@ export default function SettingsHub() {
                                 </div>
                             </section>
 
-                            {/* Card 5: Cloud Backup & Disaster Recovery (Admin Only) */}
+                            {/* Card 5: Audit Trail & Security Forensics */}
+                            <section className="p-4 rounded-xl border border-slate-200 bg-white shadow-2xs flex flex-col justify-between">
+                                <div>
+                                    <div className="flex items-center justify-between pb-2.5 border-b border-slate-100">
+                                        <div className="flex items-center gap-2">
+                                            <div className="p-1.5 rounded-md bg-slate-100 text-slate-700">
+                                                <i className="ti ti-history text-base" />
+                                            </div>
+                                            <h2 className="text-sm font-semibold text-slate-900">Security Audit Trail</h2>
+                                        </div>
+                                        <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-slate-100 text-slate-700 border border-slate-200">Forensics</span>
+                                    </div>
+                                    <p className="text-xs text-slate-600 mt-2.5">
+                                        Immutable system event records, administrative access logs, biometric verification attempts, and personnel modifications.
+                                    </p>
+                                    <div className="mt-3 p-2.5 rounded-lg bg-slate-50 border border-slate-200/80 text-[11px] text-slate-600 space-y-1">
+                                        <div className="flex justify-between"><span>Audit Scope:</span><span className="font-semibold text-slate-800">Auth, Payroll, Bio, Records</span></div>
+                                        <div className="flex justify-between"><span>Ledger Integrity:</span><span className="font-semibold text-emerald-700">Append-Only Immutable</span></div>
+                                        <div className="flex justify-between"><span>Compliance Standard:</span><span className="font-semibold text-slate-800">NPC / DOLE Retention</span></div>
+                                    </div>
+                                </div>
+                                <div className="pt-3 mt-3 border-t border-slate-100 flex items-center justify-between">
+                                    <button
+                                        type="button"
+                                        onClick={() => setTab('audit')}
+                                        className="inline-flex items-center gap-1 text-xs font-semibold text-accent hover:text-accent-hover cursor-pointer"
+                                    >
+                                        <span>Open Audit Trail</span>
+                                        <i className="ti ti-arrow-right text-xs" />
+                                    </button>
+                                    <Link to="/admin/audit-logs" className="text-[11px] text-slate-400 hover:text-slate-600">
+                                        Direct Route
+                                    </Link>
+                                </div>
+                            </section>
+
+                            {/* Card 6: Cloud Backup & Disaster Recovery (Admin Only) */}
                             {adminUser && (
-                                <section className="p-4 rounded-xl border border-slate-200 bg-white shadow-2xs flex flex-col justify-between md:col-span-2">
+                                <section className="p-4 rounded-xl border border-slate-200 bg-white shadow-2xs flex flex-col justify-between">
                                     <div>
                                         <div className="flex items-center justify-between pb-2.5 border-b border-slate-100">
                                             <div className="flex items-center gap-2">
@@ -401,6 +439,13 @@ export default function SettingsHub() {
                 {activeTab === 'backups' && adminUser && (
                     <Suspense fallback={<SettingsTabLoading />}>
                         <Backups />
+                    </Suspense>
+                )}
+
+                {/* Sub-tab 5: Audit Trail */}
+                {activeTab === 'audit' && (
+                    <Suspense fallback={<SettingsTabLoading />}>
+                        <AuditLogsIndex />
                     </Suspense>
                 )}
             </div>

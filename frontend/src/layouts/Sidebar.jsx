@@ -26,7 +26,7 @@ export const Sidebar = ({ user, handleLogout }) => {
     if (isLeavesPath) setLeavesDropdownOpen(true);
   }
 
-  const isSettingsPath = location.pathname.startsWith('/admin/settings') || location.pathname === '/admin/payroll/statutory-settings' || location.pathname === '/admin/holidays' || location.pathname === '/admin/backups';
+  const isSettingsPath = location.pathname.startsWith('/admin/settings') || location.pathname === '/admin/payroll/statutory-settings' || location.pathname === '/admin/holidays' || location.pathname === '/admin/backups' || location.pathname === '/admin/audit-logs';
   const [settingsDropdownOpen, setSettingsDropdownOpen] = useState(isSettingsPath);
 
   const [previousSettingsPath, setPreviousSettingsPath] = useState(isSettingsPath);
@@ -126,7 +126,6 @@ export const Sidebar = ({ user, handleLogout }) => {
 
   const bottomAdminNavItems = [
     { route: '/admin/disciplinary', icon: 'ti-gavel', label: 'Disciplinary' },
-    { route: '/admin/audit-logs', icon: 'ti-history', label: 'Audit Trail' },
   ];
 
   return (
@@ -469,6 +468,18 @@ export const Sidebar = ({ user, handleLogout }) => {
                   >
                     <i className="ti ti-shield-check text-lg shrink-0"></i>
                     <span className="ml-3 text-sm font-medium truncate">Leave Policy (SIL)</span>
+                  </Link>
+
+                  <Link
+                    to="/admin/audit-logs"
+                    className={`flex items-center px-4 py-2.5 rounded-xl transition-colors ${
+                      location.pathname === '/admin/audit-logs'
+                        ? 'bg-accent text-white shadow-md font-bold'
+                        : 'text-slate-400 hover:text-white hover:bg-white/5'
+                    }`}
+                  >
+                    <i className="ti ti-history text-lg shrink-0"></i>
+                    <span className="ml-3 text-sm font-medium truncate">Audit Trail</span>
                   </Link>
 
                   {user?.role === 'admin' && (
