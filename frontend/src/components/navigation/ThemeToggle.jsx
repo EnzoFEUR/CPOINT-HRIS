@@ -1,22 +1,29 @@
 import React from 'react';
 import { useTheme } from '../../utils/useTheme';
 
+const THEME_OPTIONS = [
+  { id: 'light', label: 'Light', icon: 'ti-sun' },
+  { id: 'system', label: 'System', icon: 'ti-device-desktop' },
+  { id: 'dark', label: 'Dark', icon: 'ti-moon' },
+];
+
+const THEME_CONFIGS = {
+  system: { icon: 'ti-device-desktop', label: 'System Theme (Auto)', badge: 'Auto' },
+  dark: { icon: 'ti-moon', label: 'Dark Mode', badge: 'Dark' },
+  light: { icon: 'ti-sun', label: 'Light Mode', badge: 'Light' },
+};
+
 /**
  * Enterprise Production ThemeToggle
- * Supports compact header icon button and segmented control layout,
- * aligned with C-Point HRIS design tokens and Tabler icons.
+ * High-performance, low-latency theme mode controller with fluid View Transitions,
+ * instant cross-tab synchronization, and zero-FOUC state continuity.
+ * Supports compact header icon button and segmented control layout.
  */
 export const ThemeToggle = ({ variant = 'compact', className = '' }) => {
   const { theme, setTheme, cycleTheme } = useTheme();
 
   if (variant === 'segmented') {
-    const options = [
-      { id: 'light', label: 'Light', icon: 'ti-sun' },
-      { id: 'system', label: 'System', icon: 'ti-device-desktop' },
-      { id: 'dark', label: 'Dark', icon: 'ti-moon' },
-    ];
-
-    const activeIndex = Math.max(0, options.findIndex((opt) => opt.id === theme));
+    const activeIndex = Math.max(0, THEME_OPTIONS.findIndex((opt) => opt.id === theme));
     const pillTranslate = activeIndex === 2 ? 'calc(200% + 4px)' : activeIndex === 1 ? 'calc(100% + 2px)' : '0%';
 
     return (
@@ -31,7 +38,7 @@ export const ThemeToggle = ({ variant = 'compact', className = '' }) => {
           className="absolute top-1 bottom-1 left-1 w-[calc(33.333%-2.67px)] rounded-lg bg-white dark:bg-slate-900 shadow-2xs transition-transform duration-350 ease-[cubic-bezier(0.34,1.4,0.64,1)] pointer-events-none"
           style={{ transform: `translate3d(${pillTranslate}, 0, 0)` }}
         />
-        {options.map((opt) => {
+        {THEME_OPTIONS.map((opt) => {
           const active = theme === opt.id;
           return (
             <button
@@ -42,18 +49,18 @@ export const ThemeToggle = ({ variant = 'compact', className = '' }) => {
                 const coords = rect ? { x: Math.round(rect.left + rect.width / 2), y: Math.round(rect.top + rect.height / 2) } : e;
                 setTheme(opt.id, coords);
               }}
-              className={`relative z-10 flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors duration-200 cursor-pointer select-none active:scale-[0.93] ${
+              className={`relative z-10 flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors duration-200 cursor-pointer select-none active:scale-[0.93] touch-manipulation ${
                 active
                   ? 'text-slate-900 dark:text-slate-100 font-bold'
                   : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'
               }`}
             >
               <i
-                key={`${opt.id}-${active}`}
+                key={`segmented-icon-${opt.id}-${active}`}
                 className={`ti ${opt.icon} text-sm transition-transform duration-200 ${active ? 'theme-icon-ios text-accent scale-110' : ''}`}
                 aria-hidden="true"
               />
-              <span>{opt.label}</span>
+              <span key={`segmented-label-${opt.id}`}>{opt.label}</span>
             </button>
           );
         })}
@@ -61,12 +68,8 @@ export const ThemeToggle = ({ variant = 'compact', className = '' }) => {
     );
   }
 
-  // Compact Header toggle
-  const currentConfig = {
-    system: { icon: 'ti-device-desktop', label: 'System Theme (Auto)', badge: 'Auto' },
-    dark: { icon: 'ti-moon', label: 'Dark Mode', badge: 'Dark' },
-    light: { icon: 'ti-sun', label: 'Light Mode', badge: 'Light' },
-  }[theme] || { icon: 'ti-device-desktop', label: 'Theme', badge: 'Theme' };
+  // Compact Header / Drawer toggle
+  const currentConfig = THEME_CONFIGS[theme] || THEME_CONFIGS.system;
 
   return (
     <button
@@ -78,15 +81,15 @@ export const ThemeToggle = ({ variant = 'compact', className = '' }) => {
       }}
       aria-label={`Current appearance: ${currentConfig.label}. Click to toggle theme.`}
       title={`Appearance: ${currentConfig.label} (Click to toggle)`}
-      className={`group relative inline-flex items-center justify-center h-8 sm:h-9 px-2 sm:px-2.5 rounded-xl border border-slate-200 dark:border-white/10 bg-white dark:bg-[#172033] text-slate-700 dark:text-slate-200 shadow-2xs hover:bg-slate-50 dark:hover:bg-[#1f2c47] active:scale-[0.93] transition-all duration-150 cursor-pointer select-none gap-1.5 shrink-0 overflow-hidden ${className}`}
+      className={`group relative inline-flex items-center justify-center h-8 sm:h-9 px-2 sm:px-2.5 rounded-xl border border-slate-200 dark:border-white/10 bg-white dark:bg-[#172033] text-slate-700 dark:text-slate-200 shadow-2xs hover:bg-slate-50 dark:hover:bg-[#1f2c47] active:scale-[0.93] transition-all duration-150 cursor-pointer select-none gap-1.5 shrink-0 overflow-hidden touch-manipulation ${className}`}
     >
       <i
-        key={theme}
+        key={`theme-icon-${theme}`}
         className={`ti ${currentConfig.icon} theme-icon-ios text-base text-accent transition-transform duration-300 ease-out group-hover:rotate-12`}
         aria-hidden="true"
       />
       <span
-        key={theme}
+        key={`theme-badge-${theme}`}
         className="hidden sm:inline theme-badge-ios text-xs font-semibold tabular-nums text-slate-600 dark:text-slate-300"
       >
         {currentConfig.badge}
