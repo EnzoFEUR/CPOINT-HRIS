@@ -3,7 +3,6 @@ import { createPortal } from 'react-dom';
 import { Link, useLocation } from 'react-router-dom';
 import { isAdmin, isSecurity, isMedicalExempt } from '../routes/guards';
 import { isOfflineFeatureActive } from '../routes/OfflineRouteGate.js';
-import ThemeToggle from '../components/navigation/ThemeToggle';
 import EmployeeAvatar from '../components/EmployeeAvatar';
 
 export const MobileNav = ({
@@ -22,7 +21,6 @@ export const MobileNav = ({
     location.pathname.startsWith('/admin/settings') ||
     location.pathname.startsWith('/admin/payroll/statutory-settings') ||
     location.pathname === '/admin/holidays' ||
-    location.pathname === '/admin/backups' ||
     location.pathname.startsWith('/admin/audit-logs') ||
     (location.pathname === '/admin/leaves' && rawTab === 'sil-policy');
 
@@ -216,7 +214,7 @@ export const MobileNav = ({
               {/* Drag Pill Handle */}
               <div className="w-12 h-1.5 bg-slate-700/80 rounded-full mx-auto mb-4" />
 
-              {/* Drawer Top Row: Title, Theme Toggle, & Dismiss */}
+              {/* Drawer Top Row: Title & Dismiss */}
               <div className="flex items-center justify-between mb-3">
                 <div className="flex items-center gap-2">
                   <span className="text-xs font-bold text-white tracking-tight">System Navigation</span>
@@ -224,16 +222,13 @@ export const MobileNav = ({
                     {isAdmin(user) ? 'Admin Console' : 'Portal Menu'}
                   </span>
                 </div>
-                <div className="flex items-center gap-2">
-                  <ThemeToggle variant="compact" />
-                  <button
-                    onClick={() => setSidebarOpen(false)}
-                    className="w-8 h-8 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white flex items-center justify-center transition-colors duration-100 cursor-pointer border border-slate-700"
-                    aria-label="Close Sheet"
-                  >
-                    <i className="ti ti-x text-sm" />
-                  </button>
-                </div>
+                <button
+                  onClick={() => setSidebarOpen(false)}
+                  className="w-8 h-8 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white flex items-center justify-center transition-colors duration-100 cursor-pointer border border-slate-700"
+                  aria-label="Close Sheet"
+                >
+                  <i className="ti ti-x text-sm" />
+                </button>
               </div>
 
               {/* User Identity Banner */}
@@ -389,7 +384,7 @@ export const MobileNav = ({
                         <div className="min-w-0">
                           <p className="text-xs font-bold text-white truncate">Settings Hub</p>
                           <p className="text-[10px] text-slate-400 truncate">
-                            Statutory tables, holidays, SIL policy, audit trail & backups
+                            Statutory tables, holidays, SIL policy & audit trail
                           </p>
                         </div>
                       </div>

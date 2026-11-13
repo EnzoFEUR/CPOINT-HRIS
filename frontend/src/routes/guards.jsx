@@ -66,7 +66,6 @@ export const getPageTitle = (pathname) => {
   if (pathname === '/admin/leaves') return 'Leave Requests';
   if (pathname === '/admin/disciplinary') return 'Disciplinary Records';
   if (pathname === '/admin/audit-logs') return 'Audit Trail';
-  if (pathname === '/admin/backups') return 'Backups';
   if (pathname === '/admin/holidays') return 'Holidays';
   if (pathname.startsWith('/admin/settings')) return 'System Settings';
 

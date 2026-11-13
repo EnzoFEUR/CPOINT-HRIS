@@ -34,10 +34,6 @@ export const Sidebar = ({ user, handleLogout }) => {
     location.pathname.startsWith('/admin/audit-logs') ||
     (location.pathname === '/admin/settings' && rawTab === 'audit');
 
-  const isBackupsRoute =
-    location.pathname === '/admin/backups' ||
-    (location.pathname === '/admin/settings' && rawTab === 'backups');
-
   const isSettingsHubRoute =
     location.pathname === '/admin/settings' && (!rawTab || rawTab === 'overview');
 
@@ -46,8 +42,7 @@ export const Sidebar = ({ user, handleLogout }) => {
     isStatutoryRoute ||
     isHolidaysRoute ||
     isSilRoute ||
-    isAuditRoute ||
-    isBackupsRoute;
+    isAuditRoute;
 
   const isAttendanceActive = location.pathname.includes('/admin/attendance');
   const [attendanceDropdownOpen, setAttendanceDropdownOpen] = useState(isAttendanceActive);
@@ -518,20 +513,6 @@ export const Sidebar = ({ user, handleLogout }) => {
                     <i className="ti ti-history text-lg shrink-0"></i>
                     <span className="ml-3 text-sm font-medium truncate">Audit Trail</span>
                   </Link>
-
-                  {user?.role === 'admin' && (
-                    <Link
-                      to="/admin/backups"
-                      className={`flex items-center px-4 py-2.5 rounded-xl transition-colors ${
-                        isBackupsRoute
-                          ? 'bg-accent text-white shadow-md font-bold'
-                          : 'text-slate-400 hover:text-white hover:bg-white/5'
-                      }`}
-                    >
-                      <i className="ti ti-database-export text-lg shrink-0"></i>
-                      <span className="ml-3 text-sm font-medium truncate">Cloud Backups</span>
-                    </Link>
-                  )}
                 </div>
               )}
             </div>

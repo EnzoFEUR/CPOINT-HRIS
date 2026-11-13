@@ -18,24 +18,15 @@
     <meta name="msapplication-TileColor" content="#ffffff" />
     <meta name="msapplication-TileImage" content="/pwa-192x192.png" />
 
-    <!-- Immediate Zero-FOUC Theme Initialization (Pre-Hydration) -->
+    <!-- Immediate Zero-FOUC Clean Light Initialization (Pre-Hydration) -->
     <script>
       (function() {
         try {
-          var key = 'cpoint_theme';
-          var stored = localStorage.getItem(key);
-          var mql = window.matchMedia('(prefers-color-scheme: dark)');
-          var isDark = stored === 'dark' || (stored === 'system' && mql.matches);
           var root = document.documentElement;
-          if (isDark) {
-            root.classList.add('dark');
-            root.style.colorScheme = 'dark';
-          } else {
-            root.classList.remove('dark');
-            root.style.colorScheme = 'light';
-          }
+          root.classList.remove('dark');
+          root.style.colorScheme = 'light';
           var metaTheme = document.querySelector('meta[name="theme-color"]');
-          if (metaTheme) metaTheme.setAttribute('content', isDark ? '#090d16' : '#ffffff');
+          if (metaTheme) metaTheme.setAttribute('content', '#ffffff');
         } catch (e) {}
       })();
     </script>

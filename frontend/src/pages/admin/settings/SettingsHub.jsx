@@ -4,14 +4,11 @@ import { useQuery } from '@tanstack/react-query';
 import PageHeader from '../../../components/ui/PageHeader';
 import { fetchWithAuth } from '../../../utils/api';
 import { getUser, isAdmin } from '../../../routes/guards';
-import { formatBackupDate } from '../../../utils/backupStatus.mjs';
-import ThemeToggle from '../../../components/navigation/ThemeToggle';
 
 // Code-split tab panels for sub-millisecond initial loading & low latency
 const StatutorySettings = lazy(() => import('../payroll/StatutorySettings'));
 const Holidays = lazy(() => import('../Holidays'));
 const SilSettings = lazy(() => import('../payroll/components/SilSettings'));
-const Backups = lazy(() => import('../Backups'));
 const AuditLogsIndex = lazy(() => import('../audit-logs/Index'));
 
 function SettingsTabLoading() {
@@ -39,8 +36,6 @@ export default function SettingsHub() {
             navigate('/admin/payroll/statutory-settings', { replace: true });
         } else if (tab === 'holidays') {
             navigate('/admin/holidays', { replace: true });
-        } else if (tab === 'backups') {
-            navigate('/admin/backups', { replace: true });
         } else if (tab === 'audit') {
             navigate('/admin/audit-logs', { replace: true });
         }
@@ -57,36 +52,13 @@ export default function SettingsHub() {
         staleTime: 60000,
     });
 
-    const { data: backupData } = useQuery({
-        queryKey: ['backupStatusOverview'],
-        queryFn: async () => {
-            if (!adminUser) return null;
-            const res = await fetchWithAuth('/api/backups/status');
-            if (!res.ok) return null;
-            return res.json();
-        },
-        enabled: Boolean(adminUser),
-        staleTime: 30000,
-    });
-
-    const tabs = useMemo(() => {
-        const base = [
-            { id: 'overview', label: 'Overview & Cockpit', icon: 'ti-layout-grid', count: null },
-            { id: 'statutory', label: 'Statutory & Taxes', icon: 'ti-adjustments-horizontal', count: '2026 DOLE' },
-            { id: 'holidays', label: 'Holiday Calendar', icon: 'ti-calendar-event', count: null },
-            { id: 'sil', label: 'Leave Policy (SIL)', icon: 'ti-plane-departure', count: '5 Days' },
-            { id: 'audit', label: 'Audit Trail', icon: 'ti-history', count: null },
-        ];
-        if (adminUser) {
-            base.push({
-                id: 'backups',
-                label: 'Cloud Backups',
-                icon: 'ti-database-export',
-                count: backupData?.cloud?.status === 'verified' ? 'Verified' : 'B2 Active'
-            });
-        }
-        return base;
-    }, [adminUser, backupData]);
+    const tabs = useMemo(() => [
+        { id: 'overview', label: 'Overview & Cockpit', icon: 'ti-layout-grid', count: null },
+        { id: 'statutory', label: 'Statutory & Taxes', icon: 'ti-adjustments-horizontal', count: '2026 DOLE' },
+        { id: 'holidays', label: 'Holiday Calendar', icon: 'ti-calendar-event', count: null },
+        { id: 'sil', label: 'Leave Policy (SIL)', icon: 'ti-plane-departure', count: '5 Days' },
+        { id: 'audit', label: 'Audit Trail', icon: 'ti-history', count: null },
+    ], []);
 
     const setTab = id => {
         if (id === 'statutory') {
@@ -95,10 +67,6 @@ export default function SettingsHub() {
         }
         if (id === 'holidays') {
             navigate('/admin/holidays');
-            return;
-        }
-        if (id === 'backups') {
-            navigate('/admin/backups');
             return;
         }
         if (id === 'audit') {
@@ -329,76 +297,6 @@ export default function SettingsHub() {
                                     </button>
                                 </div>
                             </section>
-
-                            {/* Card 6: Cloud Backup & Disaster Recovery (Admin Only) */}
-                            {adminUser && (
-                                <section className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-2xs flex flex-col justify-between">
-                                    <div>
-                                        <div className="pb-2.5 border-b border-slate-100 dark:border-slate-800">
-                                            <h2 className="text-sm font-semibold text-slate-900 dark:text-slate-100">Autonomous Cloud Backup & Disaster Recovery</h2>
-                                        </div>
-                                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-3">
-                                            <div className="p-2.5 rounded-lg bg-slate-50 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700/60">
-                                                <p className="text-[10px] font-semibold uppercase text-slate-400 dark:text-slate-500">Target Storage</p>
-                                                <p className="text-xs font-semibold text-slate-800 dark:text-slate-200 mt-0.5">Backblaze B2 S3</p>
-                                                <p className="text-[10px] text-slate-400 dark:text-slate-500 font-mono mt-0.5">AES-256-CTR + Poly1305</p>
-                                            </div>
-                                            <div className="p-2.5 rounded-lg bg-slate-50 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700/60">
-                                                <p className="text-[10px] font-semibold uppercase text-slate-400 dark:text-slate-500">Execution Cadence</p>
-                                                <p className="text-xs font-semibold text-slate-800 dark:text-slate-200 mt-0.5">Daily around 02:17 PHT</p>
-                                                <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-0.5">Zero-PC Cloud Runner</p>
-                                            </div>
-                                            <div className="p-2.5 rounded-lg bg-slate-50 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700/60">
-                                                <p className="text-[10px] font-semibold uppercase text-slate-400 dark:text-slate-500">Integrity Health</p>
-                                                <p className="text-xs font-semibold text-emerald-700 dark:text-emerald-400 mt-0.5">Verified Passed</p>
-                                                <p className="text-[10px] text-slate-400 dark:text-slate-500 font-mono mt-0.5">
-                                                    {backupData?.last_check_at ? formatBackupDate(backupData.last_check_at) + ' PHT' : 'Checked'}
-                                                </p>
-                                            </div>
-                                        </div>
-                                    </div>
-                                    <div className="pt-3 mt-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between">
-                                        <button
-                                            type="button"
-                                            onClick={() => setTab('backups')}
-                                            className="inline-flex items-center gap-1 text-xs font-semibold text-accent hover:text-accent-hover cursor-pointer"
-                                        >
-                                            <span>Open Backup Control Center</span>
-                                            <i className="ti ti-arrow-right text-xs" />
-                                        </button>
-                                    </div>
-                                </section>
-                            )}
-
-                            {/* Card 7: Display & Appearance Governance */}
-                            <section className="col-span-1 md:col-span-2 p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-2xs flex flex-col justify-between">
-                                <div>
-                                    <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-2.5 border-b border-slate-100 dark:border-slate-800 gap-2">
-                                        <h2 className="text-sm font-semibold text-slate-900 dark:text-slate-100">Display & Appearance Governance</h2>
-                                        <ThemeToggle variant="segmented" />
-                                    </div>
-                                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 mt-3">
-                                        <div className="p-2.5 rounded-lg bg-slate-50 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700/60">
-                                            <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-800 dark:text-slate-200">
-                                                <i className="ti ti-sun text-sm text-amber-500" />
-                                                <span>Light Mode</span>
-                                            </div>
-                                        </div>
-                                        <div className="p-2.5 rounded-lg bg-slate-50 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700/60">
-                                            <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-800 dark:text-slate-200">
-                                                <i className="ti ti-moon text-sm text-indigo-400" />
-                                                <span>Dark Mode</span>
-                                            </div>
-                                        </div>
-                                        <div className="p-2.5 rounded-lg bg-slate-50 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700/60">
-                                            <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-800 dark:text-slate-200">
-                                                <i className="ti ti-device-desktop text-sm text-blue-500" />
-                                                <span>System Sync</span>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-                            </section>
                         </div>
                     </div>
                 )}
@@ -423,13 +321,6 @@ export default function SettingsHub() {
                         <div className="p-5 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-2xs">
                             <SilSettings />
                         </div>
-                    </Suspense>
-                )}
-
-                {/* Sub-tab 4: Cloud Backups */}
-                {activeTab === 'backups' && adminUser && (
-                    <Suspense fallback={<SettingsTabLoading />}>
-                        <Backups />
                     </Suspense>
                 )}
 

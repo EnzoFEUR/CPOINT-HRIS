@@ -11,7 +11,6 @@ import { useOtpCooldown } from '../utils/useOtpCooldown';
 import { isSecurity, isAdmin, isMedicalExempt } from '../routes/guards';
 import { needsProfileCompletion } from '../utils/userAccess.mjs';
 import { broadcastAuthChange } from '../utils/authSession';
-import { applyThemeToDOM } from '../utils/useTheme';
 import { minimalLoginSession, writeLoginSession } from '../utils/browserPrivacy.mjs';
 import { Mail, Loader2, ShieldCheck, ArrowRight, ChevronRight, KeyRound, Eye, EyeOff, AlertCircle, ShieldAlert, Sparkles } from 'lucide-react';
 // Enterprise Anti-Brute-Force & Rate-Limiting Protection
@@ -353,14 +352,6 @@ export default function Login() {
                 } catch { /* Email verification remains available when authenticator status cannot load. */ }
                 setHasTotp(userHasTotp);
 
-                const userTheme = meta.theme_preference;
-                if (userTheme && ['system', 'dark', 'light'].includes(userTheme)) {
-                    try {
-                        localStorage.setItem('cpoint_theme', userTheme);
-                        applyThemeToDOM(userTheme);
-                    } catch { /* Retain local theme when storage is restricted */ }
-                }
-
                 const empWithMeta = { 
                     ...employee, 
                     hasTotp: userHasTotp,
@@ -368,7 +359,7 @@ export default function Login() {
                     emergency_contact_name: employee?.emergency_contact_name || meta.emergency_contact_name || null,
                     emergency_contact_phone: employee?.emergency_contact_phone || meta.emergency_contact_phone || null,
                     emergency_contact_relationship: employee?.emergency_contact_relationship || meta.emergency_contact_relationship || null,
-                    _auth_metadata: { totp_enabled: userHasTotp, theme_preference: userTheme }
+                    _auth_metadata: { totp_enabled: userHasTotp }
                 };
 
                 setEmployeeData(empWithMeta);
@@ -589,14 +580,6 @@ export default function Login() {
                 has_registered_biometrics: Boolean(dbData?.has_registered_biometrics || dbData?.biometric_baseline_path || employeeData._auth_metadata?.has_registered_biometrics),
                 name: `${dbData.first_name || employeeData.first_name} ${dbData.last_name || employeeData.last_name}`
             };
-            
-            const cloudTheme = employeeData?._auth_metadata?.theme_preference || dbData?.theme_preference;
-            if (cloudTheme && ['system', 'dark', 'light'].includes(cloudTheme)) {
-                try {
-                    localStorage.setItem('cpoint_theme', cloudTheme);
-                    applyThemeToDOM(cloudTheme);
-                } catch { /* Retain local theme when storage is restricted */ }
-            }
 
             delete userData._auth_metadata;
             localStorage.setItem('user', JSON.stringify(userData));
