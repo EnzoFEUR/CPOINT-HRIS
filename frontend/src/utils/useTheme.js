@@ -3,9 +3,6 @@
  * Aligned with Capstone Scope (Light Mode Standard)
  */
 
-export const THEME_STORAGE_KEY = 'cpoint_theme';
-export const THEME_BROADCAST_CHANNEL = 'cpoint_theme_sync';
-
 /**
  * Enterprise DOM Light Applier
  * Synchronously removes any dark mode class and enforces standard light palette.

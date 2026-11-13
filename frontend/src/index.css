@@ -116,8 +116,6 @@
   --sidebar-active: #2563eb;
   --sidebar-text: #94a3b8;
   --sidebar-text-hover: #ffffff;
-
-  color-scheme: dark;
 }
 
 html {
@@ -1035,20 +1033,6 @@ html.theme-ripple-transition::view-transition-new(root) {
   z-index: 9999;
 }
 
-/* 3. Scoped CSS Crossfade Fallback (Browsers without View Transitions API) */
-html.theme-transition,
-html.theme-transition *,
-html.theme-transition *::before,
-html.theme-transition *::after {
-  transition: background-color 450ms cubic-bezier(0.34, 1.25, 0.64, 1),
-              border-color 450ms cubic-bezier(0.34, 1.25, 0.64, 1),
-              color 350ms cubic-bezier(0.34, 1.25, 0.64, 1),
-              fill 350ms cubic-bezier(0.34, 1.25, 0.64, 1),
-              stroke 350ms cubic-bezier(0.34, 1.25, 0.64, 1),
-              box-shadow 450ms cubic-bezier(0.34, 1.25, 0.64, 1) !important;
-  transition-delay: 0s !important;
-}
-
 /* 4. iOS Tactile Spring Icon Morph & Badge Slide */
 @keyframes ios-icon-morph {
   0% {
@@ -1101,10 +1085,6 @@ html.theme-transition *::after {
   ::view-transition-old(root),
   ::view-transition-new(root) {
     animation: none !important;
-  }
-  html.theme-transition,
-  html.theme-transition * {
-    transition: none !important;
   }
   .theme-icon-ios,
   .theme-badge-ios {
