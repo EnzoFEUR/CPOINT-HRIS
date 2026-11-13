@@ -306,6 +306,48 @@ export const MobileNav = ({
                     </p>
                     <div className="grid grid-cols-2 gap-2">
                       <Link
+                        to="/admin/leaves"
+                        onClick={() => setSidebarOpen(false)}
+                        className="p-3 bg-slate-800/40 hover:bg-slate-800 rounded-xl border border-slate-800 hover:border-slate-700 flex items-center gap-2.5 transition-colors duration-100 cursor-pointer"
+                      >
+                        <div className="w-8 h-8 rounded-lg bg-accent/20 text-accent flex items-center justify-center shrink-0">
+                          <i className="ti ti-plane-departure text-lg" />
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-xs font-semibold text-white truncate">Leave Review</p>
+                          <p className="text-[9px] text-slate-400 truncate">Requests & approvals</p>
+                        </div>
+                      </Link>
+
+                      <Link
+                        to="/admin/leaves?tab=cashouts"
+                        onClick={() => setSidebarOpen(false)}
+                        className="p-3 bg-slate-800/40 hover:bg-slate-800 rounded-xl border border-slate-800 hover:border-slate-700 flex items-center gap-2.5 transition-colors duration-100 cursor-pointer"
+                      >
+                        <div className="w-8 h-8 rounded-lg bg-accent/20 text-accent flex items-center justify-center shrink-0">
+                          <i className="ti ti-cash text-lg" />
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-xs font-semibold text-white truncate">SIL Cash-Outs</p>
+                          <p className="text-[9px] text-slate-400 truncate">Encashment queue</p>
+                        </div>
+                      </Link>
+
+                      <Link
+                        to="/admin/holidays"
+                        onClick={() => setSidebarOpen(false)}
+                        className="p-3 bg-slate-800/40 hover:bg-slate-800 rounded-xl border border-slate-800 hover:border-slate-700 flex items-center gap-2.5 transition-colors duration-100 cursor-pointer"
+                      >
+                        <div className="w-8 h-8 rounded-lg bg-accent/20 text-accent flex items-center justify-center shrink-0">
+                          <i className="ti ti-calendar-event text-lg" />
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-xs font-semibold text-white truncate">Holidays</p>
+                          <p className="text-[9px] text-slate-400 truncate">Declarations & coverage</p>
+                        </div>
+                      </Link>
+
+                      <Link
                         to="/admin/disciplinary"
                         onClick={() => setSidebarOpen(false)}
                         className="p-3 bg-slate-800/40 hover:bg-slate-800 rounded-xl border border-slate-800 hover:border-slate-700 flex items-center gap-2.5 transition-colors duration-100 cursor-pointer"
@@ -316,6 +358,20 @@ export const MobileNav = ({
                         <div className="min-w-0">
                           <p className="text-xs font-semibold text-white truncate">Disciplinary</p>
                           <p className="text-[9px] text-slate-400 truncate">Notices & infractions</p>
+                        </div>
+                      </Link>
+
+                      <Link
+                        to="/admin/audit-logs"
+                        onClick={() => setSidebarOpen(false)}
+                        className="p-3 bg-slate-800/40 hover:bg-slate-800 rounded-xl border border-slate-800 hover:border-slate-700 flex items-center gap-2.5 transition-colors duration-100 cursor-pointer"
+                      >
+                        <div className="w-8 h-8 rounded-lg bg-slate-700/40 text-slate-300 flex items-center justify-center shrink-0">
+                          <i className="ti ti-history text-lg" />
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-xs font-semibold text-white truncate">Audit Trail</p>
+                          <p className="text-[9px] text-slate-400 truncate">Security history</p>
                         </div>
                       </Link>
 
