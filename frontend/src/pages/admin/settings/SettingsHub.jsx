@@ -3,7 +3,6 @@ import { useSearchParams, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import PageHeader from '../../../components/ui/PageHeader';
 import { fetchWithAuth } from '../../../utils/api';
-import { getUser, isAdmin } from '../../../routes/guards';
 
 // Code-split tab panels for sub-millisecond initial loading & low latency
 const StatutorySettings = lazy(() => import('../payroll/StatutorySettings'));
@@ -23,8 +22,6 @@ function SettingsTabLoading() {
 }
 
 export default function SettingsHub() {
-    const user = getUser();
-    const adminUser = isAdmin(user);
     const navigate = useNavigate();
     const [searchParams, setSearchParams] = useSearchParams();
     const activeTab = searchParams.get('tab') || 'overview';

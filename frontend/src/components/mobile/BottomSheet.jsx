@@ -1,4 +1,4 @@
-import React, { lazy, Suspense } from 'react';
+import { lazy, Suspense } from 'react';
 
 let sheetPromise = null;
 
@@ -6,7 +6,7 @@ let sheetPromise = null;
  * Preload BottomSheet and framer-motion chunk ahead of user interaction.
  * Can be called explicitly on hover/focus/touchstart, or left to automatic idle preload.
  */
-export const preloadBottomSheet = () => {
+const preloadBottomSheet = () => {
   if (!sheetPromise && typeof window !== 'undefined') {
     sheetPromise = import('./BottomSheetInner');
   }
