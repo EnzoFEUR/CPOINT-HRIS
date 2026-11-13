@@ -1,4 +1,4 @@
-const CACHE_VERSION = 'v3.0.6-offline-mime-guard';
+const CACHE_VERSION = 'v3.0.7-clean-scope';
 const OFFLINE_BUILD_ENABLED = false;
 const OFFLINE_FEATURE_ENABLED = OFFLINE_BUILD_ENABLED || ['localhost', '127.0.0.1', '::1', '[::1]'].includes(self.location.hostname);
 const CACHE_NAME = `cpoint-hris-${CACHE_VERSION}`;
@@ -55,7 +55,7 @@ self.addEventListener('activate', (event) => {
     caches.keys().then((keys) => {
       return Promise.all(
         keys.map((key) => {
-          if (key.startsWith('cpoint-hris-') && key !== CACHE_NAME) {
+          if (key !== CACHE_NAME) {
             return caches.delete(key);
           }
         })
