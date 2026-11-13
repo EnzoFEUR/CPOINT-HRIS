@@ -67,8 +67,9 @@ supabase/tests/*
 # Local performance and browser QA artifacts
 /benchmarks/
 
-# Local load-test results and harnesses
+# Local load-test results, test scripts and harnesses
 /reports/
+/scripts/
 /scripts/k6-*.js
 /scripts/k6-*.mjs
 /scripts/run-k6.mjs
